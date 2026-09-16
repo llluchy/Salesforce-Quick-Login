@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Salesforce Quick Login",
-  "version": "2.5.3",
-  "description": "One-click Salesforce login with Passkey authentication, TOTP 2FA, encrypted cloud sync and environment sharing.",
+  "default_locale": "zh_CN",
+  "name": "__MSG_extName__",
+  "version": "2.5.4",
+  "description": "__MSG_extDescription__",
   "permissions": [
     "storage",
     "sidePanel",
@@ -67,7 +68,7 @@
     "default_path": "index.html"
   },
   "action": {
-    "default_title": "Salesforce Quick Login",
+    "default_title": "__MSG_extActionTitle__",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

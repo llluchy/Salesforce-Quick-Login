@@ -10,6 +10,7 @@ import { ref, readonly } from 'vue'
 import { useStorage } from './useStorage'
 import { useAuth } from './useAuth'
 import { makeCredential, getAssertion, serializeCredential, base64urlToUint8Array } from '../utils/webauthn'
+import { t } from '../i18n'
 
 let _listener = null
 
@@ -40,7 +41,7 @@ export function initPasskeyBridge() {
 
   const requireAuth = () => {
     if (!isAuthed.value || !getCryptoKeyRaw()) {
-      return { success: false, error: '请先在扩展面板登录并解锁' }
+      return { success: false, error: t('passkey.needUnlock') }
     }
     return null
   }
@@ -177,27 +178,27 @@ export function initPasskeyBridge() {
       }
 
       passkeySaving.value = true
-      passkeySavingStage.value = '保存中…'
+      passkeySavingStage.value = t('passkey.saving')
 
       const saveResult = await savePasskeyCredential(passkey)
       if (!saveResult?.success) {
         passkeySaving.value = false
         passkeySavingStage.value = ''
-        passkeyError.value = 'Passkey 保存失败（' + (saveResult?.error || '未知错误') + '），请重试'
+        passkeyError.value = t('passkey.saveFailed', { error: saveResult?.error || t('passkey.unknownError') })
         passkeyRequest.value = null
         respondToContent(msg, { fallback: true })
         return
       }
 
       // 验证：重新加载数据确认 passkey 已持久化
-      passkeySavingStage.value = '验证中…'
+      passkeySavingStage.value = t('passkey.verifying')
       const verifyEnvs = await loadEnvironments()
       const verifyEnv = verifyEnvs.find(e => e.id === selectedEnv.id)
       const saved = (verifyEnv?.passkeys || []).some(pk => pk.credentialId === passkey.credentialId)
       if (!saved) {
         passkeySaving.value = false
         passkeySavingStage.value = ''
-        passkeyError.value = 'Passkey 保存验证失败，数据可能未持久化，请重新尝试绑定'
+        passkeyError.value = t('passkey.verifyFailed')
         passkeyRequest.value = null
         respondToContent(msg, { fallback: true })
         return
@@ -258,7 +259,7 @@ export function initPasskeyBridge() {
       if (authErr) return authErr
       const backup = msg.backup
       if (!backup || !Array.isArray(backup.credentials)) {
-        return { success: false, error: '备份文件格式无效' }
+        return { success: false, error: t('passkey.invalidBackup') }
       }
 
       let credCount = 0
@@ -294,7 +295,7 @@ export function initPasskeyBridge() {
       if (authErr) return authErr
       const cred = msg.credential
       if (!cred || !cred.credentialId) {
-        return { success: false, error: '凭证数据不完整：需要 credentialId' }
+        return { success: false, error: t('passkey.incompleteCred') }
       }
       return await savePasskeyCredential(cred)
     },
@@ -305,7 +306,7 @@ export function initPasskeyBridge() {
       const cred = await getPasskeyCredentialById(msg.credentialId)
       return cred
         ? { success: true, credential: cred }
-        : { success: false, error: '未找到该 credentialId 对应的凭证' }
+        : { success: false, error: t('passkey.credNotFound') }
     },
 
     'bg:listPasskeys': async () => {
@@ -336,7 +337,7 @@ export function initPasskeyBridge() {
       const authErr = requireAuth()
       if (authErr) return authErr
       const newEnv = msg.environment
-      if (!newEnv) return { success: false, error: '环境数据为空' }
+      if (!newEnv) return { success: false, error: t('passkey.envEmpty') }
       const envs = await loadEnvironments()
       if (!envs.find(e => e.id === newEnv.id)) {
         envs.push(newEnv)
@@ -348,10 +349,10 @@ export function initPasskeyBridge() {
       const authErr = requireAuth()
       if (authErr) return authErr
       const { envId, passkey } = msg
-      if (!envId || !passkey) return { success: false, error: '参数不完整' }
+      if (!envId || !passkey) return { success: false, error: t('passkey.paramsIncomplete') }
       const envs = await loadEnvironments()
       const idx = envs.findIndex(e => e.id === envId)
-      if (idx === -1) return { success: false, error: '未找到环境' }
+      if (idx === -1) return { success: false, error: t('passkey.envNotFound') }
       if (!envs[idx].passkeys) envs[idx].passkeys = []
       if (!envs[idx].passkeys.find(pk => pk.rpId === passkey.rpId)) {
         envs[idx].passkeys.push(passkey)

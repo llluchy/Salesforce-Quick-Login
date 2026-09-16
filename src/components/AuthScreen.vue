@@ -1,5 +1,8 @@
 <template>
   <div class="auth-container">
+    <div class="auth-locale">
+      <LocaleSwitcher variant="light" />
+    </div>
     <!-- 顶部品牌区 -->
     <div class="auth-header">
       <div class="auth-logo">
@@ -8,7 +11,7 @@
           <path d="M7 11V7a5 5 0 0110 0v4"/>
         </svg>
       </div>
-      <h1 class="auth-title">Salesforce Quick Login</h1>
+      <h1 class="auth-title">{{ t('common.productName') }}</h1>
       <p class="auth-subtitle">{{ subtitleText }}</p>
     </div>
 
@@ -23,12 +26,12 @@
       <button
         :class="['auth-tab', { active: isLoginMode }]"
         @click="switchMode('login')">
-        登录
+        {{ t('auth.login') }}
       </button>
       <button
         :class="['auth-tab', { active: !isLoginMode }]"
         @click="switchMode('register')">
-        注册
+        {{ t('auth.register') }}
       </button>
     </div>
 
@@ -36,7 +39,7 @@
     <form class="auth-form" @submit.prevent="handleSubmit" @keydown="handleFormKeydown">
       <!-- 邮箱（仅在无 session 时显示） -->
       <div class="form-field" v-if="!hasSession">
-        <label>邮箱</label>
+        <label>{{ t('auth.email') }}</label>
         <input
           v-model.trim="email"
           type="email"
@@ -49,12 +52,12 @@
 
       <!-- 密码 -->
       <div class="form-field">
-        <label>密码</label>
+        <label>{{ t('auth.password') }}</label>
         <input
           v-model="password"
           type="password"
           :autocomplete="isLoginMode ? 'current-password' : 'new-password'"
-          placeholder="至少 8 位"
+          :placeholder="t('auth.passwordPlaceholder')"
           :disabled="isLoading"
           tabindex="2"
           minlength="8"
@@ -63,12 +66,12 @@
 
       <!-- 确认密码（仅注册） -->
       <div class="form-field" v-if="!isLoginMode && !hasSession">
-        <label>确认密码</label>
+        <label>{{ t('auth.confirmPassword') }}</label>
         <input
           v-model="confirmPassword"
           type="password"
           autocomplete="new-password"
-          placeholder="再次输入密码"
+          :placeholder="t('auth.confirmPasswordPlaceholder')"
           :disabled="isLoading"
           tabindex="3"
           minlength="8"
@@ -95,10 +98,10 @@
 
       <!-- 操作链接 -->
       <div class="auth-footer" v-if="hasSession">
-        <a href="#" @click.prevent="handleSignOut">退出并切换账户</a>
+        <a href="#" @click.prevent="handleSignOut">{{ t('auth.switchAccount') }}</a>
       </div>
       <div class="auth-footer" v-else-if="isLoginMode">
-        <a href="#" @click.prevent="showRecoveryDialog = true">忘记密码？</a>
+        <a href="#" @click.prevent="showRecoveryDialog = true">{{ t('auth.forgotPassword') }}</a>
       </div>
     </form>
 
@@ -106,13 +109,13 @@
     <div class="auth-notice">
       <div class="notice-title">
         <svg viewBox="0 0 20 20" width="12" height="12" fill="currentColor"><path d="M10 1a9 9 0 100 18 9 9 0 000-18zm-1 13a1 1 0 112 0 1 1 0 01-2 0zm1-3a1 1 0 01-1-1V7a1 1 0 112 0v3a1 1 0 01-1 1z"/></svg>
-        <span>端到端加密说明</span>
+        <span>{{ t('auth.noticeTitle') }}</span>
       </div>
       <ul>
-        <li>数据使用 AES-256-GCM 加密后再上传</li>
-        <li>加密密钥由您的登录密码派生，<strong>服务器无法解密</strong></li>
-        <li>忘记密码可使用<strong>恢复密钥</strong>找回（注册时生成，请妥善保存）</li>
-        <li>同一账号同时只能在一台设备上登录</li>
+        <li>{{ t('auth.notice1') }}</li>
+        <li>{{ t('auth.notice2Before') }}<strong>{{ t('auth.notice2Strong') }}</strong></li>
+        <li>{{ t('auth.notice3Before') }}<strong>{{ t('auth.notice3Strong') }}</strong>{{ t('auth.notice3After') }}</li>
+        <li>{{ t('auth.notice4') }}</li>
       </ul>
     </div>
 
@@ -121,19 +124,19 @@
       <div class="recovery-overlay" v-if="showRecoveryDialog" @click.self="showRecoveryDialog = false">
         <div class="recovery-modal">
           <div class="recovery-header">
-            <h3>密码恢复</h3>
+            <h3>{{ t('auth.recoveryTitle') }}</h3>
             <button class="recovery-close" @click="showRecoveryDialog = false">×</button>
           </div>
           <div class="recovery-body">
             <div class="recovery-info">
-              输入您的注册邮箱，我们将发送恢复链接到您的邮箱。请查收邮件并点击链接进入密码恢复页面。
+              {{ t('auth.recoveryInfo') }}
             </div>
             <div class="form-field">
-              <label>注册邮箱</label>
+              <label>{{ t('auth.recoveryEmail') }}</label>
               <input v-model.trim="recoveryEmail" type="email" placeholder="you@example.com" @keydown.enter="handleSendRecoveryEmail" />
             </div>
             <button class="btn-submit" @click="handleSendRecoveryEmail" :disabled="recoverySending">
-              {{ recoverySending ? '发送中...' : '发送恢复链接' }}
+              {{ recoverySending ? t('auth.sending') : t('auth.sendRecovery') }}
             </button>
           </div>
         </div>
@@ -144,10 +147,13 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuth } from '../composables/useAuth'
+import LocaleSwitcher from './LocaleSwitcher.vue'
 
 const emit = defineEmits(['authed'])
 
+const { t } = useI18n()
 const { signIn, signUp, signOut, unlockWithPassword, sendRecoveryEmail, isLoading, currentUser, authError } = useAuth()
 
 // 监听 authError 变化（因为 getSession 是异步的，可能在组件挂载后才设置错误）
@@ -166,14 +172,14 @@ const hasSession = computed(() => !!currentUser.value?.id)
 const sessionEmail = computed(() => currentUser.value?.email || '')
 
 const subtitleText = computed(() => {
-  if (hasSession.value) return '请输入密码以解锁今日访问'
-  return isLoginMode.value ? '登录账户以同步您的环境配置' : '创建账户开始使用云端同步'
+  if (hasSession.value) return t('auth.subtitleUnlock')
+  return isLoginMode.value ? t('auth.subtitleLogin') : t('auth.subtitleRegister')
 })
 
 const submitButtonText = computed(() => {
-  if (isLoading.value) return '处理中...'
-  if (hasSession.value) return '解锁'
-  return isLoginMode.value ? '登录' : '注册'
+  if (isLoading.value) return t('common.loading')
+  if (hasSession.value) return t('auth.unlock')
+  return isLoginMode.value ? t('auth.login') : t('auth.register')
 })
 
 // 表单字段
@@ -197,19 +203,19 @@ const switchMode = (m) => {
 
 const validate = () => {
   if (!hasSession.value && !email.value) {
-    errorMessage.value = '请输入邮箱'
+    errorMessage.value = t('auth.emailRequired')
     return false
   }
   if (!hasSession.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-    errorMessage.value = '邮箱格式无效'
+    errorMessage.value = t('auth.emailInvalid')
     return false
   }
   if (!password.value || password.value.length < 8) {
-    errorMessage.value = '密码至少 8 位'
+    errorMessage.value = t('auth.passwordMin')
     return false
   }
   if (!isLoginMode.value && !hasSession.value && password.value !== confirmPassword.value) {
-    errorMessage.value = '两次密码输入不一致'
+    errorMessage.value = t('auth.passwordMismatch')
     return false
   }
   return true
@@ -232,13 +238,13 @@ const handleSubmit = async () => {
     } else {
       const result = await signUp({ email: email.value, password: password.value })
       if (result.needsEmailConfirm) {
-        successMessage.value = `确认邮件已发送到 ${email.value}，请点击邮件中的链接完成验证后再登录`
+        successMessage.value = t('auth.emailConfirmSent', { email: email.value })
       } else {
         emit('authed')
       }
     }
   } catch (e) {
-    errorMessage.value = e.message || '操作失败'
+    errorMessage.value = e.message || t('common.operationFailed')
   }
 }
 
@@ -271,7 +277,7 @@ const handleSignOut = async () => {
     errorMessage.value = ''
     successMessage.value = ''
   } catch (e) {
-    errorMessage.value = e.message || '登出失败'
+    errorMessage.value = e.message || t('auth.signOutFailed')
   }
 }
 
@@ -279,16 +285,16 @@ const handleSendRecoveryEmail = async () => {
   errorMessage.value = ''
   successMessage.value = ''
   if (!recoveryEmail.value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail.value)) {
-    errorMessage.value = '请输入有效的邮箱'
+    errorMessage.value = t('auth.validEmailRequired')
     return
   }
   recoverySending.value = true
   try {
     await sendRecoveryEmail(recoveryEmail.value)
-    successMessage.value = `恢复链接已发送到 ${recoveryEmail.value}，请查收邮件并点击链接完成密码恢复`
+    successMessage.value = t('auth.recoverySent', { email: recoveryEmail.value })
     showRecoveryDialog.value = false
   } catch (e) {
-    errorMessage.value = e.message || '发送失败'
+    errorMessage.value = e.message || t('auth.sendFailed')
   } finally {
     recoverySending.value = false
   }
@@ -304,6 +310,7 @@ onMounted(() => {
 
 <style scoped>
 .auth-container {
+  position: relative;
   min-height: 100vh;
   background-color: #eef5fc;
   display: flex;
@@ -311,6 +318,12 @@ onMounted(() => {
   align-items: center;
   padding: 32px 16px 24px;
   box-sizing: border-box;
+}
+
+.auth-locale {
+  position: absolute;
+  top: 10px;
+  right: 10px;
 }
 
 .auth-header {

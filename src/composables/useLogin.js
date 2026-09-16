@@ -1,11 +1,12 @@
 import { TYPE_URLS } from '../utils/constants'
+import { t } from '../i18n'
 
 const isChromeExt = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage
 
 function buildFrontdoorUrl(serverUrl, sessionId) {
   const domainMatch = serverUrl.match(/https:\/\/[^/]+/)
   if (!domainMatch) {
-    throw new Error('无法解析服务器地址')
+    throw new Error(t('login.cannotParseUrl'))
   }
   const domain = domainMatch[0]
   return `${domain}/secur/frontdoor.jsp?sid=${sessionId}&retURL=%2Fhome%2Fhome.jsp`
@@ -27,10 +28,10 @@ function parseSOAPResponse(xmlText) {
     if (faultstring) {
       const msg = faultstring.textContent
       if (msg.includes('MFA') || msg.includes('Multi-Factor') || msg.includes('multi-factor')) {
-        throw new Error('账号启用了MFA，请使用手动登录')
+        throw new Error(t('login.mfaManual'))
       }
       if (msg.includes('Invalid username') || msg.includes('Invalid password')) {
-        throw new Error('账号或密码错误')
+        throw new Error(t('login.badCredentials'))
       }
       throw new Error(msg)
     }
@@ -52,7 +53,7 @@ export function useLogin() {
     const loginUrl = getLoginUrl(env)
     const domainMatch = loginUrl.match(/https?:\/\/[^/]+/)
     if (!domainMatch) {
-      throw new Error('环境地址格式不正确')
+      throw new Error(t('login.badUrl'))
     }
     const domain = domainMatch[0]
     return `${domain}/services/Soap/c/64.0/`
@@ -60,7 +61,7 @@ export function useLogin() {
 
   const login = async (env) => {
     if (!env.username || !env.password) {
-      throw new Error('缺少登录信息')
+      throw new Error(t('login.missingInfo'))
     }
 
     if (isChromeExt) {
@@ -116,7 +117,7 @@ export function useLogin() {
       if (response && response.success) {
         resolve({ success: true, method: 'formPost' })
       } else {
-        reject(response ? response.error : '表单登录失败')
+        reject(response ? response.error : t('login.formLoginFailed'))
       }
     })
   }

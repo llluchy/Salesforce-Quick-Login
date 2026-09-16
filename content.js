@@ -54,7 +54,7 @@ function startSelection() {
 
   const tipDiv = document.createElement('div');
   tipDiv.id = 'sf-ql-tip';
-  tipDiv.textContent = '拖拽选择二维码区域，按 ESC 取消';
+  tipDiv.textContent = chrome.i18n.getMessage('qrSelectTip') || '拖拽选择二维码区域，按 ESC 取消';
   tipDiv.style.cssText = `
     position: fixed;
     top: 20px;
@@ -176,7 +176,7 @@ function cropImage(dataUrl, x, y, width, height) {
       );
       resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = () => reject(new Error('图片加载失败'));
+    img.onerror = () => reject(new Error(chrome.i18n.getMessage('imageLoadFailed') || '图片加载失败'));
     img.src = dataUrl;
   });
 }
@@ -393,11 +393,11 @@ function cropImage(dataUrl, x, y, width, height) {
     body.style.cssText = `padding: 12px 14px;`;
 
     const title = document.createElement('div');
-    title.textContent = '需要打开扩展面板';
+    title.textContent = chrome.i18n.getMessage('passkeyBubbleTitle') || '需要打开扩展面板';
     title.style.cssText = `font-weight: 600; color: #0d47a1; margin-bottom: 6px; font-size: 14px;`;
 
     const desc = document.createElement('div');
-    desc.textContent = '网页正在请求 Passkey 验证，请打开扩展侧边栏以完成验证。';
+    desc.textContent = chrome.i18n.getMessage('passkeyBubbleDesc') || '网页正在请求 Passkey 验证，请打开扩展侧边栏以完成验证。';
     desc.style.cssText = `color: #555; line-height: 1.5; margin-bottom: 10px;`;
 
     // ---- 操作指引图 ----
@@ -428,7 +428,7 @@ function cropImage(dataUrl, x, y, width, height) {
       <div style="width:28px;height:28px;flex-shrink:0;border-radius:6px;background:#fff;border:1.5px solid #1976d2;display:flex;align-items:center;justify-content:center;">
         <img src="${iconUrl}" style="width:18px;height:18px;" alt="ext"/>
       </div>
-      <span style="font-size:11px;color:#1976d2;font-weight:500;">点击图标</span>
+      <span style="font-size:11px;color:#1976d2;font-weight:500;">${chrome.i18n.getMessage('passkeyBubbleClickIcon') || '点击图标'}</span>
     `;
 
     body.appendChild(title);
@@ -450,7 +450,7 @@ function cropImage(dataUrl, x, y, width, height) {
     countdownEl.style.cssText = `font-size: 11px; color: #999;`;
 
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '关闭';
+    closeBtn.textContent = chrome.i18n.getMessage('passkeyBubbleClose') || '关闭';
     closeBtn.style.cssText = `
       border: none;
       background: transparent;
@@ -473,14 +473,16 @@ function cropImage(dataUrl, x, y, width, height) {
     document.body.appendChild(bubbleEl);
 
     // ---- 倒计时自动关闭（30秒）----
+    const formatCountdown = (sec) =>
+      chrome.i18n.getMessage('passkeyBubbleCountdown', [String(sec)]) || `${sec}s 后自动关闭`;
     let remaining = 30;
-    countdownEl.textContent = `${remaining}s 后自动关闭`;
+    countdownEl.textContent = formatCountdown(remaining);
     bubbleCountdown = setInterval(() => {
       remaining--;
       if (remaining <= 0) {
         hidePasskeyBubble();
       } else {
-        countdownEl.textContent = `${remaining}s 后自动关闭`;
+        countdownEl.textContent = formatCountdown(remaining);
       }
     }, 1000);
   }

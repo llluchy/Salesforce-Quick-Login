@@ -16,6 +16,7 @@ import {
   encryptEnv, decryptEnv,
   encryptGroup, decryptGroup
 } from '../utils/crypto'
+import { t } from '../i18n'
 
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
 const isChromeSession = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session
@@ -130,14 +131,14 @@ export function useStorage() {
       const cached = await cacheGet(STORAGE_KEY)
       const result = Array.isArray(cached) ? cached : []
       await syncEnvsToSession(result)
-      return wrap(result, result.length ? 'cache' : 'empty', 'Supabase 未初始化')
+      return wrap(result, result.length ? 'cache' : 'empty', t('storage.supabaseNotInit'))
     }
     if (!key) {
       logWarn('cryptoKey 未派生（未解锁），使用本地缓存')
       const cached = await cacheGet(STORAGE_KEY)
       const result = Array.isArray(cached) ? cached : []
       await syncEnvsToSession(result)
-      return wrap(result, result.length ? 'cache' : 'empty', '加密密钥未派生')
+      return wrap(result, result.length ? 'cache' : 'empty', t('storage.keyNotDerived'))
     }
 
     try {
@@ -147,7 +148,7 @@ export function useStorage() {
         .eq('is_deleted', false)
         .order('sort_order', { ascending: true })
 
-      if (error) throw new Error('Supabase 查询失败：' + error.message)
+      if (error) throw new Error(t('storage.queryFailed', { msg: error.message }))
 
       const { decryptEnv } = await import('../utils/crypto')
 
@@ -192,8 +193,8 @@ export function useStorage() {
     const supabase = getSupabase()
     const userKey = getCryptoKey()
 
-    if (!supabase) return { success: false, error: 'Supabase 未初始化' }
-    if (!userKey) return { success: false, error: '加密密钥未派生（未解锁）' }
+    if (!supabase) return { success: false, error: t('storage.supabaseNotInit') }
+    if (!userKey) return { success: false, error: t('storage.keyNotDerivedUnlock') }
 
     const envList = Array.isArray(envs) ? envs : []
 
@@ -219,7 +220,7 @@ export function useStorage() {
         .select('id, created_at, updated_at')
       if (upsertErr) {
         logError('upsert 失败', upsertErr)
-        return { success: false, error: '写入失败：' + upsertErr.message }
+        return { success: false, error: t('storage.writeFailed', { msg: upsertErr.message }) }
       }
 
       if (upserted && upserted.length === envList.length) {
@@ -253,7 +254,7 @@ export function useStorage() {
   const deleteEnvironment = async (id) => {
     log('deleteEnvironment (soft)', { id })
     const supabase = getSupabase()
-    if (!supabase) return { success: false, error: 'Supabase 未初始化' }
+    if (!supabase) return { success: false, error: t('storage.supabaseNotInit') }
 
     const { error } = await supabase
       .from('environments')
@@ -291,13 +292,13 @@ export function useStorage() {
       logWarn('Supabase 未初始化，使用本地缓存')
       const cached = await cacheGet(STORAGE_KEY_GROUPS)
       const result = Array.isArray(cached) ? cached : []
-      return wrap(result, result.length ? 'cache' : 'empty', 'Supabase 未初始化')
+      return wrap(result, result.length ? 'cache' : 'empty', t('storage.supabaseNotInit'))
     }
     if (!key) {
       logWarn('cryptoKey 未派生（未解锁），使用本地缓存')
       const cached = await cacheGet(STORAGE_KEY_GROUPS)
       const result = Array.isArray(cached) ? cached : []
-      return wrap(result, result.length ? 'cache' : 'empty', '加密密钥未派生')
+      return wrap(result, result.length ? 'cache' : 'empty', t('storage.keyNotDerived'))
     }
 
     try {
@@ -305,7 +306,7 @@ export function useStorage() {
         .from('groups')
         .select('*')
         .order('sort_order', { ascending: true })
-      if (error) throw new Error('Supabase 查询失败：' + error.message)
+      if (error) throw new Error(t('storage.queryFailed', { msg: error.message }))
 
       const groups = (data || []).map(decryptGroup)
       log('读取成功', { count: groups.length, ids: groups.map(g => g.id) })
@@ -324,7 +325,7 @@ export function useStorage() {
   const saveGroups = async (groups) => {
     log('saveGroups', { count: groups?.length || 0 })
     const supabase = getSupabase()
-    if (!supabase) return { success: false, error: 'Supabase 未初始化' }
+    if (!supabase) return { success: false, error: t('storage.supabaseNotInit') }
 
     const groupList = Array.isArray(groups) ? groups : []
 
@@ -365,7 +366,7 @@ export function useStorage() {
   const deleteGroup = async (id) => {
     log('deleteGroup', { id })
     const supabase = getSupabase()
-    if (!supabase) return { success: false, error: 'Supabase 未初始化' }
+    if (!supabase) return { success: false, error: t('storage.supabaseNotInit') }
 
     const { error } = await supabase
       .from('groups')
@@ -422,12 +423,12 @@ export function useStorage() {
    */
   const savePasskeyCredential = async (cred) => {
     log('savePasskeyCredential', { credentialId: cred?.credentialId, envId: cred?.envId })
-    if (!cred?.envId) return { success: false, error: '缺少 envId' }
+    if (!cred?.envId) return { success: false, error: t('storage.missingEnvId') }
 
     try {
       const envs = await loadEnvironments()
       const idx = envs.findIndex(e => e.id === cred.envId)
-      if (idx === -1) return { success: false, error: '环境不存在' }
+      if (idx === -1) return { success: false, error: t('storage.envNotFound') }
 
       const env = envs[idx]
       env.passkeys = env.passkeys || []
@@ -539,7 +540,7 @@ export function useStorage() {
       }
       if (!found) {
         logWarn('更新 signCount 失败', '未找到 credentialId: ' + credentialId)
-        return { success: false, error: '未找到凭证' }
+        return { success: false, error: t('storage.credNotFound') }
       }
       await saveEnvironments(envs)
       return { success: true }

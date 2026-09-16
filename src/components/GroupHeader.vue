@@ -7,14 +7,14 @@
       <button class="collapse-btn" :class="{ collapsed: group.collapsed }">
         <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
       </button>
-      <span class="group-name">{{ group.name }}</span>
+      <span class="group-name">{{ displayName }}</span>
       <span class="group-count">({{ count }})</span>
     </div>
     <div class="group-header-right" v-if="!group.isVirtual">
-      <button class="group-action-btn" title="编辑分组" @click.stop="$emit('edit')">
+      <button class="group-action-btn" :title="t('group.editTitleAttr')" @click.stop="$emit('edit')">
         <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
       </button>
-      <button class="group-action-btn" title="删除分组" @click.stop="$emit('delete')">
+      <button class="group-action-btn" :title="t('group.deleteTitleAttr')" @click.stop="$emit('delete')">
         <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4"/></svg>
       </button>
     </div>
@@ -22,7 +22,11 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { isUngroupedName } from '../i18n'
+
+const props = defineProps({
   group: {
     type: Object,
     required: true
@@ -32,6 +36,11 @@ defineProps({
     default: 0
   }
 })
+
+const { t } = useI18n()
+const displayName = computed(() =>
+  isUngroupedName(props.group?.name) ? t('group.ungrouped') : props.group.name
+)
 
 defineEmits(['toggle', 'edit', 'delete'])
 </script>

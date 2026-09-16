@@ -17,5 +17,6 @@ export const TYPE_URLS = {
 export const TYPE_LABELS = {
   production: 'Production',
   sandbox: 'SandBox',
+  // Prefer EnvCard / UI t('type.*'); kept for any legacy reference
   custom: '自定义'
 }

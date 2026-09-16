@@ -20,6 +20,9 @@ importers:
       vue:
         specifier: ^3.4.0
         version: 3.5.42
+      vue-i18n:
+        specifier: ^9.14.5
+        version: 9.14.5(vue@3.5.42)
     devDependencies:
       '@crxjs/vite-plugin':
         specifier: ^2.7.1
@@ -192,6 +195,18 @@ packages:
     engines: {node: '>=12'}
     cpu: [x64]
     os: [win32]
+
+  '@intlify/core-base@9.14.5':
+    resolution: {integrity: sha512-5ah5FqZG4pOoHjkvs8mjtv+gPKYU0zCISaYNjBNNqYiaITxW8ZtVih3GS/oTOqN8d9/mDLyrjD46GBApNxmlsA==}
+    engines: {node: '>= 16'}
+
+  '@intlify/message-compiler@9.14.5':
+    resolution: {integrity: sha512-IHzgEu61/YIpQV5Pc3aRWScDcnFKWvQA9kigcINcCBXN8mbW+vk9SK+lDxA6STzKQsVJxUPg9ACC52pKKo3SVQ==}
+    engines: {node: '>= 16'}
+
+  '@intlify/shared@9.14.5':
+    resolution: {integrity: sha512-9gB+E53BYuAEMhbCAxVgG38EZrk59sxBtv3jSizNL2hEWlgjBjAw1AwpLHtNaeda12pe6W20OGEa0TwuMSRbyQ==}
+    engines: {node: '>= 16'}
 
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
@@ -464,7 +479,7 @@ packages:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
 
   drag-kit@https://codeload.github.com/SailingCoder/drag-kit/tar.gz/8ac61ac60cd12ea71182a8eab16ac93bb0b04954:
-    resolution: {gitHosted: true, integrity: sha512-dLNqlsqvI1zlVW+ihDl9PFYROvkOSSDPdIBpXPTTHGjsSSkbdWMS5Yq8aSYCtBYD+sl56n3RVhsibFuRj7uZ7A==, tarball: https://codeload.github.com/SailingCoder/drag-kit/tar.gz/8ac61ac60cd12ea71182a8eab16ac93bb0b04954}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/SailingCoder/drag-kit/tar.gz/8ac61ac60cd12ea71182a8eab16ac93bb0b04954}
     version: 1.1.0
 
   entities@4.5.0:
@@ -636,6 +651,13 @@ packages:
       '@vue/composition-api':
         optional: true
 
+  vue-i18n@9.14.5:
+    resolution: {integrity: sha512-0jQ9Em3ymWngyiIkj0+c/k7WgaPO+TNzjKSNq9BvBQaKJECqn9cd9fL4tkDhB5G1QBskGl9YxxbDAhgbFtpe2g==}
+    engines: {node: '>= 16'}
+    deprecated: v9 and v10 no longer supported. please migrate to v11. about maintenance status, see https://vue-i18n.intlify.dev/guide/maintenance.html
+    peerDependencies:
+      vue: ^3.0.0
+
   vue@3.5.42:
     resolution: {integrity: sha512-4RyHQTbQvOPs3MfvUO1Sg0YRrKNnA0mAVtvpd12Tg1fKDN7OHBUl1IqSn8zGJjK9nI3NkNp8cgTpVrSZC5TTcA==}
     peerDependencies:
@@ -747,6 +769,18 @@ snapshots:
 
   '@esbuild/win32-x64@0.21.5':
     optional: true
+
+  '@intlify/core-base@9.14.5':
+    dependencies:
+      '@intlify/message-compiler': 9.14.5
+      '@intlify/shared': 9.14.5
+
+  '@intlify/message-compiler@9.14.5':
+    dependencies:
+      '@intlify/shared': 9.14.5
+      source-map-js: 1.2.1
+
+  '@intlify/shared@9.14.5': {}
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
@@ -1138,6 +1172,13 @@ snapshots:
 
   vue-demi@0.14.10(vue@3.5.42):
     dependencies:
+      vue: 3.5.42
+
+  vue-i18n@9.14.5(vue@3.5.42):
+    dependencies:
+      '@intlify/core-base': 9.14.5
+      '@intlify/shared': 9.14.5
+      '@vue/devtools-api': 6.6.4
       vue: 3.5.42
 
   vue@3.5.42:

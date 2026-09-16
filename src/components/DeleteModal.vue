@@ -3,23 +3,23 @@
     <div class="modal-overlay" v-if="visible">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>确认删除</h2>
+          <h2>{{ t('delete.title') }}</h2>
           <button class="modal-close" @click="$emit('close')">×</button>
         </div>
         
         <div class="modal-body">
           <div class="delete-warning">
             <span class="warning-icon">⚠️</span>
-            <p>确定要删除 <strong>{{ name }}</strong> 吗？</p>
+            <p>{{ t('delete.confirmBefore') }} <strong>{{ name }}</strong> {{ t('delete.confirmAfter') }}</p>
             <p v-if="type === 'group'" class="warning-hint">
-              删除后，该分组下的所有环境将移至"未选择分组"。
+              {{ t('delete.groupHint', { ungrouped: t('group.ungrouped') }) }}
             </p>
           </div>
         </div>
         
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="$emit('close')">取消</button>
-          <button class="btn btn-danger" @click="$emit('confirm')">删除</button>
+          <button class="btn btn-secondary" @click="$emit('close')">{{ t('common.cancel') }}</button>
+          <button class="btn btn-danger" @click="$emit('confirm')">{{ t('common.delete') }}</button>
         </div>
       </div>
     </div>
@@ -27,6 +27,10 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 defineProps({
   visible: {
     type: Boolean,

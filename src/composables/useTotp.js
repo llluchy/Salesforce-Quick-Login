@@ -1,3 +1,5 @@
+import { t } from '../i18n'
+
 const isChromeExt = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage
 
 export function useTotp() {
@@ -82,19 +84,19 @@ export function useTotp() {
                 ? (new URL(raw)).searchParams.get('secret') || ''
                 : raw
               if (!secret) {
-                resolve({ success: false, error: '未识别到二维码，请确认框选区域包含二维码' })
+                resolve({ success: false, error: t('totp.qrNotInArea') })
               } else {
                 resolve({ success: true, secret, raw })
               }
             } catch (e) {
-              resolve({ success: false, error: '二维码识别失败' })
+              resolve({ success: false, error: t('totp.qrFailed') })
             }
           } else if (msg.action === 'qrScanCancelled') {
             chrome.runtime.onMessage.removeListener(listener)
             reject('cancelled')
           } else if (msg.action === 'qrScanError') {
             chrome.runtime.onMessage.removeListener(listener)
-            reject(msg.error || '扫码失败')
+            reject(msg.error || t('totp.scanFailed'))
           }
         }
         chrome.runtime.onMessage.addListener(listener)
@@ -108,7 +110,7 @@ export function useTotp() {
         if (secret) {
           resolve({ success: true, secret, mock: true })
         } else {
-          reject('已取消')
+          reject(t('totp.cancelled'))
         }
       })
     }

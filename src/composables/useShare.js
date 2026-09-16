@@ -14,6 +14,7 @@ import {
   encryptEnv,
   decryptEnv
 } from '../utils/crypto'
+import { t } from '../i18n'
 
 function getCurrentUser() {
   const { currentUser } = useAuth()
@@ -40,13 +41,13 @@ function generateShareCodes() {
  */
 async function createShare(envIds) {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('share.supabaseNotInit'))
 
   const userKey = getCryptoKeyRaw()
-  if (!userKey) throw new Error('用户密钥未派生（未解锁）')
+  if (!userKey) throw new Error(t('share.keyNotDerived'))
 
   if (!envIds || envIds.length === 0) {
-    throw new Error('请选择至少一个环境')
+    throw new Error(t('share.selectEnvs'))
   }
 
   const userId = getCurrentUser().id
@@ -59,8 +60,8 @@ async function createShare(envIds) {
     .eq('user_id', userId)
     .eq('is_deleted', false)
 
-  if (envErr) throw new Error('查询环境失败：' + envErr.message)
-  if (!envRows || envRows.length === 0) throw new Error('未找到可分享的环境')
+  if (envErr) throw new Error(t('share.queryEnvsFailed', { msg: envErr.message }))
+  if (!envRows || envRows.length === 0) throw new Error(t('share.noShareableEnvs'))
 
   // 2. 生成分享码和验证码
   const { shareCode, verifyCode } = generateShareCodes()
@@ -94,9 +95,9 @@ async function createShare(envIds) {
 
   if (shareErr) {
     if (shareErr.code === '23505') {
-      throw new Error('分享码生成冲突，请重试')
+      throw new Error(t('share.codeConflict'))
     }
-    throw new Error('创建分享失败：' + shareErr.message)
+    throw new Error(t('share.createShareFailed', { msg: shareErr.message }))
   }
 
   return { shareCode, verifyCode }
@@ -111,10 +112,10 @@ async function createShare(envIds) {
  */
 async function acceptShare(shareCode, verifyCode, aliases = []) {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('share.supabaseNotInit'))
 
   const userKey = getCryptoKeyRaw()
-  if (!userKey) throw new Error('用户密钥未派生（未解锁）')
+  if (!userKey) throw new Error(t('share.keyNotDerived'))
 
   const userId = getCurrentUser().id
 
@@ -126,7 +127,7 @@ async function acceptShare(shareCode, verifyCode, aliases = []) {
     })
 
   if (shareErr || !shareData) {
-    throw new Error('分享码不存在或已失效')
+    throw new Error(t('share.invalidOrExpired'))
   }
 
   // 2. 派生分享密钥，解密所有环境数据
@@ -138,7 +139,7 @@ async function acceptShare(shareCode, verifyCode, aliases = []) {
     const envData = await decryptEnvFromShare(item.encrypted_env, shareKey)
 
     // 3. 用自己的 userKey 重新加密，作为独立环境保存
-    const alias = aliases[i]?.alias || envData.alias || item.alias || '被分享的环境'
+    const alias = aliases[i]?.alias || envData.alias || item.alias || t('share.sharedEnvAlias')
     const newEnvId = crypto.randomUUID()
 
     const newEnv = {
@@ -161,7 +162,7 @@ async function acceptShare(shareCode, verifyCode, aliases = []) {
       .from('environments')
       .insert(encrypted)
 
-    if (insertErr) throw new Error('创建环境失败：' + insertErr.message)
+    if (insertErr) throw new Error(t('share.createEnvFailed', { msg: insertErr.message }))
     newEnvIds.push(newEnvId)
   }
 
@@ -182,7 +183,7 @@ async function acceptShare(shareCode, verifyCode, aliases = []) {
  */
 async function revokeShare(envId) {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('share.supabaseNotInit'))
 
   const userId = getCurrentUser().id
 
@@ -192,7 +193,7 @@ async function revokeShare(envId) {
     .eq('owner_user_id', userId)
     .contains('env_ids', [envId])
 
-  if (error) throw new Error('取消分享失败：' + error.message)
+  if (error) throw new Error(t('share.cancelFailed', { msg: error.message }))
 
   return { success: true }
 }
@@ -202,7 +203,7 @@ async function revokeShare(envId) {
  */
 async function getMyShares() {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('share.supabaseNotInit'))
 
   const { data, error } = await supabase
     .from('env_shares')
@@ -210,7 +211,7 @@ async function getMyShares() {
     .eq('owner_user_id', getCurrentUser().id)
     .order('created_at', { ascending: false })
 
-  if (error) throw new Error('查询分享记录失败：' + error.message)
+  if (error) throw new Error(t('share.querySharesFailed', { msg: error.message }))
   return data || []
 }
 

@@ -6,6 +6,10 @@ import { resolve } from 'path'
 
 export default defineConfig({
   base: '',
+  // Chrome MV3 CSP 禁止 unsafe-eval；开启 JIT 避免 vue-i18n 使用 new Function
+  define: {
+    __INTLIFY_JIT_COMPILATION__: true
+  },
   plugins: [
     vue(),
     crx({ manifest })
@@ -26,7 +30,7 @@ export default defineConfig({
   },
   server: {
     port: 5175,
-    strictPort: true, // 端口被占用则直接失败，绝不回退到 5173
+    strictPort: true,
     origin: 'http://localhost:5175',
     hmr: {
       protocol: 'ws',

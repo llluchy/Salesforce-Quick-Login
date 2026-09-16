@@ -7,7 +7,7 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2>{{ group ? '编辑分组' : '创建分组' }}</h2>
+          <h2>{{ group ? t('group.editTitle') : t('group.createTitle') }}</h2>
           <button class="modal-close" type="button" @click="$emit('close')">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
           </button>
@@ -15,12 +15,12 @@
 
         <div class="modal-body">
           <div class="form-group">
-            <label>分组名称 *</label>
+            <label>{{ t('group.name') }}</label>
             <input
               ref="nameInputRef"
               type="text"
               v-model="groupName"
-              placeholder="输入分组名称"
+              :placeholder="t('group.namePlaceholder')"
               maxlength="50"
               @keydown.enter.prevent="handleSave"
               @keydown.esc.prevent="$emit('close')"
@@ -30,8 +30,8 @@
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-secondary" type="button" @click="$emit('close')">取消</button>
-          <button class="btn btn-primary" type="button" @click="handleSave">保存</button>
+          <button class="btn btn-secondary" type="button" @click="$emit('close')">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" type="button" @click="handleSave">{{ t('common.save') }}</button>
         </div>
       </div>
     </div>
@@ -40,6 +40,9 @@
 
 <script setup>
 import { ref, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
   visible: {
@@ -61,7 +64,7 @@ const nameInputRef = ref(null)
 const handleSave = () => {
   const name = groupName.value.trim()
   if (!name) {
-    errorMessage.value = '请输入分组名称'
+    errorMessage.value = t('group.nameRequired')
     nameInputRef.value?.focus()
     return
   }

@@ -1,0 +1,38 @@
+{
+  "extName": {
+    "message": "Salesforce Quick Login"
+  },
+  "extDescription": {
+    "message": "One-click Salesforce login with Passkey authentication, TOTP 2FA, encrypted cloud sync and environment sharing."
+  },
+  "extActionTitle": {
+    "message": "Salesforce Quick Login"
+  },
+  "qrSelectTip": {
+    "message": "Drag to select the QR code area, press ESC to cancel"
+  },
+  "imageLoadFailed": {
+    "message": "Failed to load image"
+  },
+  "passkeyBubbleTitle": {
+    "message": "Open the extension panel"
+  },
+  "passkeyBubbleDesc": {
+    "message": "This page is requesting Passkey verification. Open the extension side panel to continue."
+  },
+  "passkeyBubbleClickIcon": {
+    "message": "Click the icon"
+  },
+  "passkeyBubbleClose": {
+    "message": "Close"
+  },
+  "passkeyBubbleCountdown": {
+    "message": "Auto-close in $SECONDS$s",
+    "placeholders": {
+      "seconds": {
+        "content": "$1",
+        "example": "30"
+      }
+    }
+  }
+}

@@ -12,28 +12,28 @@
           <span class="env-type" :class="`type-${env.type}`">
             {{ getTypeLabel(env.type) }}
           </span>
-          <span v-if="!hasCredentials" class="env-warning-badge" title="未绑定账号密码">
+          <span v-if="!hasCredentials" class="env-warning-badge" :title="t('env.noCredentialsTitle')">
             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="7"/><path d="M8 5v4"/><path d="M8 12h.01"/></svg>
           </span>
         </div>
         <div class="env-username">{{ displayUsername }}</div>
-        <div v-if="!hasCredentials" class="env-warning-hint">请完善账号密码</div>
+        <div v-if="!hasCredentials" class="env-warning-hint">{{ t('env.noCredentialsHint') }}</div>
       </div>
       
       <div class="env-actions">
-        <button v-if="hasCredentials" class="action-btn" title="登录" @click.stop="handleLogin">
+        <button v-if="hasCredentials" class="action-btn" :title="t('env.login')" @click.stop="handleLogin">
           <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2h3a2 2 0 012 2v8a2 2 0 01-2 2H9"/><path d="M2 8h7"/><path d="M6 5l3 3-3 3"/></svg>
         </button>
-        <button v-if="env.totpSecret && hasCredentials" class="action-btn" title="获取验证码" @click.stop="toggleTotpCard">
+        <button v-if="env.totpSecret && hasCredentials" class="action-btn" :title="t('env.getTotp')" @click.stop="toggleTotpCard">
           <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="8" width="6" height="6" rx="1"/><path d="M6 8V5.5a2 2 0 114 0V8"/></svg>
         </button>
-        <button class="action-btn" title="编辑" @click.stop="$emit('edit')">
+        <button class="action-btn" :title="t('env.edit')" @click.stop="$emit('edit')">
           <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
         </button>
-        <button class="action-btn" title="克隆" @click.stop="$emit('clone')">
+        <button class="action-btn" :title="t('env.clone')" @click.stop="$emit('clone')">
           <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5"/></svg>
         </button>
-        <button class="action-btn action-delete" title="删除" @click.stop="$emit('delete')">
+        <button class="action-btn action-delete" :title="t('env.delete')" @click.stop="$emit('delete')">
           <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12"/><path d="M5 4v9a2 2 0 002 2h2a2 2 0 002-2V4"/><path d="M6 2h4"/><path d="M7 7v4"/><path d="M9 7v4"/></svg>
         </button>
       </div>
@@ -42,7 +42,7 @@
     
     <div class="totp-card" v-if="showTotpCard">
       <div class="totp-card-inner">
-        <div class="totp-code" title="点击复制" @click="copyTotpCode">{{ currentTotpCode || '---' }}</div>
+        <div class="totp-code" :title="t('env.copyTotp')" @click="copyTotpCode">{{ currentTotpCode || '---' }}</div>
         <div class="totp-timer">
           <div class="totp-progress" :class="{ 'no-transition': !animationEnabled }" :style="{ width: timerProgress + '%' }"></div>
         </div>
@@ -53,7 +53,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { TYPE_LABELS } from '../utils/constants'
+import { useI18n } from 'vue-i18n'
 import { useTotp } from '../composables/useTotp'
 
 const props = defineProps({
@@ -65,6 +65,7 @@ const props = defineProps({
 
 const emit = defineEmits(['login', 'edit', 'clone', 'delete', 'copy-success'])
 
+const { t } = useI18n()
 const { generateCode, fillTotpCode } = useTotp()
 
 const showTotpCard = ref(false)
@@ -75,7 +76,10 @@ const showTotpCard = ref(false)
   let timerInterval = null
 
   const getTypeLabel = (type) => {
-    return TYPE_LABELS[type] || '未知'
+    if (type === 'production') return t('type.production')
+    if (type === 'sandbox') return t('type.sandbox')
+    if (type === 'custom') return t('type.custom')
+    return t('type.unknown')
   }
 
   const hasCredentials = computed(() => {
@@ -83,7 +87,7 @@ const showTotpCard = ref(false)
   })
 
   const displayUsername = computed(() => {
-    return props.env.username || '未设置账号'
+    return props.env.username || t('env.noUsername')
   })
 
 const toggleTotpCard = async () => {

@@ -3,22 +3,22 @@
     <div class="modal-overlay" v-if="visible" @click.self="handleClose">
       <div class="modal-content share-modal">
         <div class="modal-header">
-          <h2>环境分享</h2>
+          <h2>{{ t('share.title') }}</h2>
           <button class="modal-close" @click="handleClose" :disabled="loading">×</button>
         </div>
 
         <div class="modal-body">
           <!-- Tab 切换 -->
           <div class="mode-tabs">
-            <button :class="['mode-tab', { active: mode === 'share' }]" @click="mode = 'share'">分享出去</button>
-            <button :class="['mode-tab', { active: mode === 'accept' }]" @click="mode = 'accept'">接受分享</button>
+            <button :class="['mode-tab', { active: mode === 'share' }]" @click="mode = 'share'">{{ t('share.tabShare') }}</button>
+            <button :class="['mode-tab', { active: mode === 'accept' }]" @click="mode = 'accept'">{{ t('share.tabAccept') }}</button>
           </div>
 
           <!-- 分享出去 -->
           <div class="share-section" v-if="mode === 'share'">
             <div class="form-hint">
-              勾选要分享的环境（可多选），生成分享码和验证码。被分享者输入两码后一次性接收所有环境。
-              <br>分享码 24 小时有效，接受后立即失效。
+              {{ t('share.shareHint') }}
+              <br>{{ t('share.shareHintExpire') }}
             </div>
 
             <div class="env-list" v-if="environments.length > 0">
@@ -41,29 +41,29 @@
                 </div>
               </label>
             </div>
-            <div v-else class="empty-tip">暂无可分享的环境</div>
+            <div v-else class="empty-tip">{{ t('share.empty') }}</div>
 
             <button
               class="btn-primary"
               @click="handleCreateShare"
               :disabled="loading || selectedEnvs.length === 0"
             >
-              {{ loading ? '生成中...' : '生成分享码' }}
+              {{ loading ? t('share.generating') : t('share.generate') }}
             </button>
 
             <!-- 分享码展示 -->
             <div class="codes-display" v-if="generatedCodes">
               <div class="code-block">
-                <div class="code-label">分享码（发给对方）</div>
+                <div class="code-label">{{ t('share.shareCodeLabel') }}</div>
                 <div class="code-value">{{ generatedCodes.shareCode }}</div>
               </div>
               <div class="code-block">
-                <div class="code-label">验证码（另外发送给对方）</div>
+                <div class="code-label">{{ t('share.verifyCodeLabel') }}</div>
                 <div class="code-value">{{ generatedCodes.verifyCode }}</div>
               </div>
               <div class="code-warn">
-                ⚠️ 请通过安全渠道发送，建议两码分别发送（如短信+微信）。
-                <br>对方接受后此分享码立即失效。
+                {{ t('share.securityHint') }}
+                <br>{{ t('share.securityHintExpire') }}
               </div>
             </div>
 
@@ -73,28 +73,28 @@
           <!-- 接受分享 -->
           <div class="accept-section" v-if="mode === 'accept'">
             <div class="form-hint">
-              输入分享码和验证码，接受后将创建独立的环境副本，与原环境互不影响，可独立管理。
+              {{ t('share.acceptHint') }}
             </div>
 
             <div class="form-field">
-              <label>分享码</label>
+              <label>{{ t('share.shareCode') }}</label>
               <input
                 v-model="inputShareCode"
                 type="text"
                 maxlength="6"
-                placeholder="6 位数字"
+                :placeholder="t('share.codePlaceholder')"
                 :disabled="loading"
                 @input="inputShareCode = inputShareCode.replace(/\D/g, '')"
               />
             </div>
 
             <div class="form-field">
-              <label>验证码</label>
+              <label>{{ t('share.verifyCode') }}</label>
               <input
                 v-model="inputVerifyCode"
                 type="text"
                 maxlength="6"
-                placeholder="6 位数字"
+                :placeholder="t('share.codePlaceholder')"
                 :disabled="loading"
                 @input="inputVerifyCode = inputVerifyCode.replace(/\D/g, '')"
               />
@@ -105,7 +105,7 @@
               @click="handleAcceptShare"
               :disabled="loading || !inputShareCode || !inputVerifyCode"
             >
-              {{ loading ? '接受中...' : '接受分享' }}
+              {{ loading ? t('share.accepting') : t('share.accept') }}
             </button>
 
             <div class="error-message" v-if="errorMessage">{{ errorMessage }}</div>
@@ -118,7 +118,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useShare } from '../composables/useShare'
 
 const props = defineProps({
@@ -128,6 +129,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'accepted'])
 
+const { t } = useI18n()
 const { createShare, acceptShare } = useShare()
 
 const mode = ref('share')
@@ -171,7 +173,7 @@ const handleClose = () => {
 const handleCreateShare = async () => {
   if (loading.value) return
   if (selectedEnvs.value.length === 0) {
-    errorMessage.value = '请至少选择一个环境'
+    errorMessage.value = t('share.selectAtLeastOne')
     return
   }
 
@@ -183,7 +185,7 @@ const handleCreateShare = async () => {
     const result = await createShare(selectedEnvs.value)
     generatedCodes.value = result
   } catch (e) {
-    errorMessage.value = e.message || '生成分享码失败'
+    errorMessage.value = e.message || t('share.generateFailed')
   } finally {
     loading.value = false
   }
@@ -192,15 +194,15 @@ const handleCreateShare = async () => {
 const handleAcceptShare = async () => {
   if (loading.value) return
   if (!inputShareCode.value || inputShareCode.value.length !== 6) {
-    errorMessage.value = '分享码必须为 6 位数字'
+    errorMessage.value = t('share.shareCodeDigits')
     return
   }
   if (!inputVerifyCode.value || inputVerifyCode.value.length !== 6) {
-    errorMessage.value = '验证码必须为 6 位数字'
+    errorMessage.value = t('share.verifyCodeDigits')
     return
   }
   if (inputShareCode.value === inputVerifyCode.value) {
-    errorMessage.value = '分享码和验证码不能相同'
+    errorMessage.value = t('share.codesMustDiffer')
     return
   }
 
@@ -210,7 +212,7 @@ const handleAcceptShare = async () => {
 
   try {
     const result = await acceptShare(inputShareCode.value, inputVerifyCode.value)
-    successMessage.value = `接受成功，已添加 ${result.envIds.length} 个环境`
+    successMessage.value = t('share.acceptSuccess', { count: result.envIds.length })
 
     // 清空输入
     inputShareCode.value = ''
@@ -224,7 +226,7 @@ const handleAcceptShare = async () => {
       handleClose()
     }, 2000)
   } catch (e) {
-    errorMessage.value = e.message || '接受分享失败'
+    errorMessage.value = e.message || t('share.acceptFailed')
   } finally {
     loading.value = false
   }

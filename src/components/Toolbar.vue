@@ -1,30 +1,38 @@
 <template>
   <div class="toolbar">
     <div class="toolbar-title-row">
-      <h1 class="toolbar-title">Salesforce Quick Login</h1>
-      <span class="toolbar-count">{{ envCount }}/{{ maxEnvironments }}</span>
+      <h1 class="toolbar-title">{{ t('common.productName') }}</h1>
+      <div class="toolbar-right">
+        <span class="toolbar-count">{{ envCount }}/{{ maxEnvironments }}</span>
+        <LocaleSwitcher variant="dark" />
+      </div>
     </div>
   </div>
   <div class="toolbar-actions">
     <button class="btn-action" @click="$emit('add-env')">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="16" height="16" rx="3"/><line x1="10" y1="7" x2="10" y2="13"/><line x1="7" y1="10" x2="13" y2="10"/></svg>
-      <span>添加环境</span>
+      <span>{{ t('toolbar.addEnv') }}</span>
     </button>
     <button class="btn-action" @click="$emit('add-group')">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6h16v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/><path d="M6 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="9" x2="10" y2="14"/><line x1="7.5" y1="11.5" x2="12.5" y2="11.5"/></svg>
-      <span>创建分组</span>
+      <span>{{ t('toolbar.addGroup') }}</span>
     </button>
-    <button class="btn-action btn-share" @click="$emit('share')" title="环境分享">
+    <button class="btn-action btn-share" @click="$emit('share')" :title="t('toolbar.shareTitle')">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="12" r="2"/><circle cx="14" cy="6" r="2"/><circle cx="14" cy="14" r="2"/><line x1="8" y1="11" x2="12" y2="7"/><line x1="8" y1="13" x2="12" y2="13"/></svg>
-      <span>分享</span>
+      <span>{{ t('toolbar.share') }}</span>
     </button>
-    <button class="btn-action btn-account" @click="$emit('account')" title="账户管理">
+    <button class="btn-action btn-account" @click="$emit('account')" :title="t('toolbar.accountTitle')">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="7" r="3"/><path d="M3 17a7 7 0 0114 0"/></svg>
     </button>
   </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+import LocaleSwitcher from './LocaleSwitcher.vue'
+
+const { t } = useI18n()
+
 defineProps({
   envCount: {
     type: Number,
@@ -63,6 +71,12 @@ defineEmits(['add-env', 'add-group', 'share', 'account'])
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0.3px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .toolbar-count {

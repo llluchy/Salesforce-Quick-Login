@@ -13,6 +13,7 @@ import { getSupabase } from './useSupabase'
 import { deriveKey, generateSalt, bytesToBase64, exportKeyToJwk, importKeyFromJwk, getDeviceCode } from '../utils/crypto'
 import { STORAGE_KEY_SESSION } from '../utils/constants'
 import { WELCOME_PAGE_URL, RECOVERY_PAGE_URL } from '../utils/supabaseConfig'
+import { t } from '../i18n'
 
 const CRYPTO_KEY_KEY = '__sf_crypto_key'
 const LAST_LOGIN_DATE_KEY = '__sf_last_login_date'
@@ -218,7 +219,7 @@ async function clearSessionKeys() {
  */
 async function fetchDeviceCode(userId) {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
   const { data, error } = await supabase
     .from('user_secrets')
@@ -239,7 +240,7 @@ async function fetchDeviceCode(userId) {
  */
 async function updateDeviceCode(userId, deviceCode) {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
   log('准备更新设备码', { userId, deviceCodePreview: deviceCode.slice(0, 8) + '...' })
 
@@ -346,7 +347,7 @@ function logError(action, err) {
  */
 async function fetchUserSalt(userId) {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
   const { data, error } = await supabase
     .from('user_secrets')
@@ -354,7 +355,7 @@ async function fetchUserSalt(userId) {
     .eq('user_id', userId)
     .maybeSingle()
 
-  if (error) throw new Error('读取 salt 失败：' + error.message)
+  if (error) throw new Error(t('auth.readSaltFailed', { msg: error.message }))
   if (!data || !data.salt) return null
 
   const raw = data.salt
@@ -425,7 +426,7 @@ async function fetchUserSalt(userId) {
  */
 async function createUserSalt(userId) {
   const supabase = getSupabase()
-  if (!supabase) throw new Error('Supabase 未初始化')
+  if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
   const salt = generateSalt()
   const saltB64 = bytesToBase64(salt)
@@ -439,7 +440,7 @@ async function createUserSalt(userId) {
     if (error.code === '23505') {
       return await fetchUserSalt(userId)
     }
-    throw new Error('保存 salt 失败：' + error.message)
+    throw new Error(t('auth.saveSaltFailed', { msg: error.message }))
   }
 
   return salt
@@ -525,7 +526,7 @@ async function signUp({ email, password }) {
   isLoading.value = true
   try {
     const supabase = getSupabase()
-    if (!supabase) throw new Error('Supabase 未初始化')
+    if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
     // 先生成 EC 密钥对 + salt + 加密密码
     const {
@@ -613,13 +614,13 @@ async function signIn({ email, password }) {
   isLoading.value = true
   try {
     const supabase = getSupabase()
-    if (!supabase) throw new Error('Supabase 未初始化')
+    if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
     log('登录', { email })
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     if (!data.session || !data.user) {
-      throw new Error('登录失败：未获得 session')
+      throw new Error(t('auth.loginNoSession'))
     }
 
     // 拉 salt
@@ -738,7 +739,7 @@ async function getSession() {
       clearUnlockRecord()
       clearCryptoKey()
       // 设置错误信息
-      const errorMsg = '⚠️ 检测到账户在其他设备登录，本机已被强制下线。这可能意味着您的密码已泄露，请重新登录后尽快修改密码！'
+      const errorMsg = t('auth.deviceMismatch')
       authError.value = errorMsg
       return { hasSession: false, hasKey: false, needPassword: true, deviceMismatch: true }
     }
@@ -774,18 +775,18 @@ async function getSession() {
  * 此时需要用户重新输入密码来派生密钥
  */
 async function unlockWithPassword(password) {
-  if (!currentUser.value) throw new Error('无当前用户')
+  if (!currentUser.value) throw new Error(t('auth.noCurrentUser'))
   authError.value = null
   isLoading.value = true
   try {
     const supabase = getSupabase()
-    if (!supabase) throw new Error('Supabase 未初始化')
+    if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
     // 拉 salt
     let salt = await fetchUserSalt(currentUser.value.id)
     if (!salt) {
       // salt 丢失，无法解密旧数据
-      throw new Error('salt 不存在，旧数据无法解密。请联系支持或重新注册')
+      throw new Error(t('auth.saltMissingDecrypt'))
     }
 
     _saltBytes = salt
@@ -823,15 +824,15 @@ async function unlockWithPassword(password) {
  * 6. 更新内存中的 cryptoKey 为新密钥
  */
 async function changePassword({ oldPassword, newPassword }) {
-  if (!currentUser.value) throw new Error('未登录')
-  if (!oldPassword || !newPassword) throw new Error('密码不能为空')
-  if (oldPassword === newPassword) throw new Error('新密码不能与旧密码相同')
+  if (!currentUser.value) throw new Error(t('auth.notLoggedIn'))
+  if (!oldPassword || !newPassword) throw new Error(t('auth.passwordEmpty'))
+  if (oldPassword === newPassword) throw new Error(t('auth.passwordSameAsOld'))
 
   authError.value = null
   isLoading.value = true
   try {
     const supabase = getSupabase()
-    if (!supabase) throw new Error('Supabase 未初始化')
+    if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
     log('开始修改密码流程')
 
@@ -839,7 +840,7 @@ async function changePassword({ oldPassword, newPassword }) {
     if (!_saltBytes) {
       // 内存中 salt 丢失（如页面刷新后），重新拉取
       _saltBytes = await fetchUserSalt(currentUser.value.id)
-      if (!_saltBytes) throw new Error('salt 不存在，无法修改密码')
+      if (!_saltBytes) throw new Error(t('auth.saltMissingChange'))
     }
     const oldKey = await deriveKey(oldPassword, _saltBytes, true)
 
@@ -849,7 +850,7 @@ async function changePassword({ oldPassword, newPassword }) {
       .select('*')
       .eq('user_id', currentUser.value.id)
       .eq('is_deleted', false)
-    if (envErr) throw new Error('拉取 environments 失败：' + envErr.message)
+    if (envErr) throw new Error(t('auth.fetchEnvsFailed', { msg: envErr.message }))
 
     // 3. 验证旧密码是否正确（用旧密钥试解密一条环境记录）
     if (envRows && envRows.length > 0) {
@@ -857,7 +858,7 @@ async function changePassword({ oldPassword, newPassword }) {
         const { decryptEnv } = await import('../utils/crypto')
         await decryptEnv(envRows[0], oldKey)
       } catch (e) {
-        throw new Error('旧密码不正确')
+        throw new Error(t('auth.oldPasswordWrong'))
       }
     }
 
@@ -869,12 +870,12 @@ async function changePassword({ oldPassword, newPassword }) {
       const newEnvRows = await reencryptEnvs(envRows, oldKey, newKey)
       const { error: envUpdateErr } = await supabase
         .from('environments').upsert(newEnvRows, { onConflict: 'id' })
-      if (envUpdateErr) throw new Error('更新 environments 失败：' + envUpdateErr.message)
+      if (envUpdateErr) throw new Error(t('auth.updateEnvsFailed', { msg: envUpdateErr.message }))
     }
 
     // 5. 修改 auth 密码
     const { error: pwdErr } = await supabase.auth.updateUser({ password: newPassword })
-    if (pwdErr) throw new Error('修改 auth 密码失败：' + pwdErr.message)
+    if (pwdErr) throw new Error(t('auth.changeAuthPasswordFailed', { msg: pwdErr.message }))
 
     // 6. 更新内存中的 cryptoKey 并保存到本地
     cryptoKey.value = newKey
@@ -917,20 +918,20 @@ async function changePassword({ oldPassword, newPassword }) {
  * 用当前密码重新加密所有数据
  */
 async function reencryptAll(password) {
-  if (!currentUser.value) throw new Error('未登录')
-  if (!password) throw new Error('密码不能为空')
+  if (!currentUser.value) throw new Error(t('auth.notLoggedIn'))
+  if (!password) throw new Error(t('auth.passwordEmpty'))
 
   authError.value = null
   isLoading.value = true
   try {
     const supabase = getSupabase()
-    if (!supabase) throw new Error('Supabase 未初始化')
+    if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
     log('开始全量重加密')
 
     if (!_saltBytes) {
       _saltBytes = await fetchUserSalt(currentUser.value.id)
-      if (!_saltBytes) throw new Error('salt 不存在，无法重加密')
+      if (!_saltBytes) throw new Error(t('auth.saltMissingReencrypt'))
     }
 
     const key = await deriveKey(password, _saltBytes, true)
@@ -940,21 +941,21 @@ async function reencryptAll(password) {
       .select('*')
       .eq('user_id', currentUser.value.id)
       .eq('is_deleted', false)
-    if (envErr) throw new Error('拉取 environments 失败：' + envErr.message)
+    if (envErr) throw new Error(t('auth.fetchEnvsFailed', { msg: envErr.message }))
 
     if (envRows && envRows.length > 0) {
       try {
         const { decryptEnv } = await import('../utils/crypto')
         await decryptEnv(envRows[0], key)
       } catch (e) {
-        throw new Error('密码不正确')
+        throw new Error(t('auth.passwordWrong'))
       }
 
       const { reencryptEnvs } = await import('../utils/crypto')
       const newEnvRows = await reencryptEnvs(envRows, key, key)
       const { error: envUpdateErr } = await supabase
         .from('environments').upsert(newEnvRows, { onConflict: 'id' })
-      if (envUpdateErr) throw new Error('更新 environments 失败：' + envUpdateErr.message)
+      if (envUpdateErr) throw new Error(t('auth.updateEnvsFailed', { msg: envUpdateErr.message }))
     }
 
     cryptoKey.value = key
@@ -1036,7 +1037,7 @@ async function sendRecoveryEmail(email) {
   authError.value = null
   try {
     const supabase = getSupabase()
-    if (!supabase) throw new Error('Supabase 未初始化')
+    if (!supabase) throw new Error(t('auth.supabaseNotInit'))
 
     const { error } = await supabase.auth.signInWithOtp({
       email,

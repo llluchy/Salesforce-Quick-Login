@@ -1,0 +1,38 @@
+{
+  "extName": {
+    "message": "Salesforce Quick Login"
+  },
+  "extDescription": {
+    "message": "一键 Salesforce 登录，支持 Passkey、TOTP 双因素、加密云同步与环境分享。"
+  },
+  "extActionTitle": {
+    "message": "Salesforce Quick Login"
+  },
+  "qrSelectTip": {
+    "message": "拖拽选择二维码区域，按 ESC 取消"
+  },
+  "imageLoadFailed": {
+    "message": "图片加载失败"
+  },
+  "passkeyBubbleTitle": {
+    "message": "需要打开扩展面板"
+  },
+  "passkeyBubbleDesc": {
+    "message": "网页正在请求 Passkey 验证，请打开扩展侧边栏以完成验证。"
+  },
+  "passkeyBubbleClickIcon": {
+    "message": "点击图标"
+  },
+  "passkeyBubbleClose": {
+    "message": "关闭"
+  },
+  "passkeyBubbleCountdown": {
+    "message": "$SECONDS$s 后自动关闭",
+    "placeholders": {
+      "seconds": {
+        "content": "$1",
+        "example": "30"
+      }
+    }
+  }
+}

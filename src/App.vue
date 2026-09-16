@@ -77,27 +77,27 @@
         <div v-if="pkDialog.visible" class="pk-overlay" @click.self="cancelPasskeyDialog">
           <div class="pk-dialog">
             <div class="pk-header">
-              <span>{{ pkDialog.type === 'get' ? '选择 Passkey 验证' : '选择环境绑定 Passkey' }}</span>
+              <span>{{ pkDialog.type === 'get' ? t('passkey.selectVerify') : t('passkey.selectBind') }}</span>
             </div>
 
             <div v-if="pkDialog.showCreateForm" class="pk-body">
-              <p class="pk-desc">输入别名即可创建临时环境（之后可补充账号密码）：</p>
+              <p class="pk-desc">{{ t('passkey.createHint') }}</p>
               <input
                 ref="pkAliasInput"
                 v-model="pkDialog.newAlias"
                 class="pk-input"
-                placeholder="环境别名，如：我的生产环境"
+                :placeholder="t('passkey.aliasPlaceholder')"
                 @keyup.enter="createQuickEnv"
               />
               <div class="pk-create-btns">
-                <button class="pk-btn pk-btn-cancel" @click="pkDialog.showCreateForm = false">返回列表</button>
-                <button class="pk-btn pk-btn-primary" @click="createQuickEnv">保存并绑定</button>
+                <button class="pk-btn pk-btn-cancel" @click="pkDialog.showCreateForm = false">{{ t('passkey.backToList') }}</button>
+                <button class="pk-btn pk-btn-primary" @click="createQuickEnv">{{ t('passkey.saveAndBind') }}</button>
               </div>
             </div>
 
             <div v-else class="pk-body">
               <p class="pk-desc">
-                {{ pkDialog.type === 'get' ? 'Salesforce 请求了 Passkey 验证，请选择用于验证的环境：' : 'Salesforce 请求注册新 Passkey，请选择要绑定的环境：' }}
+                {{ pkDialog.type === 'get' ? t('passkey.descGet') : t('passkey.descCreate') }}
               </p>
               <div
                 v-for="env in pkDialog.environments"
@@ -105,19 +105,19 @@
                 class="pk-item"
                 @click="selectPasskeyEnv(env)"
               >
-                <div class="pk-item-name">{{ env.alias || '(未命名)' }}</div>
-                <div class="pk-item-user">{{ env.username || '未设置账号' }}</div>
+                <div class="pk-item-name">{{ env.alias || t('common.unnamed') }}</div>
+                <div class="pk-item-user">{{ env.username || t('env.noUsername') }}</div>
                 <div class="pk-item-tags">
-                  <span class="pk-item-tag">{{ env.type === 'production' ? 'Production' : env.type === 'sandbox' ? 'Sandbox' : 'Custom' }}</span>
-                  <span v-if="!env.username || !env.password" class="pk-item-tag pk-item-tag-warn">未完善</span>
+                  <span class="pk-item-tag">{{ env.type === 'production' ? t('type.production') : env.type === 'sandbox' ? t('type.sandbox') : t('type.custom') }}</span>
+                  <span v-if="!env.username || !env.password" class="pk-item-tag pk-item-tag-warn">{{ t('passkey.incomplete') }}</span>
                 </div>
               </div>
               <p v-if="pkDialog.environments.length === 0" class="pk-empty">
                 <template v-if="pkDialog.type === 'get'">
-                  <span>当前没有已绑定 Passkey 的环境</span>
-                  <span class="pk-empty-sub">将使用系统 Passkey 进行验证</span>
+                  <span>{{ t('passkey.emptyGet') }}</span>
+                  <span class="pk-empty-sub">{{ t('passkey.emptyGetSub') }}</span>
                 </template>
-                <template v-else>没有可用的环境</template>
+                <template v-else>{{ t('passkey.emptyCreate') }}</template>
               </p>
             </div>
 
@@ -126,9 +126,9 @@
                 v-if="pkDialog.type !== 'get'"
                 class="pk-btn pk-btn-link"
                 @click="pkDialog.showCreateForm = true; pkDialog.newAlias = ''"
-              >创建新环境</button>
+              >{{ t('passkey.createNew') }}</button>
               <button class="pk-btn pk-btn-cancel" @click="cancelPasskeyDialog">
-                取消/使用其他验证方式
+                {{ t('passkey.cancelOther') }}
               </button>
             </div>
           </div>
@@ -169,6 +169,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Sortable from 'sortablejs'
 import { MAX_ENVIRONMENTS } from './utils/constants'
 import { generateUuid } from './utils/crypto'
@@ -178,6 +179,7 @@ import { migrateLocalToSupabase } from './utils/migration'
 import { useLogin } from './composables/useLogin'
 import { initPasskeyBridge, destroyPasskeyBridge, passkeyRequest, passkeyError, passkeySaving, passkeySavingStage } from './composables/usePasskeyBridge'
 import { useTotp } from './composables/useTotp'
+import { t as tt } from './i18n'
 import syncLog from './utils/syncLogger'
 import Toolbar from './components/Toolbar.vue'
 import GroupSection from './components/GroupSection.vue'
@@ -192,6 +194,7 @@ import SideNavTabs from './components/SideNavTabs.vue'
 import ToolHub from './components/ToolHub.vue'
 import { getToolWindowDef, buildToolWindowUrl } from './tools/_shared/toolWindows.js'
 
+const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
 const { isAuthed, getCryptoKeyRaw, currentUser, getSession, getUnlockStatus } = useAuth()
 const { login, fillTotpCode } = useLogin()
@@ -278,7 +281,7 @@ const manualBindEnv = ref(null)
 // 启动 / 登录后数据同步遮罩（默认开启，避免自动跳过登录时闪一下空界面）
 const bootOverlay = ref({
   visible: true,
-  message: '正在启动...',
+  message: tt('boot.starting'),
   detail: ''
 })
 
@@ -322,7 +325,7 @@ function selectPasskeyEnv(env) {
 async function createQuickEnv() {
   const alias = (pkDialog.value.newAlias || '').trim()
   if (!alias) {
-    showToast('请输入别名', 'error')
+    showToast(t('toast.aliasRequired'), 'error')
     return
   }
   const { saveEnvironments, loadEnvironments } = useStorage()
@@ -346,9 +349,9 @@ async function createQuickEnv() {
     environments.value = await loadEnvironments()
     // 选中新环境
     selectPasskeyEnv(newEnv)
-    showToast('临时环境已创建')
+    showToast(t('toast.tempEnvCreated'))
   } catch (e) {
-    showToast('创建失败：' + (e.message || ''), 'error')
+    showToast(t('toast.createFailed', { msg: e.message || '' }), 'error')
   }
 }
 
@@ -381,7 +384,7 @@ watch(passkeyError, (err) => {
 // 监听 passkey 保存完成（从 true → false 且无错误 = 成功）
 watch(passkeySaving, (saving, prev) => {
   if (prev && !saving && !passkeyError.value) {
-    showToast('Passkey 绑定成功')
+    showToast(t('toast.passkeyBound'))
   }
 })
 
@@ -393,7 +396,7 @@ const displayGroups = computed(() => {
   if (ungroupedCount > 0) {
     result.push({
       id: 'ungrouped',
-      name: '未选择分组',
+      name: t('group.ungrouped'),
       isVirtual: true,
       collapsed: false
     })
@@ -472,6 +475,7 @@ const closeDeleteModal = () => {
 const handleSaveEnv = async (env) => {
   syncLog.group('App.handleSaveEnv 保存环境')
   syncLog.info('输入', syncLog.envSummary(env))
+  const isUpdate = !!env.id
   if (env.id) {
     const index = environments.value.findIndex(e => e.id === env.id)
     if (index !== -1) {
@@ -479,7 +483,7 @@ const handleSaveEnv = async (env) => {
     }
   } else {
     if (environments.value.length >= MAX_ENVIRONMENTS) {
-      showToast(`环境数量已达上限（${MAX_ENVIRONMENTS} 个），无法继续添加`, 'error')
+      showToast(t('toast.envLimit', { max: MAX_ENVIRONMENTS }), 'error')
       syncLog.groupEnd()
       return
     }
@@ -495,15 +499,16 @@ const handleSaveEnv = async (env) => {
     error: result?.error
   })
   if (result?.success) {
-    showToast(env.id ? '环境已更新' : '环境已创建')
+    showToast(isUpdate ? t('toast.envUpdated') : t('toast.envCreated'))
   } else {
-    showToast('保存失败：' + (result?.error || ''), 'error')
+    showToast(t('toast.saveFailed', { msg: result?.error || '' }), 'error')
   }
   closeEditModal()
   syncLog.groupEnd()
 }
 
 const handleSaveGroup = async (group) => {
+  const isUpdate = !!group.id
   if (group.id) {
     const index = groups.value.findIndex(g => g.id === group.id)
     if (index !== -1) {
@@ -516,9 +521,9 @@ const handleSaveGroup = async (group) => {
   const result = await saveGroups(groups.value)
   closeGroupModal()
   if (result?.success) {
-    showToast(group.id ? '分组已更新' : '分组已创建')
+    showToast(isUpdate ? t('toast.groupUpdated') : t('toast.groupCreated'))
   } else {
-    showToast('保存失败：' + (result?.error || ''), 'error')
+    showToast(t('toast.saveFailed', { msg: result?.error || '' }), 'error')
   }
 }
 
@@ -529,14 +534,14 @@ const handleConfirmDelete = async () => {
     if (result?.success) {
       // 同时从本地视图移除
       environments.value = environments.value.filter(e => e.id !== deleteId.value)
-      showToast('环境已删除')
+      showToast(t('toast.envDeleted'))
     } else {
-      showToast('删除失败：' + (result?.error || ''), 'error')
+      showToast(t('toast.deleteFailed', { msg: result?.error || '' }), 'error')
     }
   } else {
     const delResult = await deleteGroup(deleteId.value)
     if (!delResult?.success) {
-      showToast('删除分组失败：' + (delResult?.error || ''), 'error')
+      showToast(t('toast.deleteGroupFailed', { msg: delResult?.error || '' }), 'error')
       closeDeleteModal()
       return
     }
@@ -547,7 +552,7 @@ const handleConfirmDelete = async () => {
     })
     groups.value = groups.value.filter(g => g.id !== deleteId.value)
     await saveEnvironments(environments.value)
-    showToast('分组已删除')
+    showToast(t('toast.groupDeleted'))
   }
   closeDeleteModal()
 }
@@ -557,16 +562,16 @@ const handleCloneEnv = async (env) => {
   const cloned = {
     ...env,
     id: generateUuid(),
-    alias: `${env.alias} (克隆)`,
+    alias: t('env.cloneSuffix', { alias: env.alias }),
     createdAt: now,
     updatedAt: now
   }
   environments.value.push(cloned)
   const result = await saveEnvironments(environments.value)
   if (result?.success) {
-    showToast('环境已克隆')
+    showToast(t('toast.envCloned'))
   } else {
-    showToast('克隆失败：' + (result?.error || ''), 'error')
+    showToast(t('toast.cloneFailed', { msg: result?.error || '' }), 'error')
   }
 }
 
@@ -598,9 +603,9 @@ const handleLogin = async (env) => {
     }
 
     await login(env)
-    showToast('登录成功')
+    showToast(t('toast.loginSuccess'))
   } catch (error) {
-    showToast(error.message || '登录失败', 'error')
+    showToast(error.message || t('toast.loginFailed'), 'error')
   }
 }
 
@@ -614,7 +619,7 @@ const handleExportBackup = async () => {
     ])
 
     if (creds.length === 0 && envs.length === 0) {
-      showToast('没有可备份的数据', 'error')
+      showToast(t('toast.noBackupData'), 'error')
       return
     }
 
@@ -639,10 +644,10 @@ const handleExportBackup = async () => {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
 
-    showToast(`已导出 ${creds.length} 个凭证、${envs.length} 个环境`, 'success')
+    showToast(t('toast.exported', { creds: creds.length, envs: envs.length }), 'success')
   } catch (error) {
     console.error('Export backup error:', error)
-    showToast(error.message || '导出失败', 'error')
+    showToast(error.message || t('toast.exportFailed'), 'error')
   }
 }
 
@@ -663,7 +668,7 @@ const handleImportBackup = async (event) => {
     const backup = JSON.parse(text)
 
     if (!backup.credentials || !Array.isArray(backup.credentials)) {
-      showToast('备份文件格式无效', 'error')
+      showToast(t('toast.invalidBackup'), 'error')
       return
     }
 
@@ -689,10 +694,10 @@ const handleImportBackup = async (event) => {
     environments.value = await loadEnvironments()
     groups.value = await loadGroups()
 
-    showToast(`导入完成：新增 ${credCount} 个凭证、${envCount} 个环境`, 'success')
+    showToast(t('toast.imported', { creds: credCount, envs: envCount }), 'success')
   } catch (error) {
     console.error('Import backup error:', error)
-    showToast(error.message || '导入失败：文件格式错误', 'error')
+    showToast(error.message || t('toast.importFailed'), 'error')
   }
 }
 
@@ -702,14 +707,14 @@ const handleShowTotp = async (env) => {
   if (env.totpSecret) {
     const code = await generateCode(env.totpSecret)
     if (code) {
-      showToast(`验证码: ${code}`, 'info')
+      showToast(t('toast.totpCode', { code }), 'info')
       try {
         await fillTotpCode(code)
       } catch (e) {
         console.log('Auto-fill failed, code:', code)
       }
     } else {
-      showToast('无法生成验证码', 'error')
+      showToast(t('toast.totpGenerateFailed'), 'error')
     }
   }
 }
@@ -727,30 +732,30 @@ const handleAddGroupFromModal = async (groupName) => {
 }
 
 const handleCopySuccess = (code) => {
-  showToast(`验证码 ${code} 已复制到剪贴板`, 'success')
+  showToast(t('toast.totpCopied', { code }), 'success')
 }
 
 const handleScanQR = async () => {
   try {
     const result = await scanQR()
     if (result && result.success === false) {
-      showToast(result.error || '扫码失败', 'error')
+      showToast(result.error || t('toast.scanFailed'), 'error')
       return
     }
     if (result && result.secret) {
       if (editingEnv.value) {
         editingEnv.value.totpSecret = result.secret
       }
-      showToast('识别成功')
+      showToast(t('toast.scanSuccess'))
     }
   } catch (error) {
     // 用户主动取消（ESC / 框太小）不算失败
-    const cancelReasons = ['cancelled', 'too small', 'user cancelled', '已取消']
+    const cancelReasons = ['cancelled', 'too small', 'user cancelled', '已取消', 'Cancelled']
     if (typeof error === 'string' && cancelReasons.some(r => error.includes(r))) {
-      showToast('已取消截图扫码')
+      showToast(t('toast.scanCancelled'))
       return
     }
-    showToast(error || '扫码失败', 'error')
+    showToast(error || t('toast.scanFailed'), 'error')
   }
 }
 
@@ -855,37 +860,40 @@ const initGroupSortable = () => {
 
 // ========== 登录态与数据加载 ==========
 
-const SOURCE_LABEL = {
-  remote: '云端数据库',
-  cache: '本地缓存',
-  empty: '无数据'
+const sourceLabel = (source) => {
+  const map = {
+    remote: t('boot.sourceRemote'),
+    cache: t('boot.sourceCache'),
+    empty: t('boot.sourceEmpty')
+  }
+  return map[source] || source
 }
 
 const loadData = async () => {
   syncLog.group('App.loadData 加载数据')
   try {
-    showBoot('正在连接数据库...', '准备拉取环境与分组')
+    showBoot(t('boot.connecting'), t('boot.connectingDetail'))
 
-    showBoot('正在获取环境列表...', '从云端数据库读取并解密')
+    showBoot(t('boot.loadingEnvs'), t('boot.loadingEnvsDetail'))
     const envResult = await loadEnvironments({ detailed: true })
     environments.value = envResult.data
-    const envSourceLabel = SOURCE_LABEL[envResult.source] || envResult.source
+    const envSourceLabel = sourceLabel(envResult.source)
     showBoot(
-      `环境已加载（${envResult.count} 个）`,
+      t('boot.envsLoaded', { count: envResult.count }),
       envResult.error
-        ? `来源：${envSourceLabel}（云端失败：${envResult.error}）`
-        : `来源：${envSourceLabel}`
+        ? t('boot.sourceFail', { source: envSourceLabel, error: envResult.error })
+        : t('boot.sourceOk', { source: envSourceLabel })
     )
 
-    showBoot('正在获取分组列表...', '从云端数据库读取')
+    showBoot(t('boot.loadingGroups'), t('boot.loadingGroupsDetail'))
     const groupResult = await loadGroups({ detailed: true })
     groups.value = groupResult.data
-    const groupSourceLabel = SOURCE_LABEL[groupResult.source] || groupResult.source
+    const groupSourceLabel = sourceLabel(groupResult.source)
     showBoot(
-      `分组已加载（${groupResult.count} 个）`,
+      t('boot.groupsLoaded', { count: groupResult.count }),
       groupResult.error
-        ? `来源：${groupSourceLabel}（云端失败：${groupResult.error}）`
-        : `来源：${groupSourceLabel}`
+        ? t('boot.sourceFail', { source: groupSourceLabel, error: groupResult.error })
+        : t('boot.sourceOk', { source: groupSourceLabel })
     )
 
     syncLog.info('加载完成', {
@@ -899,10 +907,10 @@ const loadData = async () => {
 
     // 若走了缓存回退，给用户明确提示，便于排查网络/缓存问题
     if (envResult.source === 'cache' || groupResult.source === 'cache') {
-      const reason = envResult.error || groupResult.error || '未知原因'
-      showToast(`云端同步失败，已使用本地缓存：${reason}`, 'error')
+      const reason = envResult.error || groupResult.error || t('toast.unknownReason')
+      showToast(t('toast.syncCacheFallback', { reason }), 'error')
     } else if (envResult.source === 'empty' && envResult.error) {
-      showToast(`未能从云端获取数据：${envResult.error}`, 'error')
+      showToast(t('toast.syncFailed', { msg: envResult.error }), 'error')
     }
 
     nextTick(() => {
@@ -910,8 +918,8 @@ const loadData = async () => {
     })
   } catch (e) {
     syncLog.error('加载数据失败', e)
-    showBoot('加载失败', e.message || String(e))
-    showToast('加载数据失败：' + (e.message || ''), 'error')
+    showBoot(t('boot.loadFailed'), e.message || String(e))
+    showToast(t('toast.loadFailed', { msg: e.message || '' }), 'error')
   } finally {
     syncLog.groupEnd()
   }
@@ -930,15 +938,15 @@ const onAuthed = async () => {
   _dataLoadDone = false
   syncLog.info('App.onAuthed 登录成功，开始加载数据')
   accountDialogVisible.value = false
-  showBoot('登录成功', '正在同步云端数据...')
+  showBoot(t('boot.loginSuccess'), t('boot.syncing'))
 
   // 首次登录时尝试迁移本地旧数据到 Supabase（云端有数据则自动跳过）
   try {
-    showBoot('正在检查本地数据迁移...', '首次使用时会将旧数据上传到云端')
+    showBoot(t('boot.migrating'), t('boot.migratingDetail'))
     const result = await migrateLocalToSupabase()
     if (result?.success) {
       const m = result.migrated
-      showToast(`已迁移 ${m.environments} 个环境、${m.groups} 个分组、${m.passkeys} 个凭证到云端`, 'success')
+      showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
     }
   } catch (e) {
     syncLog.error('迁移本地数据失败', e)
@@ -970,7 +978,7 @@ let _authTriggered = false
 watch(isAuthed, (newVal, oldVal) => {
   if (newVal === true && oldVal === false && !_authTriggered) {
     _authTriggered = true
-    showBoot('正在同步数据...', '登录状态已确认')
+    showBoot(t('boot.syncConfirmed'), t('boot.syncConfirmedDetail'))
     onAuthed().catch(err => {
       console.error('[App] watch onAuthed 异常', err)
     }).finally(() => {
@@ -999,7 +1007,7 @@ const handleShareAccepted = async () => {
   try {
     const envs = await loadEnvironments()
     environments.value = envs
-    showToast('已添加副环境')
+    showToast(t('toast.shareAccepted'))
   } catch (e) {
     console.error('[App] handleShareAccepted 刷新失败', e)
   }
@@ -1007,7 +1015,7 @@ const handleShareAccepted = async () => {
 
 onMounted(async () => {
   syncLog.group('App.onMounted 应用启动')
-  showBoot('正在恢复登录状态...', '检查会话与本地密钥')
+  showBoot(t('boot.restoring'), t('boot.restoringDetail'))
 
   // 输出当前扩展运行环境概览
   try {
@@ -1045,7 +1053,7 @@ onMounted(async () => {
       // 已自动恢复登录：遮罩交给 onAuthed（watch）关闭
       // 若 watch 尚未跑完，仅更新文案；若已完成则不再重新打开遮罩
       if (!_dataLoadDone) {
-        showBoot('登录已恢复', '正在从数据库同步数据...')
+        showBoot(t('boot.restored'), t('boot.restoredDetail'))
       }
     } else if (currentUser.value && !unlockStatus.needPassword) {
       // 有 session 但密钥未恢复，仍需输入密码

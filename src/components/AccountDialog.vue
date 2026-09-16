@@ -3,7 +3,7 @@
     <div class="modal-overlay" v-if="visible" @click.self="handleClose">
       <div class="modal-content account-modal">
         <div class="modal-header">
-          <h2>账户管理</h2>
+          <h2>{{ t('account.title') }}</h2>
           <button class="modal-close" @click="handleClose" :disabled="loading">×</button>
         </div>
 
@@ -17,15 +17,15 @@
               </svg>
             </div>
             <div class="account-meta">
-              <div class="account-label">当前登录账户</div>
-              <div class="account-email">{{ email || '(未知)' }}</div>
+              <div class="account-label">{{ t('account.currentAccount') }}</div>
+              <div class="account-email">{{ email || t('common.unknown') }}</div>
             </div>
           </div>
 
           <!-- 模式切换 -->
           <div class="mode-tabs" v-if="!loading">
-            <button :class="['mode-tab', { active: mode === 'menu' }]" @click="mode = 'menu'">账户操作</button>
-            <button :class="['mode-tab', { active: mode === 'password' }]" @click="mode = 'password'">修改密码</button>
+            <button :class="['mode-tab', { active: mode === 'menu' }]" @click="mode = 'menu'">{{ t('account.tabMenu') }}</button>
+            <button :class="['mode-tab', { active: mode === 'password' }]" @click="mode = 'password'">{{ t('account.tabPassword') }}</button>
           </div>
 
           <!-- 菜单模式 -->
@@ -36,51 +36,51 @@
                 <path d="M18 10h-9"/>
                 <path d="M11 7l-3 3 3 3"/>
               </svg>
-              <span>退出登录</span>
+              <span>{{ t('account.signOut') }}</span>
             </button>
             <button class="btn-action btn-secondary" @click="mode = 'reencrypt'" :disabled="loading">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M2 10a8 8 0 018-8v8h8a8 8 0 01-8 8v-8H2z"/>
               </svg>
-              <span>重加密</span>
+              <span>{{ t('account.reencrypt') }}</span>
             </button>
           </div>
 
           <!-- 修改密码模式 -->
           <div class="password-section" v-if="mode === 'password'">
             <div class="password-warn">
-              ⚠️ 数据库密文保存，所有数据基于登录密码进行二重加密，更改密码需要重新触发加密过程，根据数量不同，重加密时间不同，重加密过程中请不要关闭插件侧边栏
+              {{ t('account.passwordWarn') }}
             </div>
 
             <div class="form-field">
-              <label>旧密码</label>
+              <label>{{ t('account.oldPassword') }}</label>
               <input
                 v-model="oldPassword"
                 type="password"
                 autocomplete="current-password"
-                placeholder="输入当前密码"
+                :placeholder="t('account.oldPasswordPlaceholder')"
                 :disabled="loading"
                 minlength="8" />
             </div>
 
             <div class="form-field">
-              <label>新密码</label>
+              <label>{{ t('account.newPassword') }}</label>
               <input
                 v-model="newPassword"
                 type="password"
                 autocomplete="new-password"
-                placeholder="至少 8 位"
+                :placeholder="t('auth.passwordPlaceholder')"
                 :disabled="loading"
                 minlength="8" />
             </div>
 
             <div class="form-field">
-              <label>确认新密码</label>
+              <label>{{ t('account.confirmNewPassword') }}</label>
               <input
                 v-model="confirmNewPassword"
                 type="password"
                 autocomplete="new-password"
-                placeholder="再次输入新密码"
+                :placeholder="t('account.confirmNewPasswordPlaceholder')"
                 :disabled="loading"
                 minlength="8" />
             </div>
@@ -96,10 +96,10 @@
             </div>
 
             <div class="password-actions">
-              <button class="btn btn-outline" @click="cancelPassword" :disabled="loading">取消</button>
+              <button class="btn btn-outline" @click="cancelPassword" :disabled="loading">{{ t('common.cancel') }}</button>
               <button class="btn btn-primary" @click="handleChangePassword" :disabled="loading">
                 <span v-if="loading" class="spinner-mini"></span>
-                <span>{{ loading ? '正在重加密...' : '确认修改' }}</span>
+                <span>{{ loading ? t('account.reencrypting') : t('account.confirmChange') }}</span>
               </button>
             </div>
           </div>
@@ -107,16 +107,16 @@
           <!-- 重加密模式 -->
           <div class="password-section" v-if="mode === 'reencrypt'">
             <div class="password-warn">
-              ⚠️ 重加密会重新加密所有数据，根据数据数量不同，时间可能较长。重加密过程中请不要关闭插件侧边栏。
+              {{ t('account.reencryptWarn') }}
             </div>
 
             <div class="form-field">
-              <label>当前密码</label>
+              <label>{{ t('account.currentPassword') }}</label>
               <input
                 v-model="reencryptPassword"
                 type="password"
                 autocomplete="current-password"
-                placeholder="输入当前密码"
+                :placeholder="t('account.oldPasswordPlaceholder')"
                 :disabled="loading"
                 minlength="8" />
             </div>
@@ -132,10 +132,10 @@
             </div>
 
             <div class="password-actions">
-              <button class="btn btn-outline" @click="cancelReencrypt" :disabled="loading">取消</button>
+              <button class="btn btn-outline" @click="cancelReencrypt" :disabled="loading">{{ t('common.cancel') }}</button>
               <button class="btn btn-primary" @click="handleReencrypt" :disabled="loading">
                 <span v-if="loading" class="spinner-mini"></span>
-                <span>{{ loading ? '正在重加密...' : '开始重加密' }}</span>
+                <span>{{ loading ? t('account.reencrypting') : t('account.startReencrypt') }}</span>
               </button>
             </div>
           </div>
@@ -151,14 +151,14 @@
         >
           <div class="confirm-modal">
             <div class="modal-header">
-              <h2>确认退出</h2>
+              <h2>{{ t('account.signOutTitle') }}</h2>
               <button class="modal-close" type="button" @click="closeSignOutConfirm" :disabled="loading">×</button>
             </div>
             <div class="confirm-body">
               <div class="confirm-warning">
                 <span class="confirm-icon">⚠️</span>
-                <p>确定要退出登录吗？</p>
-                <p class="confirm-hint">本地缓存将被清除，下次打开需重新登录。</p>
+                <p>{{ t('account.signOutConfirm') }}</p>
+                <p class="confirm-hint">{{ t('account.signOutHint') }}</p>
               </div>
               <div class="auth-error" v-if="errorMessage && signOutConfirmVisible">
                 <svg viewBox="0 0 20 20" width="12" height="12" fill="currentColor"><path d="M10 1a9 9 0 100 18 9 9 0 000-18zm-1 13a1 1 0 112 0 1 1 0 01-2 0zm1-3a1 1 0 01-1-1V7a1 1 0 112 0v3a1 1 0 01-1 1z"/></svg>
@@ -166,10 +166,10 @@
               </div>
             </div>
             <div class="confirm-footer">
-              <button class="btn btn-outline" type="button" @click="closeSignOutConfirm" :disabled="loading">取消</button>
+              <button class="btn btn-outline" type="button" @click="closeSignOutConfirm" :disabled="loading">{{ t('common.cancel') }}</button>
               <button class="btn btn-danger-solid" type="button" @click="confirmSignOut" :disabled="loading">
                 <span v-if="loading" class="spinner-mini"></span>
-                <span>{{ loading ? '退出中...' : '退出登录' }}</span>
+                <span>{{ loading ? t('account.signingOut') : t('account.signOut') }}</span>
               </button>
             </div>
           </div>
@@ -181,6 +181,7 @@
 
 <script setup>
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuth } from '../composables/useAuth'
 
 const props = defineProps({
@@ -189,6 +190,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'signed-out'])
 
+const { t } = useI18n()
 const { signOut, changePassword, reencryptAll, currentUser } = useAuth()
 const email = computed(() => currentUser.value?.email || '')
 
@@ -246,7 +248,7 @@ const confirmSignOut = async () => {
     signOutConfirmVisible.value = false
     emit('signed-out')
   } catch (e) {
-    errorMessage.value = e.message || '登出失败'
+    errorMessage.value = e.message || t('account.signOutFailed')
   } finally {
     loading.value = false
   }
@@ -273,19 +275,19 @@ const handleChangePassword = async () => {
   successMessage.value = ''
 
   if (!oldPassword.value) {
-    errorMessage.value = '请输入旧密码'
+    errorMessage.value = t('account.oldPasswordRequired')
     return
   }
   if (!newPassword.value || newPassword.value.length < 8) {
-    errorMessage.value = '新密码至少 8 位'
+    errorMessage.value = t('account.newPasswordMin')
     return
   }
   if (newPassword.value !== confirmNewPassword.value) {
-    errorMessage.value = '两次新密码不一致'
+    errorMessage.value = t('account.newPasswordMismatch')
     return
   }
   if (oldPassword.value === newPassword.value) {
-    errorMessage.value = '新密码不能与旧密码相同'
+    errorMessage.value = t('account.newPasswordSame')
     return
   }
 
@@ -295,7 +297,7 @@ const handleChangePassword = async () => {
       oldPassword: oldPassword.value,
       newPassword: newPassword.value
     })
-    successMessage.value = '密码修改成功，所有数据已用新密码重新加密'
+    successMessage.value = t('account.changePasswordSuccess')
     oldPassword.value = ''
     newPassword.value = ''
     confirmNewPassword.value = ''
@@ -305,7 +307,7 @@ const handleChangePassword = async () => {
       successMessage.value = ''
     }, 3000)
   } catch (e) {
-    errorMessage.value = e.message || '修改失败'
+    errorMessage.value = e.message || t('account.changeFailed')
   } finally {
     loading.value = false
   }
@@ -316,21 +318,21 @@ const handleReencrypt = async () => {
   successMessage.value = ''
 
   if (!reencryptPassword.value || reencryptPassword.value.length < 8) {
-    errorMessage.value = '请输入当前密码'
+    errorMessage.value = t('account.currentPasswordRequired')
     return
   }
 
   loading.value = true
   try {
     await reencryptAll(reencryptPassword.value)
-    successMessage.value = '重加密完成，所有数据已重新加密'
+    successMessage.value = t('account.reencryptSuccess')
     reencryptPassword.value = ''
     setTimeout(() => {
       mode.value = 'menu'
       successMessage.value = ''
     }, 3000)
   } catch (e) {
-    errorMessage.value = e.message || '重加密失败'
+    errorMessage.value = e.message || t('account.reencryptFailed')
   } finally {
     loading.value = false
   }

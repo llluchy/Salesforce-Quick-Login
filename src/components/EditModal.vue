@@ -3,7 +3,7 @@
     <div class="modal-overlay" v-if="visible">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>{{ env ? '编辑环境' : '添加环境' }}</h2>
+          <h2>{{ env ? t('env.editTitle') : t('env.addTitle') }}</h2>
           <button class="modal-close" @click="$emit('close')">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
           </button>
@@ -11,20 +11,20 @@
         
         <div class="modal-body">
           <div class="form-group">
-            <label>别名 *</label>
-            <input type="text" v-model="form.alias" placeholder="输入环境别名" required />
+            <label>{{ t('env.alias') }}</label>
+            <input type="text" v-model="form.alias" :placeholder="t('env.aliasPlaceholder')" required />
           </div>
           
           <div class="form-group">
-            <label>账号 *</label>
-            <input type="text" v-model="form.username" placeholder="输入 Salesforce 账号" required />
+            <label>{{ t('env.username') }}</label>
+            <input type="text" v-model="form.username" :placeholder="t('env.usernamePlaceholder')" required />
           </div>
           
           <div class="form-group">
-            <label>密码 *</label>
+            <label>{{ t('env.password') }}</label>
             <div class="password-input-wrapper">
-              <input :type="showPassword ? 'text' : 'password'" v-model="form.password" placeholder="输入密码" required />
-              <button type="button" class="password-toggle" @click="showPassword = !showPassword" :title="showPassword ? '隐藏密码' : '显示密码'">
+              <input :type="showPassword ? 'text' : 'password'" v-model="form.password" :placeholder="t('env.passwordPlaceholder')" required />
+              <button type="button" class="password-toggle" @click="showPassword = !showPassword" :title="showPassword ? t('env.hidePassword') : t('env.showPassword')">
                 <svg v-if="showPassword" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/>
                 </svg>
@@ -36,53 +36,53 @@
           </div>
           
           <div class="form-group">
-            <label>环境类型 *</label>
+            <label>{{ t('env.type') }}</label>
             <select v-model="form.type" @change="handleTypeChange">
-              <option value="production">Production</option>
-              <option value="sandbox">SandBox</option>
-              <option value="custom">自定义</option>
+              <option value="production">{{ t('type.production') }}</option>
+              <option value="sandbox">{{ t('type.sandbox') }}</option>
+              <option value="custom">{{ t('type.custom') }}</option>
             </select>
           </div>
           
           <div class="form-group" v-if="form.type === 'custom'">
-            <label>自定义地址</label>
+            <label>{{ t('env.customUrl') }}</label>
             <input type="text" v-model="form.customUrl" placeholder="https://xxx.salesforce.com" />
           </div>
           
           <div class="form-group">
-            <label>分组</label>
+            <label>{{ t('env.group') }}</label>
             <div class="group-select-wrapper">
               <select v-model="form.groupId">
-                <option value="ungrouped">未选择分组</option>
+                <option value="ungrouped">{{ t('group.ungrouped') }}</option>
                 <option v-for="group in groups" :key="group.id" :value="group.id">
                   {{ group.name }}
                 </option>
               </select>
-              <button class="btn btn-sm btn-outline" @click="openQuickAddGroup">+ 分组</button>
+              <button class="btn btn-sm btn-outline" @click="openQuickAddGroup">{{ t('env.addGroupQuick') }}</button>
             </div>
           </div>
           
-          <div class="form-divider"><span>MFA 绑定</span></div>
+          <div class="form-divider"><span>{{ t('env.mfaSection') }}</span></div>
 
           <div class="form-group">
             <label>TOTP Secret</label>
-            <input type="text" v-model="form.totpSecret" placeholder="输入或从二维码获取" />
+            <input type="text" v-model="form.totpSecret" :placeholder="t('env.totpPlaceholder')" />
           </div>
 
           <div class="form-group qr-actions">
-            <button class="btn btn-sm btn-outline" @click="handleScanQR" title="截图识别二维码">
+            <button class="btn btn-sm btn-outline" @click="handleScanQR" :title="t('env.scanQrTitle')">
               <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="10" y="1" width="5" height="5" rx="1"/><rect x="1" y="10" width="5" height="5" rx="1"/><rect x="10" y="10" width="3" height="3" rx="0.5"/><rect x="14" y="10" width="1" height="1"/><rect x="10" y="14" width="1" height="1"/><rect x="14" y="14" width="1" height="1"/></svg>
-              截图扫码
+              {{ t('env.scanQr') }}
             </button>
-            <button class="btn btn-sm btn-outline" @click="triggerFileInput" title="从图片文件识别二维码">
+            <button class="btn btn-sm btn-outline" @click="triggerFileInput" :title="t('env.scanImageTitle')">
               <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><circle cx="5" cy="7" r="1.5"/><path d="M15 11l-3-3-4 4-2-2-5 5"/></svg>
-              图片识别
+              {{ t('env.scanImage') }}
             </button>
             <input ref="fileInputRef" type="file" accept="image/*" style="display:none" @change="handleFileSelect" />
           </div>
 
           <div class="form-group" v-if="firstPasskey">
-            <label>已绑定 Passkey</label>
+            <label>{{ t('env.boundPasskey') }}</label>
             <div class="passkey-tag">
               <svg v-if="firstPasskey.type === 'system'" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M8 1a3 3 0 00-3 3v3H4a2 2 0 00-2 2v4a2 2 0 002 2h8a2 2 0 002-2v-4a2 2 0 00-2-2h-1V4a3 3 0 00-3-3z"/>
@@ -97,8 +97,8 @@
         </div>
         
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="$emit('close')">取消</button>
-          <button class="btn btn-primary" @click="handleSave">保存</button>
+          <button class="btn btn-secondary" @click="$emit('close')">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" @click="handleSave">{{ t('common.save') }}</button>
         </div>
       </div>
 
@@ -111,19 +111,19 @@
         >
           <div class="nested-modal-content">
             <div class="modal-header">
-              <h2>创建分组</h2>
+              <h2>{{ t('group.createTitle') }}</h2>
               <button class="modal-close" type="button" @click="closeQuickAddGroup">
                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
               </button>
             </div>
             <div class="modal-body">
               <div class="form-group">
-                <label>分组名称 *</label>
+                <label>{{ t('group.name') }}</label>
                 <input
                   ref="quickGroupInputRef"
                   type="text"
                   v-model="quickGroupName"
-                  placeholder="输入分组名称"
+                  :placeholder="t('group.namePlaceholder')"
                   maxlength="50"
                   @keydown.enter.prevent="confirmQuickAddGroup"
                   @keydown.esc.prevent="closeQuickAddGroup"
@@ -132,8 +132,8 @@
               <p v-if="quickGroupError" class="field-error">{{ quickGroupError }}</p>
             </div>
             <div class="modal-footer">
-              <button class="btn btn-secondary" type="button" @click="closeQuickAddGroup">取消</button>
-              <button class="btn btn-primary" type="button" @click="confirmQuickAddGroup">保存</button>
+              <button class="btn btn-secondary" type="button" @click="closeQuickAddGroup">{{ t('common.cancel') }}</button>
+              <button class="btn btn-primary" type="button" @click="confirmQuickAddGroup">{{ t('common.save') }}</button>
             </div>
           </div>
         </div>
@@ -144,7 +144,9 @@
 
 <script setup>
 import { ref, watch, computed, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTotp } from '../composables/useTotp'
+import { t as tt } from '../i18n'
 
 const props = defineProps({
   visible: {
@@ -163,6 +165,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'save', 'add-group'])
 
+const { t } = useI18n()
 const { parseQRCode, scanQR } = useTotp()
 
 const fileInputRef = ref(null)
@@ -199,7 +202,7 @@ const firstPasskey = computed(() => {
 const firstPasskeyLabel = computed(() => {
   const pk = firstPasskey.value
   if (!pk) return ''
-  return pk.label || pk.userName || pk.userDisplayName || pk.rpId || '已绑定 Passkey'
+  return pk.label || pk.userName || pk.userDisplayName || pk.rpId || t('env.boundPasskeyFallback')
 })
 
 const handleTypeChange = () => {
@@ -226,12 +229,12 @@ const closeQuickAddGroup = () => {
 const confirmQuickAddGroup = () => {
   const name = quickGroupName.value.trim()
   if (!name) {
-    quickGroupError.value = '请输入分组名称'
+    quickGroupError.value = t('group.nameRequired')
     quickGroupInputRef.value?.focus()
     return
   }
   if (props.groups.some(g => g.name === name)) {
-    quickGroupError.value = '已存在同名分组'
+    quickGroupError.value = t('group.nameExists')
     quickGroupInputRef.value?.focus()
     return
   }
@@ -248,20 +251,20 @@ const handleScanQR = async () => {
   try {
     const result = await scanQR()
     if (result && result.success === false) {
-      alert(result.error || '扫码失败')
+      alert(result.error || t('env.scanFailed'))
       return
     }
     if (result && result.secret) {
       form.value.totpSecret = result.secret
     } else {
-      alert('未识别到二维码')
+      alert(t('env.qrNotFound'))
     }
   } catch (error) {
-    const cancelReasons = ['cancelled', 'too small', 'user cancelled', '已取消']
+    const cancelReasons = ['cancelled', 'too small', 'user cancelled', '已取消', 'Cancelled']
     if (typeof error === 'string' && cancelReasons.some(r => error.includes(r))) {
       return
     }
-    alert(error || '扫码失败')
+    alert(error || t('env.scanFailed'))
   }
 }
 
@@ -276,11 +279,11 @@ const handleFileSelect = async (e) => {
       const secret = extractSecretFromOtpUri(result)
       form.value.totpSecret = secret || result
     } else {
-      alert('未能识别二维码，请确认图片中包含有效的 TOTP 二维码')
+      alert(t('env.qrNotFoundImage'))
     }
   } catch (err) {
     console.error('QR parse error:', err)
-    alert('二维码识别失败: ' + err.message)
+    alert(t('env.qrRecognizeFailed', { msg: err.message }))
   }
 
   // 清空 file input 以便重复选择同一文件
@@ -293,7 +296,7 @@ const readFileAsDataUrl = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result)
-    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.onerror = () => reject(new Error(tt('env.readFileFailed')))
     reader.readAsDataURL(file)
   })
 }
@@ -312,12 +315,12 @@ const extractSecretFromOtpUri = (uri) => {
 
 const handleSave = () => {
   if (!form.value.alias) {
-    alert('请填写别名')
+    alert(t('env.aliasRequired'))
     return
   }
 
   if (!form.value.username || !form.value.password) {
-    alert('请填写必填字段')
+    alert(t('env.fieldsRequired'))
     return
   }
 
