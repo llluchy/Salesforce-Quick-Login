@@ -1,3 +1,5 @@
+import { t } from '../../i18n'
+
 /**
  * Salesforce Apex Debug Log 解析
  * 行格式：timestamp (elapsed_ns)|EVENT|...payload
@@ -160,15 +162,28 @@ export function filterParsedLines(lines, filter) {
   return lines.filter((l) => l.kind === filter)
 }
 
-export const KIND_LABELS = {
-  debug: 'Debug',
-  error: '异常',
-  db: '数据库',
-  code: '代码',
-  flow: '自动化',
-  callout: 'Callout',
-  limit: '限额',
-  system: '系统',
-  header: '头信息',
-  other: '其它'
+/** @param {LogKind|string} kind */
+export function getKindLabel(kind) {
+  const key = `apexLog.kind.${kind}`
+  const translated = t(key)
+  return translated !== key ? translated : String(kind)
 }
+
+/** Localized display labels keyed by log kind (recomputed when locale changes). */
+export function getKindLabels() {
+  return {
+    debug: getKindLabel('debug'),
+    error: getKindLabel('error'),
+    db: getKindLabel('db'),
+    code: getKindLabel('code'),
+    flow: getKindLabel('flow'),
+    callout: getKindLabel('callout'),
+    limit: getKindLabel('limit'),
+    system: getKindLabel('system'),
+    header: getKindLabel('header'),
+    other: getKindLabel('other')
+  }
+}
+
+/** @deprecated Use getKindLabel / getKindLabels */
+export const KIND_LABELS = getKindLabels()

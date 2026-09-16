@@ -5,19 +5,21 @@
       :class="['side-tab', { active: modelValue === 'login' }]"
       @click="$emit('update:modelValue', 'login')"
     >
-      登录
+      {{ t('nav.login') }}
     </button>
     <button
       type="button"
       :class="['side-tab', { active: modelValue === 'tools' }]"
       @click="$emit('update:modelValue', 'tools')"
     >
-      工具
+      {{ t('nav.tools') }}
     </button>
   </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+
 defineProps({
   modelValue: {
     type: String,
@@ -26,6 +28,8 @@ defineProps({
 })
 
 defineEmits(['update:modelValue'])
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

@@ -22,7 +22,7 @@
       />
 
       <div class="empty-group-hint" v-if="environments.length === 0">
-        <span>该分组暂无环境</span>
+        <span>{{ t('group.emptyHint') }}</span>
       </div>
     </div>
   </div>
@@ -30,9 +30,12 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Sortable from 'sortablejs'
 import GroupHeader from './GroupHeader.vue'
 import EnvCard from './EnvCard.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   group: {

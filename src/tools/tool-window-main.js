@@ -4,29 +4,39 @@ import SoqlApp from './soql/SoqlApp.vue'
 import ObjectDetailApp from './soql/ObjectDetailApp.vue'
 import ApexLogApp from './apex-log/ApexLogApp.vue'
 import { getToolWindowDef } from './_shared/toolWindows.js'
+import { i18n, resolveLocale } from '../i18n'
 import '../assets/styles.css'
 
 const params = new URLSearchParams(location.search)
 const toolId = params.get('tool') || 'apex-log'
 const def = getToolWindowDef(toolId)
 
-if (toolId === 'soql') {
-  document.title = 'SOQL Creator'
-  createApp(SoqlApp).mount('#app')
-} else if (toolId === 'object-detail') {
-  document.title = '对象详情'
-  createApp(ObjectDetailApp).mount('#app')
-} else if (toolId === 'apex-log') {
-  document.title = 'Apex Log Viewer'
-  createApp(ApexLogApp).mount('#app')
-} else {
-  document.title = '未知工具'
-  createApp(ToolWindowShell, {
-    toolId,
-    title: '未知工具',
-    subtitle: toolId,
-    statusText: '未识别的工具标识。'
-  }).mount('#app')
+async function bootstrap() {
+  await resolveLocale()
+  const t = i18n.global.t
+
+  if (toolId === 'soql') {
+    document.title = t('tools.titleSoqlCreator')
+    createApp(SoqlApp).use(i18n).mount('#app')
+  } else if (toolId === 'object-detail') {
+    document.title = t('tools.titleObjectDetail')
+    createApp(ObjectDetailApp).use(i18n).mount('#app')
+  } else if (toolId === 'apex-log') {
+    document.title = t('tools.titleApexLogViewer')
+    createApp(ApexLogApp).use(i18n).mount('#app')
+  } else {
+    document.title = t('tools.unknownTool')
+    createApp(ToolWindowShell, {
+      toolId,
+      title: t('tools.unknownTool'),
+      subtitle: toolId,
+      statusText: t('tools.unrecognizedToolId')
+    })
+      .use(i18n)
+      .mount('#app')
+  }
+
+  console.info('[ToolWindow]', toolId, def?.page)
 }
 
-console.info('[ToolWindow]', toolId, def?.page)
+bootstrap()

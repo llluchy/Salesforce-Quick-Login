@@ -227,11 +227,11 @@ const closeToast = () => {
 const openToolWindow = async (toolId) => {
   const def = getToolWindowDef(toolId)
   if (!def) {
-    showToast('未知工具：' + toolId, 'error')
+    showToast(t('app.unknownTool', { id: toolId }), 'error')
     return
   }
   if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
-    showToast('当前不在扩展环境中，无法打开工具窗口', 'error')
+    showToast(t('app.notExtension'), 'error')
     return
   }
 
@@ -247,7 +247,7 @@ const openToolWindow = async (toolId) => {
   }
 
   if (!chrome.windows?.create) {
-    showToast('当前浏览器不支持打开独立窗口', 'error')
+    showToast(t('app.noWindowApi'), 'error')
     return
   }
 
@@ -260,7 +260,7 @@ const openToolWindow = async (toolId) => {
       focused: true
     })
   } catch (e) {
-    showToast(e.message || '打开工具窗口失败', 'error')
+    showToast(e.message || t('app.openToolFailed'), 'error')
   }
 }
 

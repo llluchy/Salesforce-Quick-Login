@@ -1,8 +1,8 @@
 <template>
   <div class="tool-hub">
     <div class="tool-hub-header">
-      <h2>工具入口</h2>
-      <p>点击图标将在独立窗口中打开对应工具。无需登录扩展账户。</p>
+      <h2>{{ t('toolsHub.title') }}</h2>
+      <p>{{ t('toolsHub.subtitle') }}</p>
     </div>
 
     <div class="tool-grid">
@@ -13,8 +13,8 @@
             <path d="M7 9h10M7 12h8M7 15h6"/>
           </svg>
         </div>
-        <div class="tool-tile-name">Apex Log Viewer</div>
-        <div class="tool-tile-desc">实时查看 Apex Debug Log</div>
+        <div class="tool-tile-name">{{ t('toolsHub.apexName') }}</div>
+        <div class="tool-tile-desc">{{ t('toolsHub.apexDesc') }}</div>
       </button>
 
       <button type="button" class="tool-tile" @click="$emit('open-tool', 'soql')">
@@ -25,15 +25,19 @@
             <path d="M5 11c0 1.7 3.1 3 7 3s7-1.3 7-3"/>
           </svg>
         </div>
-        <div class="tool-tile-name">SOQL Creator</div>
-        <div class="tool-tile-desc">生成并执行 SOQL 查询</div>
+        <div class="tool-tile-name">{{ t('toolsHub.soqlName') }}</div>
+        <div class="tool-tile-desc">{{ t('toolsHub.soqlDesc') }}</div>
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+
 defineEmits(['open-tool'])
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

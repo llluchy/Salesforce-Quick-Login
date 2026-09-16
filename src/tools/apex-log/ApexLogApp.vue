@@ -2,17 +2,18 @@
   <div class="apex-app">
     <header class="apex-header">
       <div class="apex-header-left">
-        <h1>Apex Log Viewer</h1>
+        <h1>{{ t('apexLog.productTitle') }}</h1>
         <span class="apex-user" v-if="currentUserName">{{ currentUserName }}</span>
       </div>
       <div class="apex-header-right">
+        <LocaleSwitcher variant="dark" />
         <select v-model="selectedEnvId" class="apex-select" @change="onEnvChange">
-          <option value="">选择已登录环境</option>
+          <option value="">{{ t('apexLog.selectLoggedInEnv') }}</option>
           <option v-for="env in environments" :key="env.id" :value="env.id">
             {{ env.name }} · {{ env.hostname }}
           </option>
         </select>
-        <button class="apex-btn apex-btn-icon" title="刷新环境列表" :disabled="busy" @click="refreshEnvs">
+        <button class="apex-btn apex-btn-icon" :title="t('apexLog.refreshEnvList')" :disabled="busy" @click="refreshEnvs">
           <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 4v5h-5M3 16v-5h5"/>
             <path d="M4.5 9A7 7 0 0116 6.5M15.5 11A7 7 0 014 13.5"/>
@@ -32,11 +33,11 @@
             <path d="M14 18h20M14 24h16M14 30h12"/>
           </svg>
         </div>
-        <h2>选择 Salesforce 环境</h2>
-        <p>将扫描浏览器 Cookie 中的 Salesforce 会话（与 SOQL 工具同一套逻辑）。无需登录扩展账户。</p>
-        <p v-if="!environments.length && !busy" class="apex-hint">未发现已登录环境。请先在本浏览器登录任意 Salesforce Org，再点刷新。</p>
+        <h2>{{ t('apexLog.welcomeTitle') }}</h2>
+        <p>{{ t('apexLog.welcomeDesc') }}</p>
+        <p v-if="!environments.length && !busy" class="apex-hint">{{ t('apexLog.welcomeHint') }}</p>
         <button class="apex-btn apex-btn-primary" :disabled="busy" @click="refreshEnvs">
-          {{ busy ? '扫描中…' : '扫描已登录环境' }}
+          {{ busy ? t('apexLog.scanning') : t('apexLog.scanLoggedInEnvs') }}
         </button>
       </div>
     </div>
@@ -46,12 +47,12 @@
       <aside class="apex-sidebar">
         <div class="apex-toolbar">
           <div class="apex-toolbar-row">
-            <button class="apex-btn apex-btn-secondary apex-btn-sm" @click="markAllRead">全部已读</button>
+            <button class="apex-btn apex-btn-secondary apex-btn-sm" @click="markAllRead">{{ t('apexLog.markAllRead') }}</button>
             <span class="apex-count">{{ filteredLogs.length }}{{ filteredLogs.length !== logs.length ? '/' + logs.length : '' }}</span>
           </div>
           <div class="apex-filters">
             <div class="apex-filter-group">
-              <span>应用</span>
+              <span>{{ t('apexLog.filterApp') }}</span>
               <button
                 v-for="f in appFilters"
                 :key="'app-' + f.value"
@@ -61,7 +62,7 @@
               >{{ f.label }}</button>
             </div>
             <div class="apex-filter-group">
-              <span>状态</span>
+              <span>{{ t('apexLog.filterStatus') }}</span>
               <button
                 v-for="f in statusFilters"
                 :key="'st-' + f.value"
@@ -71,10 +72,10 @@
               >{{ f.label }}</button>
             </div>
             <div class="apex-filter-group">
-              <span>用户</span>
-              <button type="button" :class="['apex-chip', { active: userFilter === 'all' }]" @click="userFilter = 'all'">所有</button>
+              <span>{{ t('apexLog.filterUser') }}</span>
+              <button type="button" :class="['apex-chip', { active: userFilter === 'all' }]" @click="userFilter = 'all'">{{ t('apexLog.filterAll') }}</button>
               <button type="button" :class="['apex-chip', { active: userFilter === 'current' }]" @click="userFilter = 'current'">
-                {{ currentUserName || '当前用户' }}
+                {{ currentUserName || t('apexLog.currentUser') }}
               </button>
               <button
                 v-for="u in trackedUsers"
@@ -87,13 +88,13 @@
             </div>
             <div class="apex-filter-actions">
               <button class="apex-btn apex-btn-outline apex-btn-sm" :disabled="busy" @click="onTrackAutomated">
-                追踪 Process Automated
+                {{ t('apexLog.trackProcessAutomated') }}
               </button>
               <button class="apex-btn apex-btn-outline apex-btn-sm" :disabled="busy" @click="openUserModal">
-                添加自定义用户
+                {{ t('apexLog.addCustomUser') }}
               </button>
               <button class="apex-btn apex-btn-outline apex-btn-sm" :disabled="busy" @click="onRenewTrace">
-                续期 TraceFlag
+                {{ t('apexLog.renewTraceFlag') }}
               </button>
             </div>
           </div>
@@ -101,8 +102,8 @@
         </div>
 
         <div class="apex-log-list">
-          <div v-if="loadingLogs" class="apex-empty">加载日志中…</div>
-          <div v-else-if="!filteredLogs.length" class="apex-empty">暂无日志</div>
+          <div v-if="loadingLogs" class="apex-empty">{{ t('apexLog.loadingLogs') }}</div>
+          <div v-else-if="!filteredLogs.length" class="apex-empty">{{ t('apexLog.noLogs') }}</div>
           <button
             v-for="log in filteredLogs"
             :key="log.Id"
@@ -123,7 +124,7 @@
 
       <section class="apex-detail">
         <div v-if="!selectedLog" class="apex-detail-empty">
-          <p>选择左侧日志查看详情</p>
+          <p>{{ t('apexLog.selectLogHint') }}</p>
         </div>
         <template v-else>
           <div class="apex-detail-head">
@@ -134,21 +135,21 @@
               </span>
             </div>
             <div class="apex-detail-actions">
-              <button class="apex-btn apex-btn-secondary apex-btn-sm" :disabled="!logBody" @click="copyBody">复制筛选</button>
-              <button class="apex-btn apex-btn-secondary apex-btn-sm" :disabled="!logBody" @click="copyRawBody">复制全文</button>
-              <button class="apex-btn apex-btn-secondary apex-btn-sm" :disabled="!logBody" @click="downloadBody">下载</button>
+              <button class="apex-btn apex-btn-secondary apex-btn-sm" :disabled="!logBody" @click="copyBody">{{ t('apexLog.copyFiltered') }}</button>
+              <button class="apex-btn apex-btn-secondary apex-btn-sm" :disabled="!logBody" @click="copyRawBody">{{ t('apexLog.copyFull') }}</button>
+              <button class="apex-btn apex-btn-secondary apex-btn-sm" :disabled="!logBody" @click="downloadBody">{{ t('apexLog.download') }}</button>
             </div>
           </div>
           <div class="apex-detail-meta">
-            <span>用户：{{ selectedLog.LogUser?.Name || '-' }}</span>
-            <span>应用：{{ selectedLog.Application || '-' }}</span>
-            <span>时间：{{ formatTime(selectedLog.StartTime) }}</span>
-            <span>耗时：{{ formatDuration(selectedLog.DurationMilliseconds) }}</span>
-            <span>大小：{{ formatSize(selectedLog.LogLength) }}</span>
+            <span>{{ t('apexLog.metaUser') }}：{{ selectedLog.LogUser?.Name || '-' }}</span>
+            <span>{{ t('apexLog.metaApp') }}：{{ selectedLog.Application || '-' }}</span>
+            <span>{{ t('apexLog.metaTime') }}：{{ formatTime(selectedLog.StartTime) }}</span>
+            <span>{{ t('apexLog.metaDuration') }}：{{ formatDuration(selectedLog.DurationMilliseconds) }}</span>
+            <span>{{ t('apexLog.metaSize') }}：{{ formatSize(selectedLog.LogLength) }}</span>
             <span v-if="parsedLog.apiVersion">API {{ parsedLog.apiVersion }}</span>
           </div>
 
-          <div v-if="loadingBody" class="apex-empty">加载正文…</div>
+          <div v-if="loadingBody" class="apex-empty">{{ t('apexLog.loadingBody') }}</div>
           <template v-else-if="logBody">
             <div class="apex-summary">
               <button
@@ -161,7 +162,7 @@
                 <span class="apex-summary-label">{{ chip.label }}</span>
                 <strong>{{ chip.count }}</strong>
               </button>
-              <span class="apex-detail-count">{{ visibleLines.length }} / {{ parsedLog.counts.total }} 行</span>
+              <span class="apex-detail-count">{{ t('apexLog.linesCount', { visible: visibleLines.length, total: parsedLog.counts.total }) }}</span>
             </div>
 
             <div v-if="parsedLog.categories.length" class="apex-levels">
@@ -176,11 +177,11 @@
             <div class="apex-log-view">
               <div class="apex-log-cols">
                 <span>#</span>
-                <span>时间</span>
-                <span>事件</span>
-                <span>内容</span>
+                <span>{{ t('apexLog.colTime') }}</span>
+                <span>{{ t('apexLog.colEvent') }}</span>
+                <span>{{ t('apexLog.colContent') }}</span>
               </div>
-              <div v-if="!visibleLines.length" class="apex-empty apex-empty-inline">当前筛选无匹配行</div>
+              <div v-if="!visibleLines.length" class="apex-empty apex-empty-inline">{{ t('apexLog.noMatchingLines') }}</div>
               <div
                 v-for="row in visibleLines"
                 :key="row.index"
@@ -196,7 +197,7 @@
               </div>
             </div>
           </template>
-          <div v-else class="apex-empty">日志正文为空</div>
+          <div v-else class="apex-empty">{{ t('apexLog.emptyBody') }}</div>
         </template>
       </section>
     </div>
@@ -208,24 +209,24 @@
       <div v-if="userModalOpen" class="apex-modal-overlay">
         <div class="apex-modal" role="dialog" aria-labelledby="apex-user-modal-title">
           <div class="apex-modal-head">
-            <h2 id="apex-user-modal-title">添加自定义用户</h2>
+            <h2 id="apex-user-modal-title">{{ t('apexLog.modalAddUser') }}</h2>
             <button type="button" class="apex-modal-close" @click="closeUserModal">×</button>
           </div>
           <div class="apex-modal-body">
-            <p class="apex-modal-hint">填写条件检索 User，勾选结果后点击「确认」加入用户筛选并开启 TraceFlag 监听。</p>
+            <p class="apex-modal-hint">{{ t('apexLog.modalHint') }}</p>
 
             <section class="apex-user-section apex-user-section-filters">
-              <div class="apex-user-section-head">检索条件</div>
+              <div class="apex-user-section-head">{{ t('apexLog.searchCriteria') }}</div>
               <div class="apex-user-form">
-                <label>Name<input v-model.trim="userSearch.name" type="text" placeholder="显示名" @keydown.enter.prevent="runUserSearch" /></label>
-                <label>Email<input v-model.trim="userSearch.email" type="text" placeholder="邮箱" @keydown.enter.prevent="runUserSearch" /></label>
-                <label>Username<input v-model.trim="userSearch.username" type="text" placeholder="登录名" @keydown.enter.prevent="runUserSearch" /></label>
-                <label>Alias<input v-model.trim="userSearch.alias" type="text" placeholder="别名" @keydown.enter.prevent="runUserSearch" /></label>
+                <label>Name<input v-model.trim="userSearch.name" type="text" :placeholder="t('apexLog.placeholderDisplayName')" @keydown.enter.prevent="runUserSearch" /></label>
+                <label>Email<input v-model.trim="userSearch.email" type="text" :placeholder="t('apexLog.placeholderEmail')" @keydown.enter.prevent="runUserSearch" /></label>
+                <label>Username<input v-model.trim="userSearch.username" type="text" :placeholder="t('apexLog.placeholderUsername')" @keydown.enter.prevent="runUserSearch" /></label>
+                <label>Alias<input v-model.trim="userSearch.alias" type="text" :placeholder="t('apexLog.placeholderAlias')" @keydown.enter.prevent="runUserSearch" /></label>
                 <label>First Name<input v-model.trim="userSearch.firstName" type="text" @keydown.enter.prevent="runUserSearch" /></label>
                 <label>Last Name<input v-model.trim="userSearch.lastName" type="text" @keydown.enter.prevent="runUserSearch" /></label>
                 <label class="apex-user-check">
                   <input v-model="userSearch.isActive" type="checkbox" />
-                  仅激活用户
+                  {{ t('apexLog.activeUsersOnly') }}
                 </label>
               </div>
               <span v-if="userSearchError" class="apex-modal-error">{{ userSearchError }}</span>
@@ -233,14 +234,14 @@
 
             <section class="apex-user-section apex-user-section-results">
               <div class="apex-user-section-head">
-                检索结果
+                {{ t('apexLog.searchResults') }}
                 <span v-if="userResults.length" class="apex-user-section-count">{{ userResults.length }}</span>
-                <span v-if="selectedUserIds.length" class="apex-user-section-picked">已选 {{ selectedUserIds.length }}</span>
+                <span v-if="selectedUserIds.length" class="apex-user-section-picked">{{ t('apexLog.selectedCount', { count: selectedUserIds.length }) }}</span>
               </div>
               <div class="apex-user-results">
-                <div v-if="searchingUsers" class="apex-empty apex-empty-inline">检索中…</div>
+                <div v-if="searchingUsers" class="apex-empty apex-empty-inline">{{ t('apexLog.searching') }}</div>
                 <div v-else-if="!userResults.length" class="apex-empty apex-empty-inline">
-                  {{ userSearched ? '无匹配用户' : '输入条件后点击下方「检索」' }}
+                  {{ userSearched ? t('apexLog.noMatchingUsers') : t('apexLog.enterCriteriaToSearch') }}
                 </div>
                 <label
                   v-for="u in userResults"
@@ -256,7 +257,7 @@
                   <div class="apex-user-result-body">
                     <div class="apex-user-result-main">
                       <strong>{{ u.name }}</strong>
-                      <span v-if="!u.isActive" class="apex-user-inactive">未激活</span>
+                      <span v-if="!u.isActive" class="apex-user-inactive">{{ t('apexLog.inactive') }}</span>
                     </div>
                     <div class="apex-user-result-meta">
                       <span v-if="u.username">{{ u.username }}</span>
@@ -276,7 +277,7 @@
               :disabled="searchingUsers || confirmingUsers"
               @click="runUserSearch"
             >
-              {{ searchingUsers ? '检索中…' : '检索' }}
+              {{ searchingUsers ? t('apexLog.searching') : t('apexLog.search') }}
             </button>
             <button
               type="button"
@@ -284,7 +285,7 @@
               :disabled="!selectedUserIds.length || confirmingUsers || searchingUsers"
               @click="confirmSelectedUsers"
             >
-              {{ confirmingUsers ? '添加中…' : (selectedUserIds.length ? `确认（${selectedUserIds.length}）` : '确认') }}
+              {{ confirmingUsers ? t('apexLog.adding') : (selectedUserIds.length ? t('apexLog.confirmWithCount', { count: selectedUserIds.length }) : t('common.confirm')) }}
             </button>
           </div>
         </div>
@@ -295,10 +296,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import { useApexLogApi } from './useApexLogApi'
 import {
   parseApexLogBody,
-  filterParsedLines
+  filterParsedLines,
+  getKindLabel
 } from './parseApexLog.js'
 import {
   searchUsersClient,
@@ -306,6 +310,7 @@ import {
   persistTrackedUser
 } from './sfUserTrace.js'
 
+const { t, locale } = useI18n()
 const api = useApexLogApi()
 
 /** ApexLog.Status：英文 Org 为 Success；中文界面常为「成功」 */
@@ -350,17 +355,17 @@ const userSearch = ref({
 let pollUiTimer = null
 let renewTimer = null
 
-const appFilters = [
-  { label: '全部', value: '' },
+const appFilters = computed(() => [
+  { label: t('apexLog.filterAll'), value: '' },
   { label: 'API', value: 'Api' },
   { label: 'Browser', value: 'Browser' },
   { label: 'System', value: 'System' }
-]
-const statusFilters = [
-  { label: '全部', value: '' },
-  { label: '成功', value: 'success' },
-  { label: '失败', value: 'error' }
-]
+])
+const statusFilters = computed(() => [
+  { label: t('apexLog.filterAll'), value: '' },
+  { label: t('apexLog.filterSuccess'), value: 'success' },
+  { label: t('apexLog.filterError'), value: 'error' }
+])
 
 const filteredLogs = computed(() => {
   return logs.value.filter((log) => {
@@ -388,13 +393,13 @@ const visibleLines = computed(() =>
 const summaryChips = computed(() => {
   const c = parsedLog.value.counts
   return [
-    { id: 'all', label: '全部', count: c.total, kind: 'other' },
-    { id: 'debug', label: 'Debug', count: c.debug, kind: 'debug' },
-    { id: 'error', label: '异常', count: c.error, kind: 'error' },
-    { id: 'db', label: 'SOQL/DML', count: c.db, kind: 'db' },
-    { id: 'code', label: '代码', count: c.code, kind: 'code' },
-    { id: 'flow', label: 'Flow', count: c.flow, kind: 'flow' },
-    { id: 'callout', label: 'Callout', count: c.callout, kind: 'callout' }
+    { id: 'all', label: t('apexLog.summaryAll'), count: c.total, kind: 'other' },
+    { id: 'debug', label: getKindLabel('debug'), count: c.debug, kind: 'debug' },
+    { id: 'error', label: t('apexLog.summaryError'), count: c.error, kind: 'error' },
+    { id: 'db', label: t('apexLog.summaryDb'), count: c.db, kind: 'db' },
+    { id: 'code', label: t('apexLog.summaryCode'), count: c.code, kind: 'code' },
+    { id: 'flow', label: getKindLabel('flow'), count: c.flow, kind: 'flow' },
+    { id: 'callout', label: getKindLabel('callout'), count: c.callout, kind: 'callout' }
   ]
 })
 
@@ -430,7 +435,9 @@ function isSuccess(status) {
 
 function formatTime(dateStr) {
   if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleTimeString('zh-CN', { hour12: false })
+  const loc =
+    locale.value === 'zh-CN' ? 'zh-CN' : locale.value === 'ja' ? 'ja' : 'en'
+  return new Date(dateStr).toLocaleTimeString(loc, { hour12: false })
 }
 
 function formatDuration(ms) {
@@ -449,7 +456,7 @@ async function refreshEnvs() {
   busy.value = true
   try {
     const res = await api.discover()
-    if (!res.success) throw new Error(res.error || '扫描失败')
+    if (!res.success) throw new Error(res.error || t('apexLog.toastScanFailed'))
     environments.value = res.environments || []
     if (res.activeEnvId && environments.value.some((e) => e.id === res.activeEnvId)) {
       selectedEnvId.value = res.activeEnvId
@@ -458,12 +465,12 @@ async function refreshEnvs() {
       currentUserName.value = env?.userName || ''
     }
     if (!environments.value.length) {
-      showToast('未发现已登录的 Salesforce 环境', 'error')
+      showToast(t('apexLog.toastNoEnvs'), 'error')
     } else {
-      showToast(`发现 ${environments.value.length} 个环境`)
+      showToast(t('apexLog.toastEnvsFound', { count: environments.value.length }))
     }
   } catch (e) {
-    showToast(e.message || '扫描失败', 'error')
+    showToast(e.message || t('apexLog.toastScanFailed'), 'error')
   } finally {
     busy.value = false
   }
@@ -485,7 +492,7 @@ async function onEnvChange() {
   busy.value = true
   try {
     const res = await api.switchEnv(envId)
-    if (!res.success) throw new Error(res.error || '切换失败')
+    if (!res.success) throw new Error(res.error || t('apexLog.toastSwitchFailed'))
     activeEnvId.value = envId
     currentUserName.value = res.userName || ''
     environments.value = res.environments || environments.value
@@ -494,12 +501,12 @@ async function onEnvChange() {
     logs.value = []
     selectedLog.value = null
     logBody.value = ''
-    showToast('已连接，正在拉取日志…')
+    showToast(t('apexLog.toastConnected'))
     await loadLogs(true)
     startRuntime()
   } catch (e) {
     selectedEnvId.value = activeEnvId.value || ''
-    showToast(e.message || '切换环境失败', 'error')
+    showToast(e.message || t('apexLog.toastSwitchFailed'), 'error')
   } finally {
     busy.value = false
   }
@@ -512,11 +519,11 @@ async function loadLogs(replace = false) {
     const res = await api.fetchLogs(100)
     if (!res.success) {
       if (res.error === 'Session expired') {
-        showToast('Session 已过期，请刷新环境', 'error')
+        showToast(t('apexLog.toastSessionExpired'), 'error')
         await stopRuntime()
         return
       }
-      throw new Error(res.error || '拉取失败')
+      throw new Error(res.error || t('apexLog.toastFetchFailed'))
     }
     const records = res.data?.records || []
     if (replace) {
@@ -531,7 +538,7 @@ async function loadLogs(replace = false) {
       }
     }
   } catch (e) {
-    if (replace) showToast(e.message || '加载日志失败', 'error')
+    if (replace) showToast(e.message || t('apexLog.toastLoadLogsFailed'), 'error')
   } finally {
     loadingLogs.value = false
   }
@@ -547,10 +554,10 @@ async function openDetail(log) {
   logBody.value = ''
   try {
     const res = await api.fetchLogBody(log.Id)
-    if (!res.success) throw new Error(res.error || '加载正文失败')
+    if (!res.success) throw new Error(res.error || t('apexLog.toastLoadBodyFailed'))
     logBody.value = res.body || ''
   } catch (e) {
-    showToast(e.message || '加载正文失败', 'error')
+    showToast(e.message || t('apexLog.toastLoadBodyFailed'), 'error')
   } finally {
     loadingBody.value = false
   }
@@ -564,11 +571,11 @@ async function onRenewTrace() {
   busy.value = true
   try {
     const res = await api.renewTraceFlag(60)
-    if (!res.success) throw new Error(res.error || '续期失败')
-    const extra = Array.isArray(res.tracked) ? res.tracked.filter((t) => t.success !== false).length : 0
-    showToast(extra ? `TraceFlag 已续期（含 ${extra} 个追踪用户）` : 'TraceFlag 已续期 60 分钟')
+    if (!res.success) throw new Error(res.error || t('apexLog.toastRenewFailed'))
+    const extra = Array.isArray(res.tracked) ? res.tracked.filter((tr) => tr.success !== false).length : 0
+    showToast(extra ? t('apexLog.toastRenewWithTracked', { count: extra }) : t('apexLog.toastRenewOk'))
   } catch (e) {
-    showToast(e.message || '续期失败', 'error')
+    showToast(e.message || t('apexLog.toastRenewFailed'), 'error')
   } finally {
     busy.value = false
   }
@@ -578,13 +585,13 @@ async function onTrackAutomated() {
   busy.value = true
   try {
     const res = await api.trackProcessAutomated(60)
-    if (!res.success) throw new Error(res.error || '追踪失败')
+    if (!res.success) throw new Error(res.error || t('apexLog.toastTrackFailed'))
     if (res.trackedUsers) trackedUsers.value = res.trackedUsers
     const uid = res.userId
     if (uid) userFilter.value = uid
-    showToast('已为 Process Automated 开启追踪')
+    showToast(t('apexLog.toastTrackAutomatedOk'))
   } catch (e) {
-    showToast(e.message || '追踪失败', 'error')
+    showToast(e.message || t('apexLog.toastTrackFailed'), 'error')
   } finally {
     busy.value = false
   }
@@ -623,7 +630,7 @@ async function runUserSearch() {
   selectedUserIds.value = []
   try {
     const host = currentEnvHostname()
-    if (!host) throw new Error('请先选择已登录环境')
+    if (!host) throw new Error(t('apexLog.toastSelectEnvFirst'))
     userResults.value = await searchUsersClient(host, { ...userSearch.value }, 40)
   } catch (e) {
     userResults.value = []
@@ -639,11 +646,11 @@ async function confirmSelectedUsers() {
   userSearchError.value = ''
   try {
     const host = currentEnvHostname()
-    if (!host) throw new Error('请先选择已登录环境')
-    if (!activeEnvId.value) throw new Error('无活动环境')
+    if (!host) throw new Error(t('apexLog.toastSelectEnvFirst'))
+    if (!activeEnvId.value) throw new Error(t('apexLog.toastNoActiveEnv'))
 
     const picked = userResults.value.filter((u) => selectedUserIds.value.includes(u.id))
-    if (!picked.length) throw new Error('请先勾选用户')
+    if (!picked.length) throw new Error(t('apexLog.toastSelectUsersFirst'))
 
     let lastId = ''
     for (const user of picked) {
@@ -657,10 +664,10 @@ async function confirmSelectedUsers() {
 
     if (lastId) userFilter.value = lastId
     closeUserModal()
-    showToast(`已添加 ${picked.length} 个用户到筛选并开启监听`)
+    showToast(t('apexLog.toastAddUsersOk', { count: picked.length }))
   } catch (e) {
     userSearchError.value = e.message || String(e)
-    showToast(e.message || '添加失败', 'error')
+    showToast(e.message || t('apexLog.toastAddFailed'), 'error')
   } finally {
     confirmingUsers.value = false
   }
@@ -669,16 +676,16 @@ async function confirmSelectedUsers() {
 function copyBody() {
   if (!displayBody.value) return
   navigator.clipboard.writeText(displayBody.value).then(
-    () => showToast('已复制筛选内容'),
-    () => showToast('复制失败', 'error')
+    () => showToast(t('apexLog.toastCopyFilteredOk')),
+    () => showToast(t('apexLog.toastCopyFailed'), 'error')
   )
 }
 
 function copyRawBody() {
   if (!logBody.value) return
   navigator.clipboard.writeText(logBody.value).then(
-    () => showToast('已复制全文'),
-    () => showToast('复制失败', 'error')
+    () => showToast(t('apexLog.toastCopyFullOk')),
+    () => showToast(t('apexLog.toastCopyFailed'), 'error')
   )
 }
 

@@ -11,19 +11,22 @@
             :title="describe.name"
             @click="copyText(describe.name)"
           >{{ describe.name }}</button>
-          <span v-if="describe?.keyPrefix" class="meta-chip">前缀 {{ describe.keyPrefix }}</span>
+          <span v-if="describe?.keyPrefix" class="meta-chip">{{ t('objectDetail.prefix') }} {{ describe.keyPrefix }}</span>
           <span v-if="hostname" class="meta-chip muted">{{ hostname }}</span>
           <span v-if="recordId" class="meta-chip">Id {{ recordId }}</span>
-          <span v-if="describe?.custom" class="meta-chip accent">自定义</span>
-          <span v-else-if="describe" class="meta-chip">标准</span>
+          <span v-if="describe?.custom" class="meta-chip accent">{{ t('objectDetail.custom') }}</span>
+          <span v-else-if="describe" class="meta-chip">{{ t('objectDetail.standard') }}</span>
         </div>
       </div>
-      <div v-if="capabilityChips.length" class="od-caps">
-        <span
-          v-for="cap in capabilityChips"
-          :key="cap.key"
-          :class="['cap', { on: cap.on }]"
-        >{{ cap.label }}</span>
+      <div class="od-header-right">
+        <LocaleSwitcher variant="dark" />
+        <div v-if="capabilityChips.length" class="od-caps">
+          <span
+            v-for="cap in capabilityChips"
+            :key="cap.key"
+            :class="['cap', { on: cap.on }]"
+          >{{ cap.label }}</span>
+        </div>
       </div>
     </header>
 
@@ -31,13 +34,13 @@
 
     <div v-if="bootError" class="od-empty">
       <div class="empty-card">
-        <h2>无法加载对象详情</h2>
+        <h2>{{ t('objectDetail.loadFailedTitle') }}</h2>
         <p>{{ bootError }}</p>
       </div>
     </div>
 
     <div v-else-if="loading" class="od-empty">
-      <p class="list-hint">正在加载对象元数据…</p>
+      <p class="list-hint">{{ t('objectDetail.loadingMetadata') }}</p>
     </div>
 
     <div v-else class="od-body">
@@ -57,31 +60,31 @@
       <section class="od-content panel">
         <!-- 概览 -->
         <div v-if="activeSection === 'overview'" class="section-scroll">
-          <h2 class="section-title">对象概览</h2>
+          <h2 class="section-title">{{ t('objectDetail.overviewTitle') }}</h2>
           <div class="kv-grid">
-            <div class="kv"><span class="k">标签</span><span class="v">{{ describe.label }}</span></div>
-            <div class="kv"><span class="k">复数标签</span><span class="v">{{ describe.labelPlural }}</span></div>
+            <div class="kv"><span class="k">{{ t('objectDetail.label') }}</span><span class="v">{{ describe.label }}</span></div>
+            <div class="kv"><span class="k">{{ t('objectDetail.labelPlural') }}</span><span class="v">{{ describe.labelPlural }}</span></div>
             <div class="kv"><span class="k">API Name</span>
               <button type="button" class="v copyable" @click="copyText(describe.name)">{{ describe.name }}</button>
             </div>
             <div class="kv"><span class="k">Key Prefix</span><span class="v mono">{{ describe.keyPrefix || '—' }}</span></div>
-            <div class="kv"><span class="k">类型</span><span class="v">{{ objectKindLabel }}</span></div>
-            <div class="kv"><span class="k">自定义设置</span><span class="v">{{ yesNo(describe.customSetting) }}</span></div>
+            <div class="kv"><span class="k">{{ t('objectDetail.type') }}</span><span class="v">{{ objectKindLabel }}</span></div>
+            <div class="kv"><span class="k">{{ t('objectDetail.customSetting') }}</span><span class="v">{{ yesNo(describe.customSetting) }}</span></div>
           </div>
 
-          <h3 class="section-sub">能力</h3>
+          <h3 class="section-sub">{{ t('objectDetail.capabilities') }}</h3>
           <div class="od-caps inline">
             <span v-for="cap in allCapabilityChips" :key="cap.key" :class="['cap', { on: cap.on }]">{{ cap.label }}</span>
           </div>
 
-          <h3 class="section-sub">统计</h3>
+          <h3 class="section-sub">{{ t('objectDetail.stats') }}</h3>
           <div class="stat-row">
-            <div class="stat"><strong>{{ fieldStats.total }}</strong><span>字段</span></div>
-            <div class="stat"><strong>{{ fieldStats.custom }}</strong><span>自定义</span></div>
-            <div class="stat"><strong>{{ fieldStats.reference }}</strong><span>Lookup</span></div>
-            <div class="stat"><strong>{{ fieldStats.picklist }}</strong><span>Picklist</span></div>
-            <div class="stat"><strong>{{ (describe.childRelationships || []).length }}</strong><span>子关系</span></div>
-            <div class="stat"><strong>{{ (describe.recordTypeInfos || []).length }}</strong><span>记录类型</span></div>
+            <div class="stat"><strong>{{ fieldStats.total }}</strong><span>{{ t('objectDetail.statFields') }}</span></div>
+            <div class="stat"><strong>{{ fieldStats.custom }}</strong><span>{{ t('objectDetail.statCustom') }}</span></div>
+            <div class="stat"><strong>{{ fieldStats.reference }}</strong><span>{{ t('objectDetail.statReference') }}</span></div>
+            <div class="stat"><strong>{{ fieldStats.picklist }}</strong><span>{{ t('objectDetail.statPicklist') }}</span></div>
+            <div class="stat"><strong>{{ (describe.childRelationships || []).length }}</strong><span>{{ t('objectDetail.statChildRels') }}</span></div>
+            <div class="stat"><strong>{{ (describe.recordTypeInfos || []).length }}</strong><span>{{ t('objectDetail.statRecordTypes') }}</span></div>
           </div>
           <p v-if="statusMessage" class="status-text">{{ statusMessage }}</p>
         </div>
@@ -93,12 +96,12 @@
               v-model.trim="fieldSearch"
               class="search-input"
               type="search"
-              placeholder="搜索标签 / API / 类型"
+              :placeholder="t('objectDetail.searchFieldsPlaceholder')"
             />
             <div class="chips">
-              <button type="button" :class="['chip', { active: fieldKind === 'all' }]" @click="fieldKind = 'all'">全部</button>
-              <button type="button" :class="['chip', { active: fieldKind === 'standard' }]" @click="fieldKind = 'standard'">标准</button>
-              <button type="button" :class="['chip', { active: fieldKind === 'custom' }]" @click="fieldKind = 'custom'">自定义</button>
+              <button type="button" :class="['chip', { active: fieldKind === 'all' }]" @click="fieldKind = 'all'">{{ t('soql.chipAll') }}</button>
+              <button type="button" :class="['chip', { active: fieldKind === 'standard' }]" @click="fieldKind = 'standard'">{{ t('soql.chipStandard') }}</button>
+              <button type="button" :class="['chip', { active: fieldKind === 'custom' }]" @click="fieldKind = 'custom'">{{ t('soql.chipCustom') }}</button>
             </div>
             <span class="toolbar-count">{{ filteredFields.length }} / {{ fields.length }}</span>
           </div>
@@ -107,12 +110,12 @@
               <thead>
                 <tr>
                   <th class="col-expand"></th>
-                  <th>标签</th>
+                  <th>{{ t('objectDetail.tableLabel') }}</th>
                   <th>API Name</th>
-                  <th>类型</th>
-                  <th>必填</th>
-                  <th>自定义</th>
-                  <th>值</th>
+                  <th>{{ t('objectDetail.type') }}</th>
+                  <th>{{ t('objectDetail.tableRequired') }}</th>
+                  <th>{{ t('objectDetail.custom') }}</th>
+                  <th>{{ t('objectDetail.tableValue') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -148,19 +151,19 @@
                     <td colspan="7">
                       <div class="expand-body">
                         <div v-if="field.inlineHelpText" class="expand-block">
-                          <h4>帮助文本</h4>
+                          <h4>{{ t('objectDetail.helpText') }}</h4>
                           <p>{{ field.inlineHelpText }}</p>
                         </div>
                         <div v-if="field.calculated || field.calculatedFormula" class="expand-block">
-                          <h4>公式</h4>
+                          <h4>{{ t('objectDetail.formula') }}</h4>
                           <pre>{{ field.calculatedFormula || '(calculated)' }}</pre>
                         </div>
                         <div class="expand-kv">
-                          <span>默认值：{{ formatDefault(field) }}</span>
-                          <span>创建时默认：{{ yesNo(field.defaultedOnCreate) }}</span>
-                          <span>唯一：{{ yesNo(field.unique) }}</span>
+                          <span>{{ t('objectDetail.defaultValue') }}：{{ formatDefault(field) }}</span>
+                          <span>{{ t('objectDetail.defaultedOnCreate') }}：{{ yesNo(field.defaultedOnCreate) }}</span>
+                          <span>{{ t('objectDetail.unique') }}：{{ yesNo(field.unique) }}</span>
                           <span>External Id：{{ yesNo(field.externalId) }}</span>
-                          <span>自动编号：{{ yesNo(field.autoNumber) }}</span>
+                          <span>{{ t('objectDetail.autoNumber') }}：{{ yesNo(field.autoNumber) }}</span>
                           <span>Id Lookup：{{ yesNo(field.idLookup) }}</span>
                           <span>Groupable：{{ yesNo(field.groupable) }}</span>
                           <span>Aggregatable：{{ yesNo(field.aggregatable) }}</span>
@@ -172,7 +175,7 @@
                           <span>Sortable：{{ yesNo(field.sortable) }}</span>
                         </div>
                         <div v-if="field.type === 'reference' || field.relationshipName" class="expand-block">
-                          <h4>关系</h4>
+                          <h4>{{ t('objectDetail.relationships') }}</h4>
                           <p>
                             relationshipName：<code>{{ field.relationshipName || '—' }}</code>
                             · referenceTo：<code>{{ (field.referenceTo || []).join(', ') || '—' }}</code>
@@ -181,31 +184,31 @@
                           </p>
                         </div>
                         <div v-if="(field.picklistValues || []).length" class="expand-block">
-                          <h4>Picklist（{{ field.picklistValues.length }}）</h4>
+                          <h4>{{ t('objectDetail.picklistCount', { count: field.picklistValues.length }) }}</h4>
                           <ul class="pick-list">
                             <li v-for="(pv, i) in field.picklistValues" :key="i">
                               <code>{{ pv.value }}</code>
                               <span v-if="pv.label !== pv.value"> — {{ pv.label }}</span>
-                              <span v-if="!pv.active" class="dim">（停用）</span>
-                              <span v-if="pv.defaultValue" class="accent-text">默认</span>
+                              <span v-if="!pv.active" class="dim">{{ t('objectDetail.picklistInactive') }}</span>
+                              <span v-if="pv.defaultValue" class="accent-text">{{ t('objectDetail.picklistDefault') }}</span>
                             </li>
                           </ul>
                         </div>
-                        <p v-if="!hasExpandContent(field)" class="dim">无额外详情</p>
+                        <p v-if="!hasExpandContent(field)" class="dim">{{ t('objectDetail.noExtraDetail') }}</p>
                       </div>
                     </td>
                   </tr>
                 </template>
               </tbody>
             </table>
-            <p v-if="filteredFields.length === 0" class="list-hint">无匹配字段</p>
+            <p v-if="filteredFields.length === 0" class="list-hint">{{ t('objectDetail.noMatchingFields') }}</p>
           </div>
         </div>
 
         <!-- 子关系 -->
         <div v-else-if="activeSection === 'children'" class="list-section">
           <div class="list-section-head">
-            <h2 class="section-title">子关系</h2>
+            <h2 class="section-title">{{ t('objectDetail.childrenTitle') }}</h2>
           </div>
           <div class="table-wrap">
             <table v-if="childRels.length" class="meta-table">
@@ -234,20 +237,20 @@
                 </tr>
               </tbody>
             </table>
-            <p v-else class="list-hint">无子关系</p>
+            <p v-else class="list-hint">{{ t('objectDetail.noChildRels') }}</p>
           </div>
         </div>
 
         <!-- 记录类型 -->
         <div v-else-if="activeSection === 'recordTypes'" class="list-section">
           <div class="list-section-head">
-            <h2 class="section-title">记录类型</h2>
+            <h2 class="section-title">{{ t('objectDetail.recordTypesTitle') }}</h2>
           </div>
           <div class="table-wrap">
             <table v-if="recordTypes.length" class="meta-table">
               <thead>
                 <tr>
-                  <th>名称</th>
+                  <th>{{ t('objectDetail.label') }}</th>
                   <th>Developer Name</th>
                   <th>Record Type Id</th>
                   <th>Available</th>
@@ -266,7 +269,7 @@
                 </tr>
               </tbody>
             </table>
-            <p v-else class="list-hint">无记录类型信息</p>
+            <p v-else class="list-hint">{{ t('objectDetail.noRecordTypes') }}</p>
           </div>
         </div>
       </section>
@@ -276,7 +279,11 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import { SfRestClient, fetchSfSession } from '../_shared/sfApi.js'
+
+const { t } = useI18n()
 
 const params = new URLSearchParams(location.search)
 const objectName = params.get('object') || ''
@@ -301,14 +308,14 @@ const recordTypes = computed(() => describe.value?.recordTypeInfos || [])
 
 const headerTitle = computed(() => {
   if (describe.value?.label) return describe.value.label
-  return objectName || '对象详情'
+  return objectName || t('objectDetail.defaultTitle')
 })
 
 const objectKindLabel = computed(() => {
   if (!describe.value) return '—'
-  if (describe.value.customSetting) return '自定义设置'
-  if (describe.value.custom) return '自定义对象'
-  return '标准对象'
+  if (describe.value.customSetting) return t('objectDetail.kindCustomSetting')
+  if (describe.value.custom) return t('objectDetail.kindCustomObject')
+  return t('objectDetail.kindStandardObject')
 })
 
 const CAP_DEFS = [
@@ -342,10 +349,10 @@ const fieldStats = computed(() => {
 })
 
 const sections = computed(() => [
-  { id: 'overview', label: '概览', count: null },
-  { id: 'fields', label: '字段', count: fields.value.length },
-  { id: 'children', label: '子关系', count: childRels.value.length },
-  { id: 'recordTypes', label: '记录类型', count: recordTypes.value.length }
+  { id: 'overview', label: t('objectDetail.sectionOverview'), count: null },
+  { id: 'fields', label: t('objectDetail.sectionFields'), count: fields.value.length },
+  { id: 'children', label: t('objectDetail.sectionChildren'), count: childRels.value.length },
+  { id: 'recordTypes', label: t('objectDetail.sectionRecordTypes'), count: recordTypes.value.length }
 ])
 
 const filteredFields = computed(() => {
@@ -368,7 +375,7 @@ const filteredFields = computed(() => {
 })
 
 function yesNo(v) {
-  return v ? '是' : '否'
+  return v ? t('objectDetail.yes') : t('objectDetail.no')
 }
 
 function sizeDisplay(field) {
@@ -445,9 +452,9 @@ async function copyText(text) {
   if (!value) return
   try {
     await navigator.clipboard.writeText(value)
-    statusMessage.value = `已复制：${value}`
+    statusMessage.value = t('objectDetail.copied', { value })
   } catch {
-    statusMessage.value = '复制失败'
+    statusMessage.value = t('objectDetail.copyFailed')
   }
 }
 
@@ -477,7 +484,7 @@ async function loadRecordById(client, objectApiName, id, fieldList) {
     const soql = `SELECT FIELDS(ALL) FROM ${objectApiName} WHERE Id = '${safeId}' LIMIT 1`
     const data = await client.query(soql)
     if (!data?.records?.length) {
-      applyEmpty(`记录 ${id} 不存在或已被删除，值列为空；字段定义仍可正常查看。`)
+      applyEmpty(t('objectDetail.recordMissing', { id }))
       return
     }
     recordValues.value = data.records[0]
@@ -499,7 +506,7 @@ async function loadRecordById(client, objectApiName, id, fieldList) {
       const soql = `SELECT ${[...new Set(chunk)].join(',')} FROM ${objectApiName} WHERE Id = '${safeId}' LIMIT 1`
       const data = await client.query(soql)
       if (!data?.records?.length) {
-        applyEmpty(`记录 ${id} 不存在或已被删除，值列为空；字段定义仍可正常查看。`)
+        applyEmpty(t('objectDetail.recordMissing', { id }))
         return
       }
       found = true
@@ -507,10 +514,10 @@ async function loadRecordById(client, objectApiName, id, fieldList) {
     }
     recordValues.value = found ? merged : null
     if (!found) {
-      applyEmpty(`记录 ${id} 不存在或已被删除，值列为空；字段定义仍可正常查看。`)
+      applyEmpty(t('objectDetail.recordMissing', { id }))
     }
   } catch (e) {
-    applyEmpty(`按 Id 查询记录失败：${e?.message || e}。字段定义仍可正常查看。`)
+    applyEmpty(t('objectDetail.recordQueryFailed', { msg: e?.message || e }))
   }
 }
 
@@ -520,19 +527,19 @@ async function load() {
   recordWarning.value = ''
   recordValues.value = null
   if (!objectName) {
-    bootError.value = '缺少 object 参数'
+    bootError.value = t('objectDetail.missingObjectParam')
     loading.value = false
     return
   }
   if (!hostnameParam) {
-    bootError.value = '缺少 hostname 参数'
+    bootError.value = t('objectDetail.missingHostnameParam')
     loading.value = false
     return
   }
   try {
     const res = await fetchSfSession(hostnameParam)
     if (!res?.success || !res.session?.sessionId) {
-      throw new Error(res?.error || '无法获取 Session，请在浏览器中重新登录该 Org')
+      throw new Error(res?.error || t('objectDetail.sessionFailed'))
     }
     hostname.value = res.session.hostname || hostnameParam
     const client = new SfRestClient({
@@ -542,15 +549,15 @@ async function load() {
     describe.value = await client.describeSObject(objectName)
     document.title = recordId
       ? `${describe.value.label || objectName} · ${recordId}`
-      : `${describe.value.label || objectName} · 对象详情`
+      : `${describe.value.label || objectName} · ${t('objectDetail.titleSuffix')}`
 
     if (recordId) {
       await loadRecordById(client, objectName, recordId, describe.value.fields || [])
       statusMessage.value = recordValues.value
-        ? `已加载记录 ${recordId}`
-        : `已加载对象定义（记录无数据）`
+        ? t('objectDetail.recordLoaded', { id: recordId })
+        : t('objectDetail.objectOnlyLoaded')
     } else {
-      statusMessage.value = `已加载 ${objectName}`
+      statusMessage.value = t('objectDetail.objectLoaded', { name: objectName })
     }
   } catch (e) {
     bootError.value = e?.message || String(e)
@@ -600,6 +607,14 @@ onMounted(load)
   border-radius: var(--radius);
   box-shadow: 0 2px 8px rgba(25, 118, 210, 0.25);
   color: #fff;
+}
+
+.od-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .od-warning {

@@ -5,7 +5,7 @@
         <h1>{{ title }}</h1>
         <p>{{ subtitle }}</p>
       </div>
-      <span class="tool-badge">预览</span>
+      <span class="tool-badge">{{ t('toolWindow.preview') }}</span>
     </header>
 
     <main class="tool-body">
@@ -25,19 +25,23 @@
         </div>
         <h2>{{ title }}</h2>
         <p class="tool-status">{{ statusText }}</p>
-        <p class="tool-hint">关闭 Side Panel 不会关闭本窗口。关闭本窗口或重新加载扩展才会结束。</p>
+        <p class="tool-hint">{{ t('toolWindow.closeHint') }}</p>
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n'
+
 defineProps({
   toolId: { type: String, default: '' },
   title: { type: String, required: true },
   subtitle: { type: String, default: '' },
   statusText: { type: String, default: '' }
 })
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

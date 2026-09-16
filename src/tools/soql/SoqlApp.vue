@@ -1,8 +1,9 @@
 <template>
   <div class="soql-app" @contextmenu="onAppContextMenu" @click="onAppClick">
     <header class="soql-header">
-      <h1>SOQL Creator</h1>
+      <h1>{{ t('soql.productTitle') }}</h1>
       <div class="soql-header-actions">
+        <LocaleSwitcher variant="dark" />
         <select
           v-model="selectedEnvId"
           class="env-select"
@@ -10,27 +11,24 @@
           @change="onEnvChange"
         >
           <option disabled value="">
-            {{ loadingEnvs ? '正在扫描已登录环境…' : (envs.length ? '选择已登录环境' : '无已登录环境') }}
+            {{ loadingEnvs ? t('soql.scanningEnvs') : (envs.length ? t('soql.selectLoggedInEnv') : t('soql.noLoggedInEnv')) }}
           </option>
           <option v-for="env in envs" :key="env.id" :value="env.id">
             {{ env.label }} · {{ env.hostname }}
           </option>
         </select>
         <button type="button" class="btn btn-light" :disabled="loadingEnvs" @click="refreshEnvs">
-          刷新环境
+          {{ t('soql.refreshEnvs') }}
         </button>
       </div>
     </header>
 
     <div v-if="!selectedEnv" class="soql-empty">
       <div class="empty-card">
-        <h2>请先选择已登录环境</h2>
-        <p>
-          本工具使用 Cookie 会话，不依赖扩展账户。请先在浏览器中打开并登录 Salesforce，
-          然后点击「刷新环境」。
-        </p>
+        <h2>{{ t('soql.emptyTitle') }}</h2>
+        <p>{{ t('soql.emptyDesc') }}</p>
         <button type="button" class="btn btn-primary" :disabled="loadingEnvs" @click="refreshEnvs">
-          {{ loadingEnvs ? '扫描中…' : '刷新环境列表' }}
+          {{ loadingEnvs ? t('soql.scanning') : t('soql.refreshEnvList') }}
         </button>
         <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
       </div>
@@ -39,14 +37,14 @@
     <div v-else class="soql-body">
       <aside class="panel objects-panel">
         <div class="panel-head">
-          <span>对象</span>
+          <span>{{ t('soql.objects') }}</span>
           <span class="count">{{ filteredObjects.length }}</span>
         </div>
         <input
           v-model.trim="objectSearch"
           class="search-input"
           type="search"
-          placeholder="搜索对象标签 / API"
+          :placeholder="t('soql.searchObjectPlaceholder')"
         />
         <div class="list-scroll">
           <div
@@ -63,22 +61,22 @@
               <button
                 type="button"
                 class="obj-detail-btn"
-                title="查看对象详情"
+                :title="t('soql.viewObjectDetail')"
                 @click.stop="openObjectDetail(obj)"
-              >详</button>
+              >{{ t('soql.detailShort') }}</button>
             </div>
             <span class="item-api">{{ obj.name }}</span>
           </div>
-          <p v-if="loadingObjects" class="list-hint">加载对象中…</p>
-          <p v-else-if="filteredObjects.length === 0" class="list-hint">无匹配对象</p>
+          <p v-if="loadingObjects" class="list-hint">{{ t('soql.loadingObjects') }}</p>
+          <p v-else-if="filteredObjects.length === 0" class="list-hint">{{ t('soql.noMatchingObjects') }}</p>
         </div>
       </aside>
 
       <section :class="['panel', 'fields-panel', `mode-${fieldPanelMode}`]">
         <div class="panel-head">
           <div class="panel-head-left">
-            <span>字段 {{ currentObject ? `· ${currentObject.label}` : '' }}</span>
-            <span class="mode-badge">{{ fieldPanelMode === 'where' ? '加条件' : '选字段' }}</span>
+            <span>{{ t('soql.fields') }}{{ currentObject ? ` · ${currentObject.label}` : '' }}</span>
+            <span class="mode-badge">{{ fieldPanelMode === 'where' ? t('soql.modeWhere') : t('soql.modeSelect') }}</span>
           </div>
           <span class="count">{{ selectedFieldNames.length }}/{{ filteredFields.length }}</span>
         </div>
@@ -87,7 +85,7 @@
             v-model.trim="fieldSearch"
             class="search-input"
             type="search"
-            placeholder="搜索字段"
+            :placeholder="t('soql.searchFieldPlaceholder')"
             :disabled="!currentObject"
           />
           <div class="field-filter-chips">
@@ -96,19 +94,19 @@
               :class="['chip', { active: fieldKindFilter === 'all' }]"
               :disabled="!currentObject"
               @click="fieldKindFilter = 'all'"
-            >全部</button>
+            >{{ t('soql.chipAll') }}</button>
             <button
               type="button"
               :class="['chip', { active: fieldKindFilter === 'standard' }]"
               :disabled="!currentObject"
               @click="fieldKindFilter = 'standard'"
-            >标准</button>
+            >{{ t('soql.chipStandard') }}</button>
             <button
               type="button"
               :class="['chip', { active: fieldKindFilter === 'custom' }]"
               :disabled="!currentObject"
               @click="fieldKindFilter = 'custom'"
-            >自定义</button>
+            >{{ t('soql.chipCustom') }}</button>
           </div>
           <div class="field-mode-chips">
             <button
@@ -116,17 +114,17 @@
               :class="['chip', 'chip-select', { active: fieldPanelMode === 'select' }]"
               :disabled="!currentObject"
               @click="fieldPanelMode = 'select'"
-            >选字段</button>
+            >{{ t('soql.modeSelect') }}</button>
             <button
               type="button"
               :class="['chip', 'chip-where', { active: fieldPanelMode === 'where' }]"
               :disabled="!currentObject"
               @click="fieldPanelMode = 'where'"
-            >加条件</button>
+            >{{ t('soql.modeWhere') }}</button>
           </div>
           <div class="field-actions">
-            <button type="button" class="btn btn-sm" :disabled="!currentObject || fieldPanelMode !== 'select'" @click="selectAllFields">全选</button>
-            <button type="button" class="btn btn-sm" :disabled="!currentObject || fieldPanelMode !== 'select'" @click="clearFields">清空</button>
+            <button type="button" class="btn btn-sm" :disabled="!currentObject || fieldPanelMode !== 'select'" @click="selectAllFields">{{ t('soql.selectAll') }}</button>
+            <button type="button" class="btn btn-sm" :disabled="!currentObject || fieldPanelMode !== 'select'" @click="clearFields">{{ t('soql.clear') }}</button>
           </div>
         </div>
         <div class="list-scroll fields-list">
@@ -158,9 +156,9 @@
               <span class="field-type">{{ field.type }}</span>
             </span>
           </button>
-          <p v-if="loadingFields" class="list-hint">加载字段中…</p>
-          <p v-else-if="!currentObject" class="list-hint">请先选择对象</p>
-          <p v-else-if="filteredFields.length === 0" class="list-hint">无匹配字段</p>
+          <p v-if="loadingFields" class="list-hint">{{ t('soql.loadingFields') }}</p>
+          <p v-else-if="!currentObject" class="list-hint">{{ t('soql.selectObjectFirst') }}</p>
+          <p v-else-if="filteredFields.length === 0" class="list-hint">{{ t('soql.noMatchingFields') }}</p>
         </div>
       </section>
 
@@ -180,9 +178,9 @@
               class="limit-input"
               :disabled="!limitEnabled"
             />
-            <button type="button" class="btn btn-sm" :disabled="!soqlText.trim()" @click="copySoql">复制</button>
+            <button type="button" class="btn btn-sm" :disabled="!soqlText.trim()" @click="copySoql">{{ t('soql.copy') }}</button>
             <button type="button" class="btn btn-primary btn-sm" :disabled="!canExecute || executing" @click="executeQuery">
-              {{ executing ? '执行中…' : '执行' }}
+              {{ executing ? t('soql.executing') : t('soql.execute') }}
             </button>
           </div>
         </div>
@@ -190,11 +188,11 @@
           <button
             type="button"
             class="soql-fold-btn"
-            :title="soqlEditorOpen ? '折叠手写 SOQL' : '展开手写 SOQL'"
+            :title="soqlEditorOpen ? t('soql.foldManualSoql') : t('soql.expandManualSoql')"
             @click="soqlEditorOpen = !soqlEditorOpen"
           >
             <span class="fold-caret">{{ soqlEditorOpen ? '▾' : '▸' }}</span>
-            <span>{{ soqlEditorOpen ? '收起' : '手写' }}</span>
+            <span>{{ soqlEditorOpen ? t('soql.collapse') : t('soql.manual') }}</span>
           </button>
           <div v-if="soqlEditorOpen" class="soql-editor-block">
             <textarea
@@ -225,10 +223,10 @@
             v-else
             type="button"
             class="soql-preview"
-            :title="soqlText || '展开手写 SOQL'"
+            :title="soqlText || t('soql.expandManualSoql')"
             @click="soqlEditorOpen = true"
           >
-            <span class="soql-preview-text">{{ soqlText || '点选即可生成；点击展开手写 SOQL' }}</span>
+            <span class="soql-preview-text">{{ soqlText || t('soql.soqlPreviewEmpty') }}</span>
           </button>
         </div>
         <div class="where-panel">
@@ -240,9 +238,9 @@
               class="btn btn-sm"
               :disabled="whereConditions.length === 0"
               @click="clearWhereConditions"
-            >清空条件</button>
+            >{{ t('soql.clearConditions') }}</button>
           </div>
-          <p v-if="whereConditions.length === 0" class="where-empty">切换到「加条件」后点击字段即可添加</p>
+          <p v-if="whereConditions.length === 0" class="where-empty">{{ t('soql.whereEmpty') }}</p>
           <div v-else class="where-list">
             <div
               v-for="cond in whereConditions"
@@ -263,7 +261,7 @@
                     v-model="cond.value"
                     class="where-input"
                   >
-                    <option disabled value="">选择</option>
+                    <option disabled value="">{{ t('soql.selectOption') }}</option>
                     <option value="true">true</option>
                     <option value="false">false</option>
                   </select>
@@ -272,7 +270,7 @@
                     v-model="cond.value"
                     class="where-input"
                   >
-                    <option disabled value="">选择选项</option>
+                    <option disabled value="">{{ t('soql.selectPicklist') }}</option>
                     <option
                       v-for="opt in picklistOptions(cond.fieldApiName)"
                       :key="opt.value"
@@ -323,7 +321,7 @@
                     :placeholder="cond.operator === 'IN' ? 'a, b, c' : (cond.operator === 'LIKE' ? '%text%' : '')"
                   />
                   <template v-if="needsValue2(cond.operator)">
-                    <span class="where-to">至</span>
+                    <span class="where-to">{{ t('soql.to') }}</span>
                     <input
                       v-if="whereKind(cond) === 'date'"
                       v-model="cond.value2"
@@ -351,7 +349,7 @@
                   </template>
                 </template>
               </div>
-              <button type="button" class="where-remove" title="删除条件" @click="removeWhereCondition(cond.id)">×</button>
+              <button type="button" class="where-remove" :title="t('soql.removeCondition')" @click="removeWhereCondition(cond.id)">×</button>
             </div>
           </div>
         </div>
@@ -359,14 +357,14 @@
         <p v-if="statusMessage" class="status-text">{{ statusMessage }}</p>
 
         <div class="results-head">
-          <span>查询结果</span>
-          <span class="count" v-if="resultRows.length">{{ resultRows.length }} 行{{ resultDone === false ? '（未完）' : '' }}</span>
+          <span>{{ t('soql.queryResults') }}</span>
+          <span class="count" v-if="resultRows.length">{{ t('soql.rowsCount', { count: resultRows.length }) }}{{ resultDone === false ? t('soql.rowsIncomplete') : '' }}</span>
         </div>
         <div class="results-wrap">
           <table v-if="resultColumns.length" class="results-table">
             <thead>
               <tr>
-                <th class="col-detail">详</th>
+                <th class="col-detail">{{ t('soql.detailShort') }}</th>
                 <th v-for="col in resultColumns" :key="col" class="col-head">
                   <button
                     type="button"
@@ -389,10 +387,10 @@
                   <button
                     type="button"
                     class="obj-detail-btn"
-                    title="查看该记录字段详情"
+                    :title="t('soql.viewRecordDetail')"
                     :disabled="!rowRecordId(row)"
                     @click="openRecordDetail(row)"
-                  >详</button>
+                  >{{ t('soql.detailShort') }}</button>
                 </td>
                 <td
                   v-for="col in resultColumns"
@@ -419,7 +417,7 @@
                       @blur="onCellEditorBlur"
                       @click.stop
                     >
-                      <option v-if="isFieldNillable(col)" value="">(空)</option>
+                      <option v-if="isFieldNillable(col)" value="">{{ t('soql.emptyValue') }}</option>
                       <option value="true">true</option>
                       <option value="false">false</option>
                     </select>
@@ -433,7 +431,7 @@
                       @blur="onCellEditorBlur"
                       @click.stop
                     >
-                      <option v-if="isFieldNillable(col)" value="">(空)</option>
+                      <option v-if="isFieldNillable(col)" value="">{{ t('soql.emptyValue') }}</option>
                       <option
                         v-for="opt in picklistOptions(col)"
                         :key="opt.value"
@@ -536,13 +534,13 @@
               </tr>
             </tbody>
           </table>
-          <p v-else class="list-hint results-empty">执行查询后在此显示结果</p>
+          <p v-else class="list-hint results-empty">{{ t('soql.resultsEmpty') }}</p>
         </div>
         <div v-if="hasDirtyCells" class="results-edit-bar">
-          <span class="edit-hint">有未提交的修改（黄色单元格）</span>
-          <button type="button" class="btn btn-sm" :disabled="submittingEdits" @click="revertAllEdits">复原</button>
+          <span class="edit-hint">{{ t('soql.editHint') }}</span>
+          <button type="button" class="btn btn-sm" :disabled="submittingEdits" @click="revertAllEdits">{{ t('soql.revert') }}</button>
           <button type="button" class="btn btn-primary btn-sm" :disabled="submittingEdits" @click="openSubmitConfirm">
-            {{ submittingEdits ? '提交中…' : '提交' }}
+            {{ submittingEdits ? t('soql.submitting') : t('soql.submit') }}
           </button>
         </div>
       </section>
@@ -555,15 +553,15 @@
         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
         @click.stop
       >
-        <button type="button" class="ctx-item" :disabled="!ctxMenu.canCopy" @click="ctxCopyCell">复制</button>
+        <button type="button" class="ctx-item" :disabled="!ctxMenu.canCopy" @click="ctxCopyCell">{{ t('soql.copy') }}</button>
       </div>
     </Teleport>
 
     <Teleport to="body">
       <div v-if="submitConfirmOpen" class="confirm-overlay" @click.self="submitConfirmOpen = false">
         <div class="confirm-dialog" role="dialog" aria-modal="true">
-          <h3>确认提交修改？</h3>
-          <p>将把 {{ dirtyEditCount }} 处单元格修改写回 Salesforce，此操作不可自动撤销。</p>
+          <h3>{{ t('soql.confirmSubmitTitle') }}</h3>
+          <p>{{ t('soql.confirmSubmitBody', { count: dirtyEditCount }) }}</p>
           <ul class="confirm-list">
             <li v-for="item in dirtyEditPreview" :key="item.key">
               <code>{{ item.objectApi }}</code>
@@ -573,13 +571,13 @@
               <strong>{{ item.to }}</strong>
             </li>
             <li v-if="dirtyEditCount > dirtyEditPreview.length" class="dim">
-              …还有 {{ dirtyEditCount - dirtyEditPreview.length }} 处未列出
+              {{ t('soql.confirmSubmitMore', { count: dirtyEditCount - dirtyEditPreview.length }) }}
             </li>
           </ul>
           <div class="confirm-actions">
-            <button type="button" class="btn btn-sm" @click="submitConfirmOpen = false">取消</button>
+            <button type="button" class="btn btn-sm" @click="submitConfirmOpen = false">{{ t('common.cancel') }}</button>
             <button type="button" class="btn btn-primary btn-sm" :disabled="submittingEdits" @click="confirmSubmitEdits">
-              {{ submittingEdits ? '提交中…' : '确认提交' }}
+              {{ submittingEdits ? t('soql.submitting') : t('soql.confirmSubmit') }}
             </button>
           </div>
         </div>
@@ -590,6 +588,8 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import { SfRestClient, listSfEnvironments, fetchSfSession } from '../_shared/sfApi.js'
 import { DEFAULT_STANDARD_WHITELIST, getObjectKind } from './soqlConstants.js'
 import { openObjectDetailTab } from '../_shared/toolWindows.js'
@@ -605,6 +605,8 @@ import {
   operatorsForKind,
   valueKind
 } from './soqlWhere.js'
+
+const { t } = useI18n()
 
 const envs = ref([])
 const selectedEnvId = ref('')
@@ -764,9 +766,13 @@ function syncSelectedArray() {
 
 function fieldTooltip(field) {
   if (fieldPanelMode.value === 'where' && !field.filterable) {
-    return `${field.label}\n${field.name} · ${field.type}\n不可用于 WHERE`
+    return t('soql.fieldTooltipNotFilterable', {
+      label: field.label,
+      name: field.name,
+      type: field.type
+    })
   }
-  return `${field.label}\n${field.name} · ${field.type}`
+  return t('soql.fieldTooltip', { label: field.label, name: field.name, type: field.type })
 }
 
 async function copyText(text) {
@@ -774,9 +780,9 @@ async function copyText(text) {
   if (!value) return
   try {
     await navigator.clipboard.writeText(value)
-    statusMessage.value = `已复制：${value}`
+    statusMessage.value = t('soql.copied', { value })
   } catch {
-    errorMessage.value = '复制失败'
+    errorMessage.value = t('soql.copyFailed')
   }
 }
 
@@ -968,12 +974,12 @@ function canEditColumn(col) {
 
 function startEditCell(rowIdx, col) {
   if (!canEditColumn(col)) {
-    statusMessage.value = `字段 ${col} 不可编辑`
+    statusMessage.value = t('soql.fieldNotEditable', { field: col })
     return
   }
   const raw = cellRawOriginal(rowIdx, col)
   if (raw != null && typeof raw === 'object') {
-    statusMessage.value = `字段 ${col} 为复杂类型，暂不支持在此编辑`
+    statusMessage.value = t('soql.fieldComplexType', { field: col })
     return
   }
   selectedCell.value = { row: rowIdx, col }
@@ -1046,7 +1052,7 @@ function cancelEditCell() {
 
 function revertAllEdits() {
   clearCellEdits()
-  statusMessage.value = '已放弃全部修改'
+  statusMessage.value = t('soql.revertedEdits')
 }
 
 function openSubmitConfirm() {
@@ -1078,7 +1084,7 @@ async function confirmSubmitEdits() {
       const id = rowRecordId(row)
       const objectApi = rowObjectType(row) || currentObject.value?.name
       if (!id || !objectApi) {
-        throw new Error(`第 ${rowIdx + 1} 行缺少 Id 或对象类型，无法提交`)
+        throw new Error(t('soql.rowMissingId', { row: rowIdx + 1 }))
       }
       const mapKey = `${objectApi}::${id}`
       if (!byRecord.has(mapKey)) {
@@ -1098,7 +1104,7 @@ async function confirmSubmitEdits() {
 
     clearCellEdits()
     submitConfirmOpen.value = false
-    statusMessage.value = `已提交 ${byRecord.size} 条记录的修改`
+    statusMessage.value = t('soql.submittedRecords', { count: byRecord.size })
   } catch (e) {
     errorMessage.value = e?.message || String(e)
   } finally {
@@ -1200,7 +1206,7 @@ async function refreshEnvs() {
   errorMessage.value = ''
   try {
     const res = await listSfEnvironments()
-    if (!res?.success) throw new Error(res?.error || '扫描环境失败')
+    if (!res?.success) throw new Error(res?.error || t('soql.scanEnvsFailed'))
     envs.value = res.environments || []
     if (!envs.value.find((e) => e.id === selectedEnvId.value)) {
       selectedEnvId.value = envs.value[0]?.id || ''
@@ -1210,9 +1216,9 @@ async function refreshEnvs() {
       }
     }
     if (envs.value.length === 0) {
-      statusMessage.value = '未发现已登录的 Salesforce 环境'
+      statusMessage.value = t('soql.noEnvsFound')
     } else {
-      statusMessage.value = `发现 ${envs.value.length} 个已登录环境`
+      statusMessage.value = t('soql.envsFound', { count: envs.value.length })
     }
   } catch (e) {
     errorMessage.value = e.message || String(e)
@@ -1243,17 +1249,17 @@ async function connectSelectedEnv() {
     return
   }
   errorMessage.value = ''
-  statusMessage.value = '正在获取 Session…'
+  statusMessage.value = t('soql.fetchingSession')
   try {
     const res = await fetchSfSession(env.hostname)
     if (!res?.success || !res.session?.sessionId) {
-      throw new Error(res?.error || '无法获取 Session，请在浏览器中重新登录该 Org')
+      throw new Error(res?.error || t('soql.sessionFailed'))
     }
     client = new SfRestClient({
       hostname: res.session.hostname || env.hostname,
       sessionId: res.session.sessionId
     })
-    statusMessage.value = `已连接 ${client.hostname}`
+    statusMessage.value = t('soql.connected', { hostname: client.hostname })
     await loadObjects()
   } catch (e) {
     client = null
@@ -1304,7 +1310,7 @@ async function loadObjects() {
   try {
     const data = await client.getSObjects()
     objects.value = filterApplicationObjects(data?.sobjects)
-    statusMessage.value = `已加载 ${objects.value.length} 个对象`
+    statusMessage.value = t('soql.loadedObjects', { count: objects.value.length })
   } catch (e) {
     objects.value = []
     errorMessage.value = e.message || String(e)
@@ -1359,15 +1365,15 @@ async function openObjectDetail(obj) {
   if (!obj?.name) return
   const hostname = selectedEnv.value?.hostname || client?.hostname
   if (!hostname) {
-    errorMessage.value = '请先选择已登录环境'
+    errorMessage.value = t('soql.selectEnvFirst')
     return
   }
   try {
-    statusMessage.value = `正在打开「${obj.label || obj.name}」详情…`
+    statusMessage.value = t('soql.openingObjectDetail', { label: obj.label || obj.name })
     await openObjectDetailTab({ objectName: obj.name, hostname })
-    statusMessage.value = `已在浏览器打开「${obj.label || obj.name}」详情`
+    statusMessage.value = t('soql.openedObjectDetail', { label: obj.label || obj.name })
   } catch (e) {
-    errorMessage.value = e?.message || '无法打开对象详情页'
+    errorMessage.value = e?.message || t('soql.openObjectDetailFailed')
     statusMessage.value = ''
   }
 }
@@ -1391,19 +1397,19 @@ async function openRecordDetail(row) {
   const id = rowRecordId(row)
   const hostname = selectedEnv.value?.hostname || client?.hostname
   if (!hostname) {
-    errorMessage.value = '请先选择已登录环境'
+    errorMessage.value = t('soql.selectEnvFirst')
     return
   }
   if (!objectApi || !id) {
-    errorMessage.value = '无法打开详情：结果中缺少对象类型或记录 Id'
+    errorMessage.value = t('soql.openRecordDetailFailed')
     return
   }
   try {
-    statusMessage.value = `正在打开记录 ${id} 详情…`
+    statusMessage.value = t('soql.openingRecordDetail', { id })
     await openObjectDetailTab({ objectName: objectApi, hostname, recordId: id })
-    statusMessage.value = `已在浏览器打开记录 ${id} 详情`
+    statusMessage.value = t('soql.openedRecordDetail', { id })
   } catch (e) {
-    errorMessage.value = e?.message || '无法打开对象详情页'
+    errorMessage.value = e?.message || t('soql.openObjectDetailFailed')
     statusMessage.value = ''
   }
 }
@@ -1577,9 +1583,9 @@ function onSoqlSuggestKeydown(e) {
 async function copySoql() {
   try {
     await navigator.clipboard.writeText(soqlText.value)
-    statusMessage.value = 'SOQL 已复制到剪贴板'
+    statusMessage.value = t('soql.soqlCopied')
   } catch {
-    errorMessage.value = '复制失败'
+    errorMessage.value = t('soql.copyFailed')
   }
 }
 
@@ -1587,7 +1593,7 @@ async function executeQuery() {
   if (!client || !soqlText.value.trim()) return
   executing.value = true
   errorMessage.value = ''
-  statusMessage.value = '执行中…'
+  statusMessage.value = t('soql.executing')
   resultColumns.value = []
   resultRows.value = []
   clearCellEdits()
@@ -1612,7 +1618,9 @@ async function executeQuery() {
     }
     resultColumns.value = Array.from(cols)
     resultRows.value = records
-    statusMessage.value = `返回 ${records.length} 行` + (resultDone.value ? '' : '（还有更多，可加 LIMIT / 分页）')
+    statusMessage.value =
+      t('soql.queryReturned', { count: records.length }) +
+      (resultDone.value ? '' : t('soql.queryMoreHint'))
   } catch (e) {
     errorMessage.value = e.message || String(e)
     statusMessage.value = ''
