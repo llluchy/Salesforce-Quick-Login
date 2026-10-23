@@ -57,83 +57,92 @@ export function generateSalt() {
 }
 
 // ============================================
-// 设备码生成与简易转换
-// 目的：不是加密，而是简单的不可读
+// 安装实例 ID（单点登录：一账户一安装）
+// 不依赖 UA / 屏幕等易变属性，避免同机误报
 // ============================================
 
-/**
- * 收集设备稳定属性，生成设备指纹
- */
-function collectDeviceFingerprint() {
-  const parts = []
-  
-  if (typeof navigator !== 'undefined') {
-    parts.push(navigator.userAgent || '')
-    parts.push(navigator.platform || '')
-    parts.push(navigator.language || '')
-    parts.push(String(navigator.hardwareConcurrency || 0))
-  }
-  
-  if (typeof screen !== 'undefined') {
-    parts.push(String(screen.width || 0))
-    parts.push(String(screen.height || 0))
-    parts.push(String(screen.colorDepth || 0))
-    parts.push(String(screen.pixelDepth || 0))
-  }
-  
-  return parts.join('|')
-}
+const INSTALL_ID_KEY = 'sf_install_id'
 
-/**
- * 简易哈希转换（FNV-1a 32位变体）
- * 目的：不是加密，只是把可读字符串变成不可读的乱码
- */
-function simpleHash(str) {
-  let hash = 0x811c9dc5
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i)
-    hash = (hash * 0x01000193) >>> 0
-  }
-  return hash.toString(16).padStart(8, '0')
-}
+let _cachedInstallId = null
+let _installIdPromise = null
 
-/**
- * 简易混淆：多轮哈希 + 拼接
- * 目的：让设备码看起来更乱，不直接是指纹
- */
-function obfuscate(fingerprint) {
-  const h1 = simpleHash(fingerprint)
-  const h2 = simpleHash(fingerprint + '_salt_v2')
-  const h3 = simpleHash(h1 + h2 + fingerprint.length)
-  return `${h1}${h2}${h3}`
-}
-
-/**
- * 生成设备码
- * 第一次生成后会缓存到内存中
- * 加入随机因子后持久化到 localStorage，避免不同设备指纹碰撞
- */
-let _cachedDeviceCode = null
-
-const DEVICE_SALT_KEY = 'sf_device_random_salt'
-
-export function getDeviceCode() {
-  if (_cachedDeviceCode) return _cachedDeviceCode
-  
+function createInstallId() {
   try {
-    let salt = localStorage.getItem(DEVICE_SALT_KEY)
-    if (!salt) {
-      salt = Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
-      localStorage.setItem(DEVICE_SALT_KEY, salt)
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
     }
-    const fingerprint = collectDeviceFingerprint() + salt
-    _cachedDeviceCode = obfuscate(fingerprint)
-  } catch (e) {
-    // 降级：生成随机码
-    _cachedDeviceCode = 'dev_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const bytes = crypto.getRandomValues(new Uint8Array(16))
+      bytes[6] = (bytes[6] & 0x0f) | 0x40
+      bytes[8] = (bytes[8] & 0x3f) | 0x80
+      const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+    }
+  } catch {
+    /* fall through */
   }
-  
-  return _cachedDeviceCode
+  return `inst_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+}
+
+async function readStoredInstallId() {
+  if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) {
+    try {
+      const data = await chrome.storage.local.get(INSTALL_ID_KEY)
+      if (data?.[INSTALL_ID_KEY]) return String(data[INSTALL_ID_KEY])
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    return localStorage.getItem(INSTALL_ID_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+async function writeStoredInstallId(id) {
+  if (typeof chrome !== 'undefined' && chrome.storage?.local?.set) {
+    try {
+      await chrome.storage.local.set({ [INSTALL_ID_KEY]: id })
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    localStorage.setItem(INSTALL_ID_KEY, id)
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * 本扩展安装实例的稳定 ID。
+ * 一次生成后写入 chrome.storage.local（失败则降级 localStorage），之后只读。
+ */
+export async function getInstallId() {
+  if (_cachedInstallId) return _cachedInstallId
+  if (_installIdPromise) return _installIdPromise
+
+  _installIdPromise = (async () => {
+    let id = await readStoredInstallId()
+    if (!id) {
+      id = createInstallId()
+      await writeStoredInstallId(id)
+    }
+    _cachedInstallId = id
+    return id
+  })()
+
+  try {
+    return await _installIdPromise
+  } finally {
+    _installIdPromise = null
+  }
+}
+
+/** 兼容旧调用名：返回安装实例 ID，用作服务端 device_code */
+export async function getDeviceCode() {
+  return getInstallId()
 }
 
 // ============================================

@@ -503,3 +503,288 @@ function cropImage(dataUrl, x, y, width, height) {
   // page-world.js 由 manifest.json 声明 world: "MAIN" 注入主世界（避免 CSP 阻止内联脚本）
   console.log(`${CT} ========== 桥接模块初始化完成 (v4.1) ==========`);
 })();
+
+// ============================================
+// 页面右侧浮动工具入口（注入到 Salesforce 页面，非扩展 Side Panel）
+// ============================================
+(function injectToolFloatRail() {
+  'use strict';
+
+  if (window !== window.top) return;
+  if (window.__sfToolFloatRailInjected) return;
+  window.__sfToolFloatRailInjected = true;
+
+  const HOST_ID = 'sf-ql-tool-float-rail';
+  const POS_KEY = 'sfql_tool_float_pos';
+  const DRAG_THRESHOLD = 5;
+
+  function label(key, fallback) {
+    try {
+      return chrome.i18n.getMessage(key) || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function openTool(toolId) {
+    chrome.runtime.sendMessage(
+      {
+        action: 'openToolWindow',
+        toolId,
+        hostname: location.hostname || ''
+      },
+      () => {
+        void chrome.runtime.lastError;
+      }
+    );
+  }
+
+  function loadPos() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(POS_KEY, (data) => {
+          if (chrome.runtime.lastError) {
+            resolve(null);
+            return;
+          }
+          resolve(data?.[POS_KEY] || null);
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
+  function savePos(pos) {
+    try {
+      chrome.storage.local.set({ [POS_KEY]: pos }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function clampPos(top, right, host) {
+    const w = host.offsetWidth || 28;
+    const h = host.offsetHeight || 200;
+    const maxTop = Math.max(8, window.innerHeight - h - 8);
+    const maxRight = Math.max(0, window.innerWidth - w - 8);
+    return {
+      top: Math.min(Math.max(8, top), maxTop),
+      right: Math.min(Math.max(0, right), maxRight)
+    };
+  }
+
+  function applyPos(host, pos) {
+    if (!pos || typeof pos.top !== 'number' || typeof pos.right !== 'number') {
+      host.style.top = '50%';
+      host.style.right = '0';
+      host.style.left = 'auto';
+      host.style.bottom = 'auto';
+      host.style.transform = 'translateY(-50%)';
+      return;
+    }
+    const clamped = clampPos(pos.top, pos.right, host);
+    host.style.top = `${clamped.top}px`;
+    host.style.right = `${clamped.right}px`;
+    host.style.left = 'auto';
+    host.style.bottom = 'auto';
+    host.style.transform = 'none';
+  }
+
+  function ensureRail() {
+    if (document.getElementById(HOST_ID)) return;
+
+    const host = document.createElement('div');
+    host.id = HOST_ID;
+    host.setAttribute('data-sf-ql', 'tool-float-rail');
+    host.style.cssText = [
+      'all: initial',
+      'position: fixed',
+      'top: 50%',
+      'right: 0',
+      'z-index: 2147483000',
+      'transform: translateY(-50%)',
+      'pointer-events: none',
+      'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    ].join(';');
+
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `
+      <style>
+        :host { all: initial; }
+        .rail {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          pointer-events: none;
+        }
+        .tab {
+          pointer-events: auto;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          min-height: 92px;
+          padding: 12px 0;
+          border: 1px solid transparent;
+          border-right: none;
+          border-radius: 10px 0 0 10px;
+          cursor: grab;
+          opacity: 0.48;
+          box-shadow: -2px 2px 10px rgba(13, 71, 161, 0.14);
+          transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+        }
+        .tab:hover {
+          opacity: 0.92;
+          transform: translateX(-3px);
+          box-shadow: -4px 3px 14px rgba(13, 71, 161, 0.28);
+          filter: brightness(1.04);
+        }
+        .tab:active { cursor: grabbing; }
+        .rail.is-dragging .tab {
+          opacity: 0.85;
+          cursor: grabbing;
+          transition: none;
+        }
+        .text {
+          writing-mode: vertical-rl;
+          text-orientation: mixed;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.12em;
+          line-height: 1;
+          user-select: none;
+          pointer-events: none;
+        }
+        .apex {
+          background: linear-gradient(180deg, #0277bd 0%, #01579b 100%);
+          border-color: #4fc3f7;
+          color: #e1f5fe;
+        }
+        .apex:hover { color: #fff; }
+        .soql {
+          background: linear-gradient(180deg, #f9a825 0%, #ef6c00 100%);
+          border-color: #ffe082;
+          color: #fff8e1;
+        }
+        .soql:hover { color: #fff; }
+      </style>
+      <div class="rail" part="rail">
+        <button type="button" class="tab apex" data-tool="apex-log" title="${label('toolFloatApexTitle', 'Apex Log Viewer')}">
+          <span class="text">${label('toolFloatApex', 'Apex Log')}</span>
+        </button>
+        <button type="button" class="tab soql" data-tool="soql" title="${label('toolFloatSoqlTitle', 'SOQL Creator')}">
+          <span class="text">${label('toolFloatSoql', 'SOQL')}</span>
+        </button>
+      </div>
+    `;
+
+    const rail = shadow.querySelector('.rail');
+    let dragState = null;
+    let savedPos = null;
+
+    loadPos().then((pos) => {
+      savedPos = pos;
+      applyPos(host, savedPos);
+    });
+
+    const onPointerMove = (e) => {
+      if (!dragState) return;
+      const dx = e.clientX - dragState.startX;
+      const dy = e.clientY - dragState.startY;
+      if (!dragState.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+        dragState.moved = true;
+        rail.classList.add('is-dragging');
+      }
+      if (!dragState.moved) return;
+      e.preventDefault();
+      const next = clampPos(dragState.originTop + dy, dragState.originRight - dx, host);
+      applyPos(host, next);
+      dragState.current = next;
+    };
+
+    const endDrag = (e) => {
+      if (!dragState) return;
+      const state = dragState;
+      dragState = null;
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', endDrag, true);
+      window.removeEventListener('pointercancel', endDrag, true);
+      rail.classList.remove('is-dragging');
+
+      if (state.moved) {
+        if (state.current) {
+          savedPos = state.current;
+          savePos(savedPos);
+        }
+        return;
+      }
+      if (state.toolId) openTool(state.toolId);
+    };
+
+    rail.querySelectorAll('.tab').forEach((btn) => {
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = host.getBoundingClientRect();
+        const originTop =
+          savedPos && typeof savedPos.top === 'number'
+            ? savedPos.top
+            : rect.top;
+        const originRight =
+          savedPos && typeof savedPos.right === 'number'
+            ? savedPos.right
+            : Math.max(0, window.innerWidth - rect.right);
+        // 首次拖动前把百分比定位固化为像素，避免跳动
+        applyPos(host, { top: originTop, right: originRight });
+        dragState = {
+          startX: e.clientX,
+          startY: e.clientY,
+          originTop,
+          originRight,
+          moved: false,
+          toolId: btn.getAttribute('data-tool'),
+          current: { top: originTop, right: originRight }
+        };
+        window.addEventListener('pointermove', onPointerMove, true);
+        window.addEventListener('pointerup', endDrag, true);
+        window.addEventListener('pointercancel', endDrag, true);
+      });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+
+    window.addEventListener('resize', () => {
+      if (!savedPos) return;
+      savedPos = clampPos(savedPos.top, savedPos.right, host);
+      applyPos(host, savedPos);
+      savePos(savedPos);
+    });
+
+    const mount = () => {
+      if (!document.documentElement || document.getElementById(HOST_ID)) return;
+      document.documentElement.appendChild(host);
+    };
+
+    if (document.documentElement) mount();
+    else document.addEventListener('DOMContentLoaded', mount, { once: true });
+  }
+
+  ensureRail();
+
+  // Lightning SPA 可能重建 DOM，定期确认入口仍在
+  const recheck = () => {
+    try {
+      ensureRail();
+    } catch {
+      /* ignore */
+    }
+  };
+  setInterval(recheck, 3000);
+  document.addEventListener('DOMContentLoaded', recheck, { once: true });
+})();

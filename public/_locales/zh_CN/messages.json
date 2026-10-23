@@ -34,5 +34,17 @@
         "example": "30"
       }
     }
+  },
+  "toolFloatApex": {
+    "message": "Apex Log"
+  },
+  "toolFloatSoql": {
+    "message": "SOQL"
+  },
+  "toolFloatApexTitle": {
+    "message": "Apex Log Viewer"
+  },
+  "toolFloatSoqlTitle": {
+    "message": "SOQL Creator"
   }
 }

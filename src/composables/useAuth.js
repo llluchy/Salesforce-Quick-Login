@@ -211,7 +211,7 @@ async function clearSessionKeys() {
 }
 
 // ============================================
-// 设备码相关（单点登录：一账户一设备）
+// 安装实例 ID（单点登录：一账户一安装）
 // ============================================
 
 /**
@@ -281,7 +281,7 @@ async function updateDeviceCode(userId, deviceCode) {
  * @returns {Promise<{matched: boolean, serverDeviceCode: string|null, localDeviceCode: string}>}
  */
 async function checkDeviceMatch(userId) {
-  const localCode = getDeviceCode()
+  const localCode = await getDeviceCode()
   const serverCode = await fetchDeviceCode(userId)
   
   // 服务器没有记录设备码（首次登录或旧数据），视为匹配
@@ -577,7 +577,7 @@ async function signUp({ email, password }) {
       await recordLogin()
       await exportUserKeyToSession()
       // 更新设备码到数据库
-      const deviceCode = getDeviceCode()
+      const deviceCode = await getDeviceCode()
       await updateDeviceCode(data.user.id, deviceCode)
 
       // 打开 welcome.html 显示恢复密钥
@@ -643,7 +643,7 @@ async function signIn({ email, password }) {
     await exportUserKeyToSession()
 
     // 更新设备码到数据库
-    const deviceCode = getDeviceCode()
+    const deviceCode = await getDeviceCode()
     await updateDeviceCode(data.user.id, deviceCode)
 
     // 旧用户迁移：若无 recovery 密钥则自动生成
@@ -689,7 +689,7 @@ async function signOut() {
 /**
  * 启动时恢复 session 和密钥
  * 1. 从 Supabase SDK 持久化的 localStorage 中读取 session
- * 2. 检查设备码是否匹配（单点登录：一账户一设备）
+ * 2. 检查安装实例 ID 是否匹配（单点登录：一账户一安装）
  * 3. 从 chrome.storage.local 加载保存的密钥（如有）
  * 4. 检查今日登录状态：若今日已登录过且密钥存在，直接进入主页
  * @returns {Promise<{hasSession: boolean, hasKey: boolean, needPassword: boolean, deviceMismatch: boolean}>}
@@ -797,7 +797,7 @@ async function unlockWithPassword(password) {
     await exportUserKeyToSession()
 
     // 更新设备码到数据库
-    const deviceCode = getDeviceCode()
+    const deviceCode = await getDeviceCode()
     await updateDeviceCode(currentUser.value.id, deviceCode)
 
     // 旧用户迁移：若无 recovery 密钥则自动生成

@@ -25,7 +25,7 @@ export class SfRestClient {
     return `https://${this.hostname}`
   }
 
-  async rest(path, { method = 'GET', body, headers = {} } = {}) {
+  async rest(path, { method = 'GET', body, headers = {}, signal } = {}) {
     if (!this.hostname) throw new Error('未设置 Salesforce 主机')
     if (!this.sessionId) throw new Error('无有效 Session，请重新选择已登录环境')
 
@@ -42,6 +42,7 @@ export class SfRestClient {
         ...headers
       }
     }
+    if (signal) init.signal = signal
     if (body !== undefined) {
       init.headers['Content-Type'] = 'application/json; charset=UTF-8'
       init.body = typeof body === 'string' ? body : JSON.stringify(body)
@@ -51,6 +52,11 @@ export class SfRestClient {
     try {
       res = await fetch(url, init)
     } catch (e) {
+      if (e?.name === 'AbortError') {
+        const err = new Error('已取消')
+        err.name = 'AbortError'
+        throw err
+      }
       const err = new Error('网络错误，离线或超时')
       err.name = 'SalesforceRestError'
       throw err
@@ -96,10 +102,21 @@ export class SfRestClient {
     return this.rest(`/services/data/v${this.apiVersion}/sobjects/${encodeURIComponent(name)}/describe/`)
   }
 
-  query(soql) {
-    return this.rest(
-      `/services/data/v${this.apiVersion}/query/?q=${encodeURIComponent(soql)}`
-    )
+  query(soql, { signal } = {}) {
+    return this.rest(`/services/data/v${this.apiVersion}/query/?q=${encodeURIComponent(soql)}`, {
+      signal
+    })
+  }
+
+  queryMore(nextRecordsUrl, { signal } = {}) {
+    if (!nextRecordsUrl) throw new Error('缺少 nextRecordsUrl')
+    return this.rest(nextRecordsUrl, { signal })
+  }
+
+  /** SELECT COUNT() … 返回 totalSize */
+  async countQuery(soql, { signal } = {}) {
+    const data = await this.query(soql, { signal })
+    return typeof data?.totalSize === 'number' ? data.totalSize : 0
   }
 
   /** 更新单条记录（PATCH） */
@@ -113,10 +130,72 @@ export class SfRestClient {
 
 /** 通过 background 列出已登录环境 */
 export function listSfEnvironments() {
-  return chrome.runtime.sendMessage({ action: 'listSfEnvironments' })
+  return new Promise((resolve, reject) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+      reject(new Error('非扩展环境'))
+      return
+    }
+    chrome.runtime.sendMessage({ action: 'listSfEnvironments' }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message))
+        return
+      }
+      resolve(response || { success: false, error: '无响应', environments: [] })
+    })
+  })
 }
 
 /** 通过 background 按 hostname 取最新 sid */
 export function fetchSfSession(hostname) {
-  return chrome.runtime.sendMessage({ action: 'getSfSession', hostname })
+  return new Promise((resolve, reject) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+      reject(new Error('非扩展环境'))
+      return
+    }
+    chrome.runtime.sendMessage({ action: 'getSfSession', hostname }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message))
+        return
+      }
+      resolve(response || { success: false, error: '无响应' })
+    })
+  })
+}
+
+/**
+ * 根据页面 hostname / orgId 在已发现环境中挑选最匹配项
+ * @returns {object|null}
+ */
+export function pickEnvForPage(envs, { hostname, orgId } = {}) {
+  if (!Array.isArray(envs) || envs.length === 0) return null
+  const oid = orgId ? String(orgId) : ''
+  if (oid) {
+    const byOrg = envs.find((e) => e.id === oid || e.orgId === oid)
+    if (byOrg) return byOrg
+  }
+  const host = normalizeSfHostname(hostname || '')
+  if (!host) return null
+  const exact = envs.find((e) => normalizeSfHostname(e.hostname) === host)
+  if (exact) return exact
+  const prefix = host.split('.')[0]
+  if (!prefix) return null
+  return (
+    envs.find((e) => {
+      const h = normalizeSfHostname(e.hostname || '')
+      return h === host || h.startsWith(prefix + '.')
+    }) || null
+  )
+}
+
+/** 从当前工具窗口 URL 读取页面环境偏好 */
+export function readPageEnvPreferFromUrl(search = typeof location !== 'undefined' ? location.search : '') {
+  try {
+    const params = new URLSearchParams(search || '')
+    return {
+      hostname: params.get('hostname') || '',
+      orgId: params.get('orgId') || ''
+    }
+  } catch {
+    return { hostname: '', orgId: '' }
+  }
 }

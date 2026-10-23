@@ -179,9 +179,28 @@
               :disabled="!limitEnabled"
             />
             <button type="button" class="btn btn-sm" :disabled="!soqlText.trim()" @click="copySoql">{{ t('soql.copy') }}</button>
-            <button type="button" class="btn btn-primary btn-sm" :disabled="!canExecute || executing" @click="executeQuery">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              :disabled="!canExecute || executing"
+              @click="executeQuery"
+            >
               {{ executing ? t('soql.executing') : t('soql.execute') }}
             </button>
+            <button
+              v-if="executing"
+              type="button"
+              class="btn btn-sm btn-stop"
+              @click="stopQuery"
+            >{{ t('soql.stop') }}</button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              :disabled="!canCountObject || countingTotal || executing"
+              :title="t('soql.countOnlyTitle')"
+              @click="countObjectRows"
+            >{{ countingTotal ? t('soql.counting') : t('soql.countOnly') }}</button>
+            <span v-if="objectCountHint" class="object-count-hint">{{ objectCountHint }}</span>
           </div>
         </div>
         <div class="soql-editor-wrap">
@@ -277,18 +296,25 @@
                       :value="opt.value"
                     >{{ opt.label || opt.value }}</option>
                   </select>
-                  <select
+                  <div
                     v-else-if="whereKind(cond) === 'picklist' && isMultiValue(cond.operator)"
-                    v-model="cond.value"
-                    class="where-input where-multi"
-                    multiple
+                    class="where-multi-checks"
                   >
-                    <option
+                    <label
                       v-for="opt in picklistOptions(cond.fieldApiName)"
                       :key="opt.value"
-                      :value="opt.value"
-                    >{{ opt.label || opt.value }}</option>
-                  </select>
+                      class="where-check-item"
+                    >
+                      <input
+                        type="checkbox"
+                        :value="opt.value"
+                        :checked="Array.isArray(cond.value) && cond.value.includes(opt.value)"
+                        @change="toggleWhereMultiValue(cond, opt.value, $event.target.checked)"
+                      />
+                      <span class="where-check-label">{{ opt.label || opt.value }}</span>
+                    </label>
+                    <p v-if="!picklistOptions(cond.fieldApiName).length" class="where-multi-empty">{{ t('soql.noPicklistOptions') }}</p>
+                  </div>
                   <input
                     v-else-if="whereKind(cond) === 'date'"
                     v-model="cond.value"
@@ -354,11 +380,31 @@
           </div>
         </div>
         <p v-if="errorMessage" class="error-text inline-error">{{ errorMessage }}</p>
-        <p v-if="statusMessage" class="status-text">{{ statusMessage }}</p>
+
 
         <div class="results-head">
           <span>{{ t('soql.queryResults') }}</span>
-          <span class="count" v-if="resultRows.length">{{ t('soql.rowsCount', { count: resultRows.length }) }}{{ resultDone === false ? t('soql.rowsIncomplete') : '' }}</span>
+          <span class="count" v-if="resultRows.length || resultTotalSize != null">
+            {{
+              resultTotalSize != null
+                ? t('soql.rowsLoadedOfTotal', { loaded: resultRows.length, total: resultTotalSize })
+                : t('soql.rowsCount', { count: resultRows.length })
+            }}{{ resultDone === false ? t('soql.rowsIncomplete') : '' }}
+          </span>
+          <div class="results-actions">
+            <button
+              type="button"
+              class="btn btn-sm"
+              :disabled="!canLoadMore || executing"
+              @click="loadMoreResults"
+            >{{ t('soql.loadMore') }}</button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              :disabled="!resultRows.length || executing"
+              @click="exportResultsCsv"
+            >{{ t('soql.exportCsv') }}</button>
+          </div>
         </div>
         <div class="results-wrap">
           <table v-if="resultColumns.length" class="results-table">
@@ -583,6 +629,12 @@
         </div>
       </div>
     </Teleport>
+    <ToolToast
+      :visible="toastVisible"
+      :message="toastMessage"
+      :type="toastType"
+      @close="closeToast"
+    />
   </div>
 </template>
 
@@ -590,7 +642,9 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
-import { SfRestClient, listSfEnvironments, fetchSfSession } from '../_shared/sfApi.js'
+import ToolToast from '../_shared/ToolToast.vue'
+import { useToolToast } from '../_shared/useToolToast.js'
+import { SfRestClient, listSfEnvironments, fetchSfSession, pickEnvForPage, readPageEnvPreferFromUrl } from '../_shared/sfApi.js'
 import { DEFAULT_STANDARD_WHITELIST, getObjectKind } from './soqlConstants.js'
 import { openObjectDetailTab } from '../_shared/toolWindows.js'
 import {
@@ -607,10 +661,12 @@ import {
 } from './soqlWhere.js'
 
 const { t } = useI18n()
+const { toastVisible, toastMessage, toastType, showToast, closeToast } = useToolToast()
 
 const envs = ref([])
 const selectedEnvId = ref('')
 const loadingEnvs = ref(false)
+const pagePrefer = ref(readPageEnvPreferFromUrl())
 
 const objects = ref([])
 const objectSearch = ref('')
@@ -635,9 +691,18 @@ const suggestReplace = ref(null) // { start, end }
 const limitEnabled = ref(false)
 const queryLimit = ref(10)
 const executing = ref(false)
+const countingTotal = ref(false)
+const objectCountHint = ref('')
 const resultColumns = ref([])
 const resultRows = ref([])
 const resultDone = ref(true)
+const resultTotalSize = ref(null)
+const resultNextUrl = ref('')
+/** 表格内最多继续加载到的行数，防止一次塞太多导致卡顿 */
+const RESULT_SOFT_CAP = 10000
+/** @type {AbortController | null} */
+let queryAbortController = null
+let queryRunId = 0
 
 /** 单元格编辑：key = `${rowIdx}::${col}` → { original, current } */
 const cellEdits = ref({})
@@ -649,7 +714,6 @@ const submitConfirmOpen = ref(false)
 const submittingEdits = ref(false)
 
 const errorMessage = ref('')
-const statusMessage = ref('')
 
 let client = null
 
@@ -683,6 +747,16 @@ const filteredFields = computed(() => {
 })
 
 const canExecute = computed(() => !!selectedEnv.value && !!soqlText.value.trim())
+/** client 是非响应式局部变量，这里不能依赖它，否则选对象后按钮会一直灰 */
+const canCountObject = computed(() => !!selectedEnv.value && !!currentObject.value)
+/** 软上限只约束自动续拉；手动「继续加载」只要还有下一页就可用 */
+const canLoadMore = computed(
+  () =>
+    !!selectedEnv.value &&
+    resultDone.value === false &&
+    !!resultNextUrl.value &&
+    resultRows.value.length > 0
+)
 
 const validWhereCount = computed(() => {
   let n = 0
@@ -749,6 +823,18 @@ function clearWhereConditions() {
   syncSoqlFromBuilder()
 }
 
+function toggleWhereMultiValue(cond, value, checked) {
+  const prev = Array.isArray(cond.value) ? [...cond.value] : []
+  if (checked) {
+    if (!prev.includes(value)) prev.push(value)
+  } else {
+    const idx = prev.indexOf(value)
+    if (idx >= 0) prev.splice(idx, 1)
+  }
+  cond.value = prev
+  syncSoqlFromBuilder()
+}
+
 function onFieldCardClick(field) {
   if (fieldPanelMode.value === 'where') {
     addWhereCondition(field)
@@ -780,7 +866,7 @@ async function copyText(text) {
   if (!value) return
   try {
     await navigator.clipboard.writeText(value)
-    statusMessage.value = t('soql.copied', { value })
+    showToast(t('soql.copied', { value }))
   } catch {
     errorMessage.value = t('soql.copyFailed')
   }
@@ -974,12 +1060,12 @@ function canEditColumn(col) {
 
 function startEditCell(rowIdx, col) {
   if (!canEditColumn(col)) {
-    statusMessage.value = t('soql.fieldNotEditable', { field: col })
+    showToast(t('soql.fieldNotEditable', { field: col }))
     return
   }
   const raw = cellRawOriginal(rowIdx, col)
   if (raw != null && typeof raw === 'object') {
-    statusMessage.value = t('soql.fieldComplexType', { field: col })
+    showToast(t('soql.fieldComplexType', { field: col }))
     return
   }
   selectedCell.value = { row: rowIdx, col }
@@ -1052,7 +1138,7 @@ function cancelEditCell() {
 
 function revertAllEdits() {
   clearCellEdits()
-  statusMessage.value = t('soql.revertedEdits')
+  showToast(t('soql.revertedEdits'))
 }
 
 function openSubmitConfirm() {
@@ -1104,7 +1190,7 @@ async function confirmSubmitEdits() {
 
     clearCellEdits()
     submitConfirmOpen.value = false
-    statusMessage.value = t('soql.submittedRecords', { count: byRecord.size })
+    showToast(t('soql.submittedRecords', { count: byRecord.size }))
   } catch (e) {
     errorMessage.value = e?.message || String(e)
   } finally {
@@ -1201,6 +1287,15 @@ function onDocPointerDown(e) {
   ctxMenu.value = { ...ctxMenu.value, show: false }
 }
 
+async function applyPreferredEnv() {
+  const preferred = pickEnvForPage(envs.value, pagePrefer.value)
+  if (!preferred) return false
+  if (selectedEnvId.value === preferred.id && client) return true
+  selectedEnvId.value = preferred.id
+  await connectSelectedEnv()
+  return true
+}
+
 async function refreshEnvs() {
   loadingEnvs.value = true
   errorMessage.value = ''
@@ -1208,7 +1303,8 @@ async function refreshEnvs() {
     const res = await listSfEnvironments()
     if (!res?.success) throw new Error(res?.error || t('soql.scanEnvsFailed'))
     envs.value = res.environments || []
-    if (!envs.value.find((e) => e.id === selectedEnvId.value)) {
+    const preferredApplied = await applyPreferredEnv()
+    if (!preferredApplied && !envs.value.find((e) => e.id === selectedEnvId.value)) {
       selectedEnvId.value = envs.value[0]?.id || ''
       if (selectedEnvId.value) await connectSelectedEnv()
       else {
@@ -1216,9 +1312,9 @@ async function refreshEnvs() {
       }
     }
     if (envs.value.length === 0) {
-      statusMessage.value = t('soql.noEnvsFound')
+      showToast(t('soql.noEnvsFound'))
     } else {
-      statusMessage.value = t('soql.envsFound', { count: envs.value.length })
+      showToast(t('soql.envsFound', { count: envs.value.length }))
     }
   } catch (e) {
     errorMessage.value = e.message || String(e)
@@ -1238,6 +1334,10 @@ function resetWorkspace() {
   soqlText.value = ''
   resultColumns.value = []
   resultRows.value = []
+  resultDone.value = true
+  resultTotalSize.value = null
+  resultNextUrl.value = ''
+  objectCountHint.value = ''
   clearCellEdits()
   client = null
 }
@@ -1249,7 +1349,7 @@ async function connectSelectedEnv() {
     return
   }
   errorMessage.value = ''
-  statusMessage.value = t('soql.fetchingSession')
+  showToast(t('soql.fetchingSession'))
   try {
     const res = await fetchSfSession(env.hostname)
     if (!res?.success || !res.session?.sessionId) {
@@ -1259,19 +1359,22 @@ async function connectSelectedEnv() {
       hostname: res.session.hostname || env.hostname,
       sessionId: res.session.sessionId
     })
-    statusMessage.value = t('soql.connected', { hostname: client.hostname })
+    showToast(t('soql.connected', { hostname: client.hostname }))
     await loadObjects()
   } catch (e) {
     client = null
     objects.value = []
     errorMessage.value = e.message || String(e)
-    statusMessage.value = ''
+    showToast('')
   }
 }
 
 async function onEnvChange() {
   resultColumns.value = []
   resultRows.value = []
+  resultDone.value = true
+  resultTotalSize.value = null
+  resultNextUrl.value = ''
   currentObject.value = null
   fieldsMap.value = {}
   selectedFieldSet.value = new Set()
@@ -1310,7 +1413,7 @@ async function loadObjects() {
   try {
     const data = await client.getSObjects()
     objects.value = filterApplicationObjects(data?.sobjects)
-    statusMessage.value = t('soql.loadedObjects', { count: objects.value.length })
+    showToast(t('soql.loadedObjects', { count: objects.value.length }))
   } catch (e) {
     objects.value = []
     errorMessage.value = e.message || String(e)
@@ -1369,12 +1472,12 @@ async function openObjectDetail(obj) {
     return
   }
   try {
-    statusMessage.value = t('soql.openingObjectDetail', { label: obj.label || obj.name })
+    showToast(t('soql.openingObjectDetail', { label: obj.label || obj.name }))
     await openObjectDetailTab({ objectName: obj.name, hostname })
-    statusMessage.value = t('soql.openedObjectDetail', { label: obj.label || obj.name })
+    showToast(t('soql.openedObjectDetail', { label: obj.label || obj.name }))
   } catch (e) {
     errorMessage.value = e?.message || t('soql.openObjectDetailFailed')
-    statusMessage.value = ''
+    showToast('')
   }
 }
 
@@ -1405,12 +1508,12 @@ async function openRecordDetail(row) {
     return
   }
   try {
-    statusMessage.value = t('soql.openingRecordDetail', { id })
+    showToast(t('soql.openingRecordDetail', { id }))
     await openObjectDetailTab({ objectName: objectApi, hostname, recordId: id })
-    statusMessage.value = t('soql.openedRecordDetail', { id })
+    showToast(t('soql.openedRecordDetail', { id }))
   } catch (e) {
     errorMessage.value = e?.message || t('soql.openObjectDetailFailed')
-    statusMessage.value = ''
+    showToast('')
   }
 }
 
@@ -1583,49 +1686,280 @@ function onSoqlSuggestKeydown(e) {
 async function copySoql() {
   try {
     await navigator.clipboard.writeText(soqlText.value)
-    statusMessage.value = t('soql.soqlCopied')
+    showToast(t('soql.soqlCopied'))
   } catch {
     errorMessage.value = t('soql.copyFailed')
   }
 }
 
-async function executeQuery() {
-  if (!client || !soqlText.value.trim()) return
-  executing.value = true
+function mergeResultColumns(records) {
+  const cols = new Set(resultColumns.value)
+  for (const rec of records) {
+    Object.keys(rec || {}).forEach((k) => {
+      if (k !== 'attributes') cols.add(k)
+    })
+  }
+  resultColumns.value = Array.from(cols)
+}
+
+function csvEscape(val) {
+  if (val == null) return ''
+  let s
+  if (typeof val === 'object') {
+    s = val.records ? `[${val.records.length} records]` : JSON.stringify(val)
+  } else {
+    s = String(val)
+  }
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+function exportResultsCsv() {
+  if (!resultRows.value.length || !resultColumns.value.length) return
+  const cols = resultColumns.value
+  const lines = [cols.map(csvEscape).join(',')]
+  for (const row of resultRows.value) {
+    lines.push(cols.map((c) => csvEscape(row?.[c])).join(','))
+  }
+  const bom = '\uFEFF'
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+  a.href = url
+  a.download = `soql-results-${stamp}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  showToast(t('soql.csvExported', { count: resultRows.value.length }))
+}
+
+async function refreshSessionIfNeeded() {
+  const env = selectedEnv.value
+  if (!env || !client) return
+  const res = await fetchSfSession(env.hostname)
+  if (res?.success && res.session?.sessionId) {
+    client.sessionId = res.session.sessionId
+    client.hostname = res.session.hostname || client.hostname
+  }
+}
+
+/**
+ * 基于当前对象 + WHERE 条件生成 COUNT，不读也不改 soqlText
+ */
+function buildObjectCountSoql() {
+  if (!currentObject.value?.name) return ''
+  return `SELECT COUNT() FROM ${currentObject.value.name}${buildWhereClause(
+    whereConditions.value,
+    fieldsMap.value
+  )}`
+}
+
+function yieldToUi() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0))
+  })
+}
+
+function stopQuery() {
+  if (queryAbortController) {
+    try {
+      queryAbortController.abort()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function beginQueryRun() {
+  stopQuery()
+  queryAbortController = new AbortController()
+  queryRunId += 1
+  return { signal: queryAbortController.signal, runId: queryRunId }
+}
+
+function isAbortError(e) {
+  return e?.name === 'AbortError' || /abort|取消/i.test(String(e?.message || ''))
+}
+
+function applyQueryPage(data, { append = false } = {}) {
+  const records = data?.records || []
+  if (!append) {
+    resultColumns.value = []
+    resultRows.value = []
+  }
+  mergeResultColumns(records)
+  // 整页追加，不在页内截断，避免丢掉本页后半段却丢掉 nextUrl 对应关系
+  resultRows.value = append ? resultRows.value.concat(records) : records
+
+  const serverDone = data?.done !== false
+  const next = data?.nextRecordsUrl || ''
+  resultDone.value = serverDone
+  resultNextUrl.value = serverDone ? '' : next
+
+  if (typeof data?.totalSize === 'number') resultTotalSize.value = data.totalSize
+  else if (!append) resultTotalSize.value = records.length
+}
+
+/**
+ * 分阶段拉取后续页。
+ * @param maxRows 本轮最多加载到的行数（自动查询用软上限；手动继续 = 当前行数 + 软上限）
+ */
+async function continueQueryPages(signal, runId, { maxRows = RESULT_SOFT_CAP } = {}) {
+  let guard = 0
+  while (
+    runId === queryRunId &&
+    !signal.aborted &&
+    resultDone.value === false &&
+    resultNextUrl.value &&
+    resultRows.value.length < maxRows &&
+    guard < 200
+  ) {
+    guard += 1
+    await yieldToUi()
+    if (signal.aborted || runId !== queryRunId) break
+    const data = await client.queryMore(resultNextUrl.value, { signal })
+    if (signal.aborted || runId !== queryRunId) break
+    applyQueryPage(data, { append: true })
+    if (resultRows.value.length >= maxRows && !resultDone.value && resultNextUrl.value) {
+      showToast(t('soql.loadMoreCapped', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+      break
+    }
+  }
+}
+
+async function countObjectRows() {
+  if (!currentObject.value || !selectedEnv.value) return
+  if (!client) {
+    errorMessage.value = t('soql.selectEnvFirst')
+    return
+  }
+  const countSoql = buildObjectCountSoql()
+  if (!countSoql) {
+    errorMessage.value = t('soql.countSoqlFailed')
+    return
+  }
+  countingTotal.value = true
   errorMessage.value = ''
-  statusMessage.value = t('soql.executing')
-  resultColumns.value = []
-  resultRows.value = []
-  clearCellEdits()
+  // 不碰 soqlText / 结果区
   try {
-    // 若 Session 可能过期，执行前刷新一次
-    const env = selectedEnv.value
-    if (env) {
-      const res = await fetchSfSession(env.hostname)
-      if (res?.success && res.session?.sessionId) {
-        client.sessionId = res.session.sessionId
-        client.hostname = res.session.hostname || client.hostname
-      }
-    }
-    const data = await client.query(soqlText.value.trim())
-    const records = data?.records || []
-    resultDone.value = data?.done !== false
-    const cols = new Set()
-    for (const rec of records) {
-      Object.keys(rec).forEach((k) => {
-        if (k !== 'attributes') cols.add(k)
-      })
-    }
-    resultColumns.value = Array.from(cols)
-    resultRows.value = records
-    statusMessage.value =
-      t('soql.queryReturned', { count: records.length }) +
-      (resultDone.value ? '' : t('soql.queryMoreHint'))
+    await refreshSessionIfNeeded()
+    const total = await client.countQuery(countSoql)
+    const label = currentObject.value.label || currentObject.value.name
+    objectCountHint.value = t('soql.objectCountHint', {
+      object: label,
+      total
+    })
+    showToast(t('soql.countResult', { total }))
   } catch (e) {
     errorMessage.value = e.message || String(e)
-    statusMessage.value = ''
   } finally {
-    executing.value = false
+    countingTotal.value = false
+  }
+}
+
+async function loadMoreResults() {
+  if (!client || !canLoadMore.value || executing.value) return
+  const { signal, runId } = beginQueryRun()
+  executing.value = true
+  errorMessage.value = ''
+  showToast(t('soql.loadingMore'))
+  // 每点一次再拉一批（当前行数 + 软上限），避免一次灌爆 UI
+  const batchTarget = resultRows.value.length + RESULT_SOFT_CAP
+  try {
+    await refreshSessionIfNeeded()
+    await continueQueryPages(signal, runId, { maxRows: batchTarget })
+    if (signal.aborted) {
+      showToast(t('soql.queryCancelled', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    } else if (resultDone.value || !resultNextUrl.value) {
+      showToast(t('soql.rowsLoadedOfTotal', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    } else {
+      showToast(t('soql.loadMoreCapped', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    }
+  } catch (e) {
+    if (isAbortError(e)) {
+      showToast(t('soql.queryCancelled', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    } else {
+      errorMessage.value = e.message || String(e)
+    }
+  } finally {
+    if (runId === queryRunId) {
+      executing.value = false
+      queryAbortController = null
+    }
+  }
+}
+
+async function executeQuery() {
+  if (!client || !soqlText.value.trim() || executing.value) return
+  const { signal, runId } = beginQueryRun()
+  executing.value = true
+  errorMessage.value = ''
+  showToast(t('soql.executing'))
+  resultColumns.value = []
+  resultRows.value = []
+  resultDone.value = true
+  resultTotalSize.value = null
+  resultNextUrl.value = ''
+  clearCellEdits()
+  try {
+    await refreshSessionIfNeeded()
+    const data = await client.query(soqlText.value.trim(), { signal })
+    if (signal.aborted || runId !== queryRunId) return
+    applyQueryPage(data, { append: false })
+
+    // 分阶段继续拉后续页，边拉边更新表格；自动停在软上限，之后用「继续加载」
+    if (!resultDone.value && resultNextUrl.value) {
+      await continueQueryPages(signal, runId, { maxRows: RESULT_SOFT_CAP })
+    }
+
+    if (signal.aborted) {
+      showToast(t('soql.queryCancelled', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    } else if (!resultDone.value && resultNextUrl.value) {
+      showToast(t('soql.loadMoreCapped', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    } else {
+      showToast(t('soql.rowsLoadedOfTotal', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    }
+  } catch (e) {
+    if (isAbortError(e)) {
+      showToast(t('soql.queryCancelled', {
+        loaded: resultRows.value.length,
+        total: resultTotalSize.value ?? resultRows.value.length
+      }))
+    } else {
+      errorMessage.value = e.message || String(e)
+      showToast('')
+    }
+  } finally {
+    if (runId === queryRunId) {
+      executing.value = false
+      queryAbortController = null
+    }
   }
 }
 
@@ -1637,15 +1971,44 @@ watch(soqlEditorOpen, (open) => {
   if (!open) clearFieldSuggestions()
 })
 
+watch(currentObject, () => {
+  objectCountHint.value = ''
+})
+
+watch(whereConditions, () => {
+  // WHERE 变更后旧的对象总数提示失效
+  objectCountHint.value = ''
+}, { deep: true })
+
+function onPreferEnvironmentMessage(message) {
+  if (message?.action !== 'toolPreferEnvironment' || message.toolId !== 'soql') return
+  pagePrefer.value = {
+    hostname: message.hostname || '',
+    orgId: message.orgId || ''
+  }
+  applyPreferredEnv().catch(() => {})
+}
+
 onMounted(() => {
   refreshEnvs()
   window.addEventListener('scroll', closeCtxOnScroll, true)
   document.addEventListener('pointerdown', onDocPointerDown, true)
+  try {
+    chrome.runtime?.onMessage?.addListener(onPreferEnvironmentMessage)
+  } catch {
+    /* ignore */
+  }
 })
 
 onUnmounted(() => {
+  stopQuery()
   window.removeEventListener('scroll', closeCtxOnScroll, true)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
+  try {
+    chrome.runtime?.onMessage?.removeListener(onPreferEnvironmentMessage)
+  } catch {
+    /* ignore */
+  }
 })
 </script>
 
@@ -2060,6 +2423,9 @@ onUnmounted(() => {
 
 .mode-where .field-item {
   border-color: #c8e6e3;
+  padding: 8px 10px;
+  gap: 3px;
+  min-height: 44px;
 }
 
 .mode-where .field-item.whereable:hover {
@@ -2069,6 +2435,21 @@ onUnmounted(() => {
 
 .mode-where .field-item.whereable .field-line1 {
   color: #00695c;
+  display: block;
+  width: 100%;
+  max-width: none;
+}
+
+.mode-where .field-item.whereable .field-copyable {
+  cursor: pointer;
+}
+
+.mode-where .field-item.whereable .field-line2 {
+  width: 100%;
+}
+
+.mode-where .field-item.whereable .field-api {
+  flex: 1;
 }
 
 .mode-where .field-item.unfilterable,
@@ -2174,9 +2555,33 @@ onUnmounted(() => {
   background: #f5f7fa;
 }
 
+.btn-stop {
+  border-color: #ef9a9a !important;
+  color: #c62828 !important;
+  background: #ffebee !important;
+}
+
+.btn-stop:hover {
+  background: #ffcdd2 !important;
+}
+
+.object-count-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: #00695c;
+  background: #e0f2f1;
+  border: 1px solid #80cbc4;
+  border-radius: 4px;
+  padding: 3px 8px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .where-panel {
   flex-shrink: 0;
-  max-height: 168px;
+  max-height: 280px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -2222,10 +2627,10 @@ onUnmounted(() => {
 .where-row {
   display: flex;
   flex-wrap: nowrap;
-  align-items: center;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
-  padding: 3px 5px;
+  padding: 6px 8px;
   background: #fff;
   border: 1px solid #e3f2fd;
   border-radius: 4px;
@@ -2239,7 +2644,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  flex: 0 1 88px;
+  flex: 0 1 100px;
+  padding-top: 4px;
 }
 
 .where-label {
@@ -2262,8 +2668,9 @@ onUnmounted(() => {
 
 .where-op {
   flex-shrink: 0;
-  width: 72px;
-  padding: 3px 2px;
+  width: 78px;
+  margin-top: 2px;
+  padding: 6px 4px;
   border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 11px;
@@ -2272,7 +2679,8 @@ onUnmounted(() => {
 
 .where-values {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 4px;
   flex: 1;
   min-width: 0;
@@ -2282,32 +2690,84 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   width: 100%;
-  padding: 3px 4px;
+  min-height: 30px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   box-sizing: border-box;
 }
 
-.where-multi {
-  min-height: 52px;
+.where-multi-checks {
+  flex: 1;
+  min-width: 0;
+  max-height: 160px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fafcfe;
+}
+
+.where-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.where-check-item:hover {
+  background: #e3f2fd;
+}
+
+.where-check-item input {
+  margin: 3px 0 0;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.where-check-label {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.where-multi-empty {
+  margin: 0;
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: #90a4ae;
+  text-align: center;
+  padding: 8px;
 }
 
 .where-to {
   font-size: 10px;
   color: #78909c;
   flex-shrink: 0;
+  padding-top: 8px;
 }
 
 .where-remove {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: #fff;
   color: #c62828;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
 }
@@ -2463,12 +2923,27 @@ onUnmounted(() => {
 .results-head {
   flex-shrink: 0;
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
   align-items: center;
   padding: 6px 12px 4px;
   font-size: 12px;
   font-weight: 600;
   color: var(--accent-deep);
+}
+
+.results-head .count {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.results-actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .results-wrap {
@@ -2790,15 +3265,6 @@ select.cell-editor {
   flex-shrink: 0;
   margin: 4px 12px 0;
   max-height: 40px;
-  overflow: auto;
-}
-
-.status-text {
-  flex-shrink: 0;
-  margin: 2px 12px 0;
-  font-size: 12px;
-  color: #2e7d32;
-  max-height: 36px;
   overflow: auto;
 }
 

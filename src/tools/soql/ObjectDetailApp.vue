@@ -86,7 +86,6 @@
             <div class="stat"><strong>{{ (describe.childRelationships || []).length }}</strong><span>{{ t('objectDetail.statChildRels') }}</span></div>
             <div class="stat"><strong>{{ (describe.recordTypeInfos || []).length }}</strong><span>{{ t('objectDetail.statRecordTypes') }}</span></div>
           </div>
-          <p v-if="statusMessage" class="status-text">{{ statusMessage }}</p>
         </div>
 
         <!-- 字段 -->
@@ -195,7 +194,7 @@
                           </ul>
                         </div>
                         <p v-if="!hasExpandContent(field)" class="dim">{{ t('objectDetail.noExtraDetail') }}</p>
-                      </div>
+                        </div>
                     </td>
                   </tr>
                 </template>
@@ -274,6 +273,12 @@
         </div>
       </section>
     </div>
+    <ToolToast
+      :visible="toastVisible"
+      :message="toastMessage"
+      :type="toastType"
+      @close="closeToast"
+    />
   </div>
 </template>
 
@@ -281,9 +286,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
+import ToolToast from '../_shared/ToolToast.vue'
+import { useToolToast } from '../_shared/useToolToast.js'
 import { SfRestClient, fetchSfSession } from '../_shared/sfApi.js'
 
 const { t } = useI18n()
+const { toastVisible, toastMessage, toastType, showToast, closeToast } = useToolToast()
 
 const params = new URLSearchParams(location.search)
 const objectName = params.get('object') || ''
@@ -294,7 +302,6 @@ const hostname = ref(hostnameParam)
 const describe = ref(null)
 const loading = ref(true)
 const bootError = ref('')
-const statusMessage = ref('')
 const recordWarning = ref('')
 const recordValues = ref(null)
 const activeSection = ref('fields')
@@ -452,9 +459,9 @@ async function copyText(text) {
   if (!value) return
   try {
     await navigator.clipboard.writeText(value)
-    statusMessage.value = t('objectDetail.copied', { value })
+    showToast(t('objectDetail.copied', { value }))
   } catch {
-    statusMessage.value = t('objectDetail.copyFailed')
+    showToast(t('objectDetail.copyFailed'), 'error')
   }
 }
 
@@ -553,11 +560,11 @@ async function load() {
 
     if (recordId) {
       await loadRecordById(client, objectName, recordId, describe.value.fields || [])
-      statusMessage.value = recordValues.value
+      showToast(recordValues.value)
         ? t('objectDetail.recordLoaded', { id: recordId })
         : t('objectDetail.objectOnlyLoaded')
     } else {
-      statusMessage.value = t('objectDetail.objectLoaded', { name: objectName })
+      showToast(t('objectDetail.objectLoaded', { name: objectName }))
     }
   } catch (e) {
     bootError.value = e?.message || String(e)
@@ -1146,12 +1153,6 @@ onMounted(load)
   font-size: 12px;
   color: #90a4ae;
   text-align: center;
-}
-
-.status-text {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: #2e7d32;
 }
 
 @media (max-width: 800px) {

@@ -2,16 +2,25 @@
  * Cookie 会话路径：Service Worker 中发现 / 读取 Salesforce sid
  * 对齐 vendor Soql Creator（getSfHost / getSession / getMyDomain）
  * Apex Log / SOQL 共用，勿再维护第二套发现逻辑
+ *
+ * 注意：Chrome / Salesforce 已启用 Cookie 分区（CHIPS）。
+ * getAll/get 若不带 partitionKey，默认只返回未分区 Cookie，会导致扫不到 sid。
+ * 使用 partitionKey: {} 可同时拿到分区与未分区存储中的 Cookie。
+ * 且应优先用 domain 查询，避免 url + partitionKey 在部分 Chrome 版本被错误过滤。
  */
 
-/** 与 Soql Creator background 一致：只扫这些父域 */
+/** 与 Soql Creator background 一致，并补充常见实例域 */
 const ORDERED_DOMAINS = [
   'salesforce.com',
+  'my.salesforce.com',
+  'lightning.force.com',
   'cloudforce.com',
   'salesforce.mil',
   'cloudforce.mil',
   'sfcrmproducts.cn',
-  'force.com'
+  'force.com',
+  'salesforce-setup.com',
+  'visualforce.com'
 ]
 
 export function isSalesforceUrl(url) {
@@ -29,6 +38,19 @@ export function isSalesforceUrl(url) {
   } catch {
     return false
   }
+}
+
+function isSalesforceCookieDomain(domain) {
+  if (!domain) return false
+  const d = String(domain).replace(/^\./, '').toLowerCase()
+  return (
+    d.endsWith('salesforce.com') ||
+    d.endsWith('force.com') ||
+    d.endsWith('cloudforce.com') ||
+    d.endsWith('visualforce.com') ||
+    d.endsWith('salesforce-setup.com') ||
+    d.endsWith('sfcrmproducts.cn')
+  )
 }
 
 /** API 用主机名（与 Soql SalesforceConnection.getMyDomain 一致） */
@@ -53,6 +75,34 @@ function cookieOpts(extra = {}) {
   return opts
 }
 
+/**
+ * 构造 cookies 查询参数：默认带 partitionKey:{}，兼容分区 sid。
+ * 旧版 Chrome 若不认 partitionKey，调用方应 catch 后降级。
+ */
+function sidQuery(extra = {}) {
+  return cookieOpts({
+    name: 'sid',
+    partitionKey: {},
+    ...extra
+  })
+}
+
+async function getAllSidCookies(details) {
+  const primary = sidQuery(details)
+  try {
+    return await chrome.cookies.getAll(primary)
+  } catch (e) {
+    // 极旧 Chrome：不支持 partitionKey 时降级
+    const { partitionKey, ...rest } = primary
+    try {
+      return await chrome.cookies.getAll(rest)
+    } catch {
+      console.warn('[SfSession] cookies.getAll failed', e)
+      return []
+    }
+  }
+}
+
 function hostPreferenceScore(hostname) {
   const h = normalizeSfHostname(hostname)
   if (h.includes('.my.salesforce.')) return 100
@@ -63,6 +113,12 @@ function hostPreferenceScore(hostname) {
   return 50
 }
 
+function isSessionSid(value, domain) {
+  if (!value?.includes('!')) return false
+  if ((domain || '').includes('help.salesforce.com')) return false
+  return true
+}
+
 /**
  * 根据页面 URL 定位会话 Cookie 所在 domain
  * 返回值可能带前导点（与 Soql Creator 一致），供 getSession 原样使用
@@ -70,9 +126,28 @@ function hostPreferenceScore(hostname) {
 export async function getSfHost(url, cookieStoreId) {
   try {
     const currentDomain = new URL(url).hostname
-    const currentSid = await chrome.cookies.get(
-      cookieOpts({ url, name: 'sid', storeId: cookieStoreId })
-    )
+
+    // 优先用 domain 枚举（含分区 Cookie）；url 查询在部分 Chrome 会漏掉分区 Cookie
+    let currentSid = null
+    try {
+      const pageCookies = await getAllSidCookies({
+        domain: currentDomain,
+        storeId: cookieStoreId
+      })
+      currentSid = pageCookies.find((c) => isSessionSid(c.value, c.domain)) || null
+    } catch {
+      // ignore
+    }
+
+    if (!currentSid) {
+      try {
+        currentSid = await chrome.cookies.get(
+          cookieOpts({ url, name: 'sid', storeId: cookieStoreId })
+        )
+      } catch {
+        currentSid = null
+      }
+    }
 
     if (!currentSid?.value || currentDomain.endsWith('.mcas.ms')) {
       return currentDomain
@@ -81,11 +156,12 @@ export async function getSfHost(url, cookieStoreId) {
     const [orgId] = currentSid.value.split('!')
     for (const domain of ORDERED_DOMAINS) {
       try {
-        const cookies = await chrome.cookies.getAll(
-          cookieOpts({ name: 'sid', domain, secure: true, storeId: cookieStoreId })
-        )
+        const cookies = await getAllSidCookies({
+          domain,
+          storeId: cookieStoreId
+        })
         const sessionCookie = cookies.find(
-          (c) => c.value.startsWith(orgId + '!') && c.domain !== 'help.salesforce.com'
+          (c) => c.value.startsWith(orgId + '!') && !(c.domain || '').includes('help.salesforce.com')
         )
         if (sessionCookie) return sessionCookie.domain
       } catch {
@@ -124,6 +200,22 @@ export async function getSession(sfHost, cookieStoreId) {
   for (const host of unique) {
     const urlHost = String(host).replace(/^\./, '')
     try {
+      // 1) domain + partitionKey（推荐，能拿到分区 sid）
+      const byDomain = await getAllSidCookies({
+        domain: urlHost,
+        storeId: cookieStoreId
+      })
+      const matched =
+        byDomain.find((c) => isSessionSid(c.value, c.domain)) ||
+        byDomain.find((c) => c?.value)
+      if (matched?.value) {
+        return {
+          key: matched.value,
+          hostname: normalizeSfHostname(matched.domain || urlHost)
+        }
+      }
+
+      // 2) 兼容旧路径：url get（可能读不到分区 Cookie）
       let cookie = await chrome.cookies.get(
         cookieOpts({
           name: 'sid',
@@ -131,7 +223,6 @@ export async function getSession(sfHost, cookieStoreId) {
           url: 'https://' + urlHost
         })
       )
-      // Soql：允许 url 带前导点的 host 字符串
       if (!cookie && String(host).startsWith('.')) {
         cookie = await chrome.cookies.get(
           cookieOpts({
@@ -173,6 +264,70 @@ function buildEnv(sessionId, hostname, extras = {}) {
 }
 
 /**
+ * 探测 sid 是否仍可调用 API。Cookie 残留但服务端已过期时返回 false。
+ * 网络异常时返回 true，避免离线把列表清空。
+ */
+export async function isSessionAlive(hostname, sessionId, { timeoutMs = 8000 } = {}) {
+  const host = normalizeSfHostname(hostname)
+  if (!host || !sessionId?.includes('!')) return false
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`https://${host}/services/data/`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${sessionId}`,
+        Accept: 'application/json'
+      },
+      redirect: 'manual',
+      signal: controller.signal
+    })
+
+    // 过期会话常被重定向到登录页
+    if (res.type === 'opaqueredirect') return false
+    if (res.status >= 300 && res.status < 400) return false
+    if (res.status === 401 || res.status === 403) return false
+
+    if (res.status >= 200 && res.status < 300) {
+      const ct = (res.headers.get('content-type') || '').toLowerCase()
+      if (ct.includes('text/html')) return false
+      return true
+    }
+
+    // 限流等暂时性错误：保留，避免误杀
+    return true
+  } catch {
+    return true
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function filterAliveSessions(envs) {
+  if (!envs?.length) return []
+  const results = await Promise.all(
+    envs.map(async (env) => {
+      const alive = await isSessionAlive(env.hostname, env.sessionId)
+      return alive ? env : null
+    })
+  )
+  return results.filter(Boolean)
+}
+
+function upsertCookieEnv(byOrg, cookie) {
+  if (!isSessionSid(cookie?.value, cookie?.domain)) return
+  if (!isSalesforceCookieDomain(cookie.domain)) return
+  const score = hostPreferenceScore(cookie.domain)
+  const env = buildEnv(cookie.value, cookie.domain)
+  if (!env) return
+  const prev = byOrg.get(env.orgId)
+  if (!prev || score > prev.score) {
+    byOrg.set(env.orgId, { env, score })
+  }
+}
+
+/**
  * 直接枚举 sid Cookie（主路径，不依赖是否打开 SF 页）
  */
 export async function discoverFromCookies(cookieStoreId) {
@@ -181,22 +336,23 @@ export async function discoverFromCookies(cookieStoreId) {
 
   for (const domain of ORDERED_DOMAINS) {
     try {
-      const cookies = await chrome.cookies.getAll(
-        cookieOpts({ name: 'sid', domain, secure: true, storeId: cookieStoreId })
-      )
-      for (const c of cookies) {
-        if (!c?.value?.includes('!')) continue
-        if ((c.domain || '').includes('help.salesforce.com')) continue
-        const score = hostPreferenceScore(c.domain)
-        const env = buildEnv(c.value, c.domain)
-        if (!env) continue
-        const prev = byOrg.get(env.orgId)
-        if (!prev || score > prev.score) {
-          byOrg.set(env.orgId, { env, score })
-        }
-      }
+      const cookies = await getAllSidCookies({
+        domain,
+        storeId: cookieStoreId
+      })
+      for (const c of cookies) upsertCookieEnv(byOrg, c)
     } catch {
       // continue
+    }
+  }
+
+  // 兜底：不按 domain 过滤，拉全量 sid（含分区），再本地过滤 SF 域
+  if (byOrg.size === 0) {
+    try {
+      const all = await getAllSidCookies({ storeId: cookieStoreId })
+      for (const c of all) upsertCookieEnv(byOrg, c)
+    } catch (e) {
+      console.warn('[SfSession] fallback getAll sid failed', e)
     }
   }
 
@@ -233,9 +389,10 @@ export async function discoverFromTabs() {
 }
 
 /**
- * 完整会话发现（含 sessionId），供 Apex Log / 内部使用
+ * 完整会话发现（含 sessionId），供 Apex Log / 内部使用。
+ * 默认会探测 sid 有效性，过期会话不进入列表。
  */
-export async function discoverSfSessions() {
+export async function discoverSfSessions({ validate = true } = {}) {
   /** @type {Map<string, { env: any, score: number }>} */
   const byOrg = new Map()
 
@@ -264,9 +421,12 @@ export async function discoverSfSessions() {
     // ignore
   }
 
-  return [...byOrg.values()]
+  const listed = [...byOrg.values()]
     .map((x) => x.env)
     .sort((a, b) => a.hostname.localeCompare(b.hostname))
+
+  if (!validate) return listed
+  return filterAliveSessions(listed)
 }
 
 /**

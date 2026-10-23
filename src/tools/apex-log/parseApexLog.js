@@ -15,57 +15,57 @@ const TIME_RE = /^\d{2}:\d{2}:\d{2}\.\d+\s*\(\d+\)/
  * @returns {LogKind}
  */
 export function classifyEvent(type) {
-  const t = String(type || '').toUpperCase()
-  if (!t) return 'other'
+  const eventType = String(type || '').toUpperCase()
+  if (!eventType) return 'other'
   if (
-    t.includes('EXCEPTION') ||
-    t.includes('FATAL') ||
-    t.includes('ERROR') ||
-    t === 'VALIDATION_FAIL'
+    eventType.includes('EXCEPTION') ||
+    eventType.includes('FATAL') ||
+    eventType.includes('ERROR') ||
+    eventType === 'VALIDATION_FAIL'
   ) {
     return 'error'
   }
-  if (t.includes('USER_DEBUG') || t === 'DEBUG') return 'debug'
+  if (eventType.includes('USER_DEBUG') || eventType === 'DEBUG') return 'debug'
   if (
-    t.startsWith('SOQL_') ||
-    t.startsWith('SOSL_') ||
-    t.startsWith('DML_') ||
-    t.includes('HEAP_DUMP')
+    eventType.startsWith('SOQL_') ||
+    eventType.startsWith('SOSL_') ||
+    eventType.startsWith('DML_') ||
+    eventType.includes('HEAP_DUMP')
   ) {
     return 'db'
   }
-  if (t.startsWith('CALLOUT_') || t.includes('NAMED_CREDENTIAL')) {
+  if (eventType.startsWith('CALLOUT_') || eventType.includes('NAMED_CREDENTIAL')) {
     return 'callout'
   }
   if (
-    t.startsWith('FLOW_') ||
-    t.startsWith('WORKFLOW_') ||
-    t.startsWith('VALIDATION_') ||
-    t.startsWith('WF_')
+    eventType.startsWith('FLOW_') ||
+    eventType.startsWith('WORKFLOW_') ||
+    eventType.startsWith('VALIDATION_') ||
+    eventType.startsWith('WF_')
   ) {
     return 'flow'
   }
   if (
-    t.includes('LIMIT_USAGE') ||
-    t.includes('CUMULATIVE_LIMIT') ||
-    t.includes('CUMULATIVE_PROFILING')
+    eventType.includes('LIMIT_USAGE') ||
+    eventType.includes('CUMULATIVE_LIMIT') ||
+    eventType.includes('CUMULATIVE_PROFILING')
   ) {
     return 'limit'
   }
   if (
-    t.startsWith('CODE_UNIT_') ||
-    t.startsWith('METHOD_') ||
-    t.startsWith('CONSTRUCTOR_') ||
-    t.startsWith('SYSTEM_METHOD_') ||
-    t.startsWith('VARIABLE_') ||
-    t.startsWith('STATEMENT_')
+    eventType.startsWith('CODE_UNIT_') ||
+    eventType.startsWith('METHOD_') ||
+    eventType.startsWith('CONSTRUCTOR_') ||
+    eventType.startsWith('SYSTEM_METHOD_') ||
+    eventType.startsWith('VARIABLE_') ||
+    eventType.startsWith('STATEMENT_')
   ) {
     return 'code'
   }
   if (
-    t.startsWith('EXECUTION_') ||
-    t === 'USER_INFO' ||
-    t.includes('TRACE_FLAG')
+    eventType.startsWith('EXECUTION_') ||
+    eventType === 'USER_INFO' ||
+    eventType.includes('TRACE_FLAG')
   ) {
     return 'system'
   }
@@ -186,4 +186,22 @@ export function getKindLabels() {
 }
 
 /** @deprecated Use getKindLabel / getKindLabels */
-export const KIND_LABELS = getKindLabels()
+export const KIND_LABELS = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      if (prop === Symbol.toStringTag) return 'Object'
+      return getKindLabel(String(prop))
+    },
+    ownKeys() {
+      return ['debug', 'error', 'db', 'code', 'flow', 'callout', 'limit', 'system', 'header', 'other']
+    },
+    getOwnPropertyDescriptor(_t, prop) {
+      return {
+        configurable: true,
+        enumerable: true,
+        value: getKindLabel(String(prop))
+      }
+    }
+  }
+)

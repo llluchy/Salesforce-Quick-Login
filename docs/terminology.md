@@ -107,7 +107,7 @@
 | **Passkey 选择弹窗** | `App.vue` 内 `pkDialog` | SF 页请求 Passkey 时在 Side Panel 选环境 |
 | **Passkey 保存遮罩** | `passkeySaving` | 绑定 / 验证 Passkey 时的转圈 |
 | **启动 / 同步遮罩** | `bootOverlay` | 恢复会话、拉取云端数据的进度 |
-| **Toast** | `Toast.vue` | 轻提示 |
+| **Toast** | `Toast.vue`（Side Panel）/ `tools/_shared/ToolToast.vue` + `useToolToast.js`（工具窗口） | 轻提示；**工具内禁止再用页面 status-text**，统一 `showToast()`，自动消失 |
 
 **弹窗统称：**
 

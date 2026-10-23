@@ -2,7 +2,7 @@
 // 云同步诊断日志（开发版扩展 chrome.storage.sync 行为受限制）
 // 在 Service Worker 控制台查看（chrome://extensions → 检查视图 service worker）
 // ============================================
-import { TOOL_WINDOW_DEFS } from './src/tools/_shared/toolWindows.js'
+import { TOOL_WINDOW_DEFS, buildToolWindowUrl } from './src/tools/_shared/toolWindows.js'
 import {
   listLoggedInSfEnvironments,
   getSession,
@@ -85,23 +85,62 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
 /** toolId -> chrome.windows windowId */
 const toolWindowIds = Object.create(null)
 
-async function openToolWindow(toolId) {
+async function resolvePageEnvContext(hostname) {
+  const host = normalizeSfHostname(hostname || '')
+  if (!host) return { hostname: '', orgId: '' }
+  let orgId = ''
+  try {
+    const session = await getSession(host)
+    if (session?.key && String(session.key).includes('!')) {
+      orgId = String(session.key).split('!')[0]
+    }
+  } catch (e) {
+    // 解析失败时仍按 hostname 匹配
+  }
+  return { hostname: host, orgId }
+}
+
+function notifyToolPreferEnvironment(toolId, ctx) {
+  if (!toolId || (!ctx?.hostname && !ctx?.orgId)) return
+  try {
+    chrome.runtime
+      .sendMessage({
+        action: 'toolPreferEnvironment',
+        toolId,
+        hostname: ctx.hostname || '',
+        orgId: ctx.orgId || ''
+      })
+      .catch(() => {})
+  } catch {
+    /* ignore */
+  }
+}
+
+async function openToolWindow(toolId, options = {}) {
   const def = TOOL_WINDOW_DEFS[toolId]
   if (!def) {
     return { success: false, error: '未知工具：' + toolId }
   }
 
+  const ctx = await resolvePageEnvContext(options.hostname || '')
+  const extra = {}
+  if (ctx.hostname) extra.hostname = ctx.hostname
+  if (ctx.orgId) extra.orgId = ctx.orgId
+
   const existingId = toolWindowIds[toolId]
   if (existingId != null) {
     try {
       await chrome.windows.update(existingId, { focused: true })
-      return { success: true, focused: true, windowId: existingId }
+      notifyToolPreferEnvironment(toolId, ctx)
+      return { success: true, focused: true, windowId: existingId, ...ctx }
     } catch (e) {
       delete toolWindowIds[toolId]
     }
   }
 
-  const pageUrl = chrome.runtime.getURL(def.page) + (def.query ? `?${def.query}` : '')
+  const pageUrl =
+    buildToolWindowUrl(toolId, extra) ||
+    chrome.runtime.getURL(def.page) + (def.query ? `?${def.query}` : '')
   try {
     const win = await chrome.windows.create({
       url: pageUrl,
@@ -113,7 +152,7 @@ async function openToolWindow(toolId) {
     if (win?.id != null) {
       toolWindowIds[toolId] = win.id
     }
-    return { success: true, created: true, windowId: win?.id, url: pageUrl }
+    return { success: true, created: true, windowId: win?.id, url: pageUrl, ...ctx }
   } catch (e) {
     console.error('[ToolWindow] 打开失败', toolId, pageUrl, e)
     return { success: false, error: e.message || String(e), url: pageUrl }
@@ -135,7 +174,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'openToolWindow') {
-    openToolWindow(request.toolId)
+    openToolWindow(request.toolId, { hostname: request.hostname || '' })
       .then((result) => sendResponse(result))
       .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
     return true

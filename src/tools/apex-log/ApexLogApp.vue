@@ -22,7 +22,12 @@
       </div>
     </header>
 
-    <div v-if="toast.visible" :class="['apex-toast', toast.type]">{{ toast.message }}</div>
+    <ToolToast
+      :visible="toastVisible"
+      :message="toastMessage"
+      :type="toastType"
+      @close="closeToast"
+    />
 
     <!-- 欢迎 / 无环境 -->
     <div v-if="!activeEnvId" class="apex-welcome">
@@ -298,6 +303,8 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
+import ToolToast from '../_shared/ToolToast.vue'
+import { useToolToast } from '../_shared/useToolToast.js'
 import { useApexLogApi } from './useApexLogApi'
 import {
   parseApexLogBody,
@@ -309,8 +316,10 @@ import {
   createOrRenewUserTraceFlag,
   persistTrackedUser
 } from './sfUserTrace.js'
+import { pickEnvForPage, readPageEnvPreferFromUrl } from '../_shared/sfApi.js'
 
 const { t, locale } = useI18n()
+const { toastVisible, toastMessage, toastType, showToast, closeToast } = useToolToast()
 const api = useApexLogApi()
 
 /** ApexLog.Status：英文 Org 为 Success；中文界面常为「成功」 */
@@ -319,6 +328,7 @@ const SUCCESS_STATUSES = ['Success', 'SUCCESS', 'Completed', '成功']
 const environments = ref([])
 const selectedEnvId = ref('')
 const activeEnvId = ref('')
+const pagePrefer = ref(readPageEnvPreferFromUrl())
 const currentUserName = ref('')
 const logs = ref([])
 const selectedLog = ref(null)
@@ -333,7 +343,6 @@ const userFilter = ref('current')
 const trackedUsers = ref([])
 const detailFilter = ref('all')
 const pollProgress = ref(0)
-const toast = ref({ visible: false, message: '', type: 'success' })
 
 const userModalOpen = ref(false)
 const searchingUsers = ref(false)
@@ -418,13 +427,6 @@ function shortEvent(type) {
   return String(type).replace(/^USER_/, '')
 }
 
-function showToast(message, type = 'success') {
-  toast.value = { visible: true, message, type }
-  setTimeout(() => {
-    toast.value.visible = false
-  }, 2800)
-}
-
 function isSuccess(status) {
   if (status == null || status === '') return false
   const s = String(status).trim()
@@ -458,7 +460,16 @@ async function refreshEnvs() {
     const res = await api.discover()
     if (!res.success) throw new Error(res.error || t('apexLog.toastScanFailed'))
     environments.value = res.environments || []
-    if (res.activeEnvId && environments.value.some((e) => e.id === res.activeEnvId)) {
+    const preferred = pickEnvForPage(environments.value, pagePrefer.value)
+    if (preferred) {
+      selectedEnvId.value = preferred.id
+      if (activeEnvId.value !== preferred.id) {
+        await onEnvChange()
+      } else {
+        const env = environments.value.find((e) => e.id === preferred.id)
+        currentUserName.value = env?.userName || currentUserName.value
+      }
+    } else if (res.activeEnvId && environments.value.some((e) => e.id === res.activeEnvId)) {
       selectedEnvId.value = res.activeEnvId
       activeEnvId.value = res.activeEnvId
       const env = environments.value.find((e) => e.id === res.activeEnvId)
@@ -732,6 +743,20 @@ function onPollingTick() {
 
 function onMessage(message) {
   if (message?.action === 'apexLog:pollingTick') onPollingTick()
+  if (message?.action === 'toolPreferEnvironment' && message.toolId === 'apex-log') {
+    pagePrefer.value = {
+      hostname: message.hostname || '',
+      orgId: message.orgId || ''
+    }
+    const preferred = pickEnvForPage(environments.value, pagePrefer.value)
+    if (!preferred) {
+      refreshEnvs().catch(() => {})
+      return
+    }
+    if (selectedEnvId.value === preferred.id && activeEnvId.value === preferred.id) return
+    selectedEnvId.value = preferred.id
+    onEnvChange().catch(() => {})
+  }
 }
 
 onMounted(async () => {
@@ -742,7 +767,10 @@ onMounted(async () => {
     if (state.success) {
       environments.value = state.environments || []
       trackedUsers.value = state.trackedUsers || []
-      if (state.activeEnvId) {
+      const preferred = pickEnvForPage(environments.value, pagePrefer.value)
+      if (preferred) {
+        selectedEnvId.value = preferred.id
+      } else if (state.activeEnvId) {
         selectedEnvId.value = state.activeEnvId
         activeEnvId.value = state.activeEnvId
         const env = environments.value.find((e) => e.id === state.activeEnvId)
@@ -926,26 +954,6 @@ watch([appFilter, statusFilter, userFilter], () => {
 
 .apex-btn-icon:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.28);
-}
-
-.apex-toast {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 50;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 12px;
-  background: #fff;
-  border: 1px solid var(--border);
-  color: var(--accent-deep);
-  box-shadow: 0 6px 18px rgba(25, 118, 210, 0.15);
-}
-
-.apex-toast.error {
-  background: #ffebee;
-  border-color: #ef9a9a;
-  color: #c62828;
 }
 
 .apex-welcome {
