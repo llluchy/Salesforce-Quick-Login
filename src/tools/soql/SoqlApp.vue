@@ -1,5 +1,5 @@
 <template>
-  <div class="soql-app" @contextmenu="onAppContextMenu" @click="onAppClick">
+  <div class="soql-app theme-soql" @contextmenu="onAppContextMenu" @click="onAppClick">
     <header class="soql-header">
       <h1>{{ t('soql.productTitle') }}</h1>
       <div class="soql-header-actions">
@@ -226,16 +226,19 @@
               @keydown="onSoqlSuggestKeydown"
             />
             <div v-if="fieldSuggestions.length" class="soql-suggest">
-              <button
-                v-for="(item, idx) in fieldSuggestions"
-                :key="item.name"
-                type="button"
-                :class="['suggest-item', { active: idx === suggestIndex }]"
-                @mousedown.prevent="applyFieldSuggestion(item)"
-              >
-                <span class="suggest-name">{{ item.name }}</span>
-                <span class="suggest-label">{{ item.label }}</span>
-              </button>
+              <div class="suggest-list">
+                <button
+                  v-for="(item, idx) in fieldSuggestions"
+                  :key="`${item.kind || 'item'}:${item.name}`"
+                  type="button"
+                  :class="['suggest-item', { active: idx === suggestIndex }]"
+                  @mousedown.prevent="applyFieldSuggestion(item)"
+                >
+                  <span class="suggest-name">{{ item.name }}</span>
+                  <span class="suggest-label">{{ suggestItemLabel(item) }}</span>
+                </button>
+              </div>
+              <div class="suggest-hint">{{ t('soql.suggestHint') }}</div>
             </div>
           </div>
           <button
@@ -659,6 +662,9 @@ import {
   operatorsForKind,
   valueKind
 } from './soqlWhere.js'
+import { buildSoqlSuggestions } from './soqlSuggest/index.js'
+import { mapDescribe } from './soqlSuggest/relationships.js'
+import '../_shared/toolThemes.css'
 
 const { t } = useI18n()
 const { toastVisible, toastMessage, toastType, showToast, closeToast } = useToolToast()
@@ -674,6 +680,12 @@ const currentObject = ref(null)
 const loadingObjects = ref(false)
 
 const fieldsMap = ref({})
+const childRelationships = ref([])
+/** @type {Map<string, { fields: Record<string, any>, children: Array }>} */
+const describeCache = new Map()
+const describeFailed = new Set()
+/** @type {Map<string, Promise<void>>} */
+const describeInflight = new Map()
 const fieldSearch = ref('')
 const fieldKindFilter = ref('all') // all | standard | custom
 const selectedFieldSet = ref(new Set())
@@ -685,7 +697,10 @@ const whereConditions = ref([])
 const soqlText = ref('')
 const soqlEditorOpen = ref(false)
 const soqlEditorEl = ref(null)
+/** 编辑器联想：字段（SELECT）或对象（FROM），项形如 { name, label } */
 const fieldSuggestions = ref([])
+/** 'field' | 'object' */
+const suggestKind = ref('field')
 const suggestIndex = ref(0)
 const suggestReplace = ref(null) // { start, end }
 const limitEnabled = ref(false)
@@ -1433,28 +1448,17 @@ async function selectObject(obj) {
   errorMessage.value = ''
   try {
     const desc = await client.describeSObject(obj.name)
-    const map = {}
-    for (const field of desc.fields || []) {
-      if (field.deprecatedAndHidden) continue
-      map[field.name] = {
-        name: field.name,
-        label: field.label || field.name,
-        type: field.type || 'string',
-        custom: !!field.custom,
-        updateable: field.updateable !== false,
-        filterable: field.filterable === true,
-        nillable: !!field.nillable,
-        picklistValues: field.picklistValues || []
-      }
-    }
-    fieldsMap.value = map
+    const packed = rememberDescribe(obj.name, desc)
+    fieldsMap.value = packed.fields
+    childRelationships.value = packed.children
     // 默认只选 Id、Name（存在才选）
-    const defaults = ['Id', 'Name'].filter((n) => map[n])
+    const defaults = ['Id', 'Name'].filter((n) => packed.fields[n])
     selectedFieldSet.value = new Set(defaults)
     syncSelectedArray()
     syncSoqlFromBuilder()
   } catch (e) {
     fieldsMap.value = {}
+    childRelationships.value = []
     selectedFieldSet.value = new Set()
     syncSelectedArray()
     whereConditions.value = []
@@ -1561,39 +1565,63 @@ function syncSoqlFromBuilder() {
 
 function clearFieldSuggestions() {
   fieldSuggestions.value = []
+  suggestKind.value = 'field'
   suggestIndex.value = 0
   suggestReplace.value = null
 }
 
-/** 解析光标是否在 SELECT 字段列表中，且已有 FROM 对象 */
-function getSelectFieldSuggestContext(text, cursor) {
-  const src = String(text || '')
-  const pos = Math.max(0, Math.min(cursor ?? 0, src.length))
-  const fromMatch = src.match(/\bFROM\s+([A-Za-z_][\w]*)/i)
-  if (!fromMatch) return null
-
-  const fromIndex = src.search(/\bFROM\b/i)
-  if (fromIndex < 0 || pos > fromIndex) return null
-
-  const selectMatch = src.match(/\bSELECT\b/i)
-  if (!selectMatch || selectMatch.index == null) return null
-  if (pos <= selectMatch.index + 6) return null
-
-  const before = src.slice(0, pos)
-  const tokenMatch = before.match(/(?:SELECT\b|,)\s*([A-Za-z_][\w]*)$/i)
-  const emptyMatch = before.match(/(?:SELECT\b|,)\s*$/i)
-  if (!tokenMatch && !emptyMatch) return null
-
-  const prefix = tokenMatch ? tokenMatch[1] : ''
-  const start = tokenMatch ? pos - prefix.length : pos
-  return {
-    objectName: fromMatch[1],
-    prefix,
-    start,
-    end: pos
+function commitSuggestionList(list, kind, range) {
+  const prevNames = fieldSuggestions.value.map((i) => i.name).join('\0')
+  const nextNames = list.map((i) => i.name).join('\0')
+  const prevKind = suggestKind.value
+  fieldSuggestions.value = list
+  suggestKind.value = kind
+  suggestReplace.value = list.length ? range : null
+  if (prevNames !== nextNames || prevKind !== kind) {
+    suggestIndex.value = 0
+  } else if (suggestIndex.value >= list.length) {
+    suggestIndex.value = Math.max(0, list.length - 1)
   }
 }
 
+function rememberDescribe(name, desc) {
+  const packed = mapDescribe(desc)
+  describeCache.set(String(name || '').toLowerCase(), packed)
+  describeFailed.delete(String(name || '').toLowerCase())
+  return packed
+}
+
+function relatedDescribeSnapshot() {
+  const currentKey = String(currentObject.value?.name || '').toLowerCase()
+  /** @type {Record<string, { fields: Record<string, any>, children: Array }>} */
+  const snapshot = {}
+  for (const [name, packed] of describeCache) {
+    if (name === currentKey) continue
+    snapshot[name] = packed
+  }
+  return snapshot
+}
+
+function ensureRelatedDescribe(name) {
+  const key = String(name || '').toLowerCase()
+  if (!key || !client || describeCache.has(key) || describeFailed.has(key)) return
+  if (describeInflight.has(key)) return
+  const task = client
+    .describeSObject(name)
+    .then((desc) => {
+      rememberDescribe(name, desc)
+    })
+    .catch(() => {
+      describeFailed.add(key)
+    })
+    .finally(() => {
+      describeInflight.delete(key)
+      refreshFieldSuggestions()
+    })
+  describeInflight.set(key, task)
+}
+
+/** 编辑器联想：对象 / 字段 / 关键字 / WHERE / 关系路径 */
 function refreshFieldSuggestions() {
   if (!soqlEditorOpen.value) {
     clearFieldSuggestions()
@@ -1601,42 +1629,21 @@ function refreshFieldSuggestions() {
   }
   const el = soqlEditorEl.value
   const cursor = el ? el.selectionStart : soqlText.value.length
-  const ctx = getSelectFieldSuggestContext(soqlText.value, cursor)
-  if (!ctx) {
+  const result = buildSoqlSuggestions({
+    text: soqlText.value,
+    cursor,
+    objects: objects.value,
+    fieldsMap: fieldsMap.value,
+    currentObjectName: currentObject.value?.name || '',
+    childRelationships: childRelationships.value,
+    relatedDescribes: relatedDescribeSnapshot()
+  })
+  if (result.pendingDescribe) ensureRelatedDescribe(result.pendingDescribe)
+  if (!result.items.length) {
     clearFieldSuggestions()
     return
   }
-
-  const fromObj = ctx.objectName.toLowerCase()
-  const current = (currentObject.value?.name || '').toLowerCase()
-  // 仅当 FROM 对象与当前已 describe 的对象一致时提供联想
-  if (!current || fromObj !== current) {
-    clearFieldSuggestions()
-    return
-  }
-
-  const q = ctx.prefix.toLowerCase()
-  const list = Object.values(fieldsMap.value)
-    .filter((f) => {
-      if (!q) return true
-      return (
-        f.name.toLowerCase().startsWith(q) ||
-        (f.label || '').toLowerCase().includes(q)
-      )
-    })
-    .slice(0, 12)
-    .map((f) => ({ name: f.name, label: f.label || f.name, type: f.type }))
-
-  const prevNames = fieldSuggestions.value.map((i) => i.name).join('\0')
-  const nextNames = list.map((i) => i.name).join('\0')
-  fieldSuggestions.value = list
-  suggestReplace.value = list.length ? { start: ctx.start, end: ctx.end } : null
-  // 列表未变时保留当前高亮，避免 ↑↓ 后被 keyup 刷新打回第一项
-  if (prevNames !== nextNames) {
-    suggestIndex.value = 0
-  } else if (suggestIndex.value >= list.length) {
-    suggestIndex.value = Math.max(0, list.length - 1)
-  }
+  commitSuggestionList(result.items, result.kind, result.range)
 }
 
 function onSoqlEditorActivity(e) {
@@ -1650,16 +1657,72 @@ function onSoqlEditorActivity(e) {
   nextTick(refreshFieldSuggestions)
 }
 
+/** 选中 FROM 对象时：加载 describe 供后续字段联想，不重写用户手写 SOQL */
+async function hydrateObjectFromSuggest(obj) {
+  if (!client || !obj?.name) return
+  if (
+    currentObject.value?.name === obj.name &&
+    Object.keys(fieldsMap.value).length > 0
+  ) {
+    return
+  }
+  currentObject.value = obj
+  fieldSearch.value = ''
+  fieldKindFilter.value = 'all'
+  loadingFields.value = true
+  try {
+    const desc = await client.describeSObject(obj.name)
+    const packed = rememberDescribe(obj.name, desc)
+    fieldsMap.value = packed.fields
+    childRelationships.value = packed.children
+    // 不改 selectedFieldSet / soqlText，避免覆盖手写语句
+  } catch (e) {
+    fieldsMap.value = {}
+    childRelationships.value = []
+    errorMessage.value = e.message || String(e)
+  } finally {
+    loadingFields.value = false
+  }
+}
+
+function suggestItemLabel(item) {
+  if (item?.kind === 'keyword') return t('soql.suggestKindKeyword')
+  if (item?.kind === 'operator') return t('soql.suggestKindOperator')
+  if (item?.kind === 'relationship') {
+    return item.label || t('soql.suggestKindRelationship')
+  }
+  if (item?.kind === 'child') return item.label || t('soql.suggestKindChild')
+  if (item?.kind === 'function') return t('soql.suggestKindFunction')
+  if (item?.kind === 'value') {
+    if (
+      item.label &&
+      item.label !== 'boolean' &&
+      item.label !== 'picklist' &&
+      item.label !== 'date literal'
+    ) {
+      return item.label
+    }
+    if (item.label === 'date literal') return item.label
+    return t('soql.suggestKindValue')
+  }
+  return item?.label || ''
+}
+
 function applyFieldSuggestion(item) {
   if (!item?.name || !suggestReplace.value) return
   const { start, end } = suggestReplace.value
+  const insert = item.insertText != null ? item.insertText : item.name
   const text = soqlText.value
-  soqlText.value = text.slice(0, start) + item.name + text.slice(end)
+  soqlText.value = text.slice(0, start) + insert + text.slice(end)
+  const appliedKind = item.kind || suggestKind.value
   clearFieldSuggestions()
+  if (appliedKind === 'object') {
+    void hydrateObjectFromSuggest(item._obj || { name: item.name, label: item.label })
+  }
   nextTick(() => {
     const el = soqlEditorEl.value
     if (!el) return
-    const pos = start + item.name.length
+    const pos = start + insert.length
     el.focus()
     el.setSelectionRange(pos, pos)
     refreshFieldSuggestions()
@@ -2013,22 +2076,8 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Quick Login 蓝白 + 圆角分块布局 */
+/* 主题色：.theme-soql → src/tools/_shared/toolThemes.css（与浮动入口橙黄一致） */
 .soql-app {
-  --accent: #1976d2;
-  --accent-2: #1565c0;
-  --accent-deep: #0d47a1;
-  --page: #eef5fc;
-  --card: #fff;
-  --border: #bbdefb;
-  --soft: #e3f2fd;
-  --panel: #f5f9ff;
-  --text: #333;
-  --muted: #607d8b;
-  --radius: 10px;
-  --gap: 12px;
-  --shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
-
   height: 100%;
   max-height: 100%;
   overflow: hidden;
@@ -2051,7 +2100,7 @@ onUnmounted(() => {
   padding: 10px 16px;
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
   border-radius: var(--radius);
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.25);
+  box-shadow: var(--header-shadow);
   color: #fff;
 }
 
@@ -2059,9 +2108,8 @@ onUnmounted(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  /* 与 Apex Log 区分：琥珀金，贴合 Query/数据 */
-  color: #ffe082;
-  text-shadow: 0 1px 1px rgba(0, 40, 80, 0.25);
+  color: var(--title-on-header);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
   line-height: 1.2;
 }
 
@@ -2106,7 +2154,7 @@ onUnmounted(() => {
   padding: 28px 32px;
   max-width: 440px;
   text-align: center;
-  box-shadow: 0 8px 24px rgba(25, 118, 210, 0.1);
+  box-shadow: var(--card-shadow);
 }
 
 .empty-card h2 {
@@ -2181,7 +2229,7 @@ onUnmounted(() => {
 .search-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.12);
+  box-shadow: var(--focus-ring);
 }
 
 .list-scroll {
@@ -2210,13 +2258,13 @@ onUnmounted(() => {
 }
 
 .list-item:hover {
-  border-color: #90caf9;
-  background: #fafcff;
+  border-color: var(--border-hover);
+  background: var(--soft-tint);
 }
 
 .list-item.active {
   background: var(--soft);
-  border-color: #90caf9;
+  border-color: var(--border-hover);
 }
 
 .item-top {
@@ -2301,9 +2349,9 @@ onUnmounted(() => {
 }
 
 .chip:hover:not(:disabled) {
-  border-color: #90caf9;
-  background: #f5f9ff;
-  color: var(--accent);
+  border-color: var(--border-hover);
+  background: var(--panel);
+  color: var(--accent-2);
 }
 
 .chip.active {
@@ -2313,9 +2361,9 @@ onUnmounted(() => {
 }
 
 .chip-select.active {
-  background: #e3f2fd;
-  border-color: #1976d2;
-  color: #0d47a1;
+  background: var(--soft);
+  border-color: var(--accent);
+  color: var(--accent-deep);
 }
 
 .chip-where.active {
@@ -2352,9 +2400,9 @@ onUnmounted(() => {
 }
 
 .fields-panel.mode-select .mode-badge {
-  background: #e3f2fd;
-  color: #1565c0;
-  border: 1px solid #90caf9;
+  background: var(--soft);
+  color: var(--accent-2);
+  border: 1px solid var(--border-hover);
 }
 
 .fields-panel.mode-where .mode-badge {
@@ -2364,7 +2412,7 @@ onUnmounted(() => {
 }
 
 .fields-panel.mode-select .fields-list {
-  background: #f5f9ff;
+  background: var(--panel);
 }
 
 .fields-panel.mode-where .fields-list {
@@ -2397,7 +2445,7 @@ onUnmounted(() => {
   margin: 0;
   padding: 4px 7px;
   text-align: left;
-  border: 1px solid #e3f2fd;
+  border: 1px solid var(--soft);
   border-radius: 4px;
   background: #fff;
   cursor: pointer;
@@ -2406,18 +2454,18 @@ onUnmounted(() => {
 }
 
 .mode-select .field-item:hover {
-  border-color: #90caf9;
-  background: #f5f9ff;
+  border-color: var(--border-hover);
+  background: var(--panel);
 }
 
 .mode-select .field-item.selected {
   background: var(--soft);
   border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(25, 118, 210, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.08);
 }
 
 .mode-select .field-item.selected:hover {
-  background: #d6eafb;
+  background: var(--soft);
   border-color: var(--accent-2);
 }
 
@@ -2586,7 +2634,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   margin: 6px 10px 0;
-  border: 1px solid #e3f2fd;
+  border: 1px solid var(--soft);
   border-radius: 6px;
   background: var(--panel);
   overflow: hidden;
@@ -2601,7 +2649,7 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 600;
   color: var(--accent-deep);
-  border-bottom: 1px solid #e3f2fd;
+  border-bottom: 1px solid var(--soft);
 }
 
 .where-head .btn {
@@ -2632,7 +2680,7 @@ onUnmounted(() => {
   min-width: 0;
   padding: 6px 8px;
   background: #fff;
-  border: 1px solid #e3f2fd;
+  border: 1px solid var(--soft);
   border-radius: 4px;
 }
 
@@ -2724,7 +2772,7 @@ onUnmounted(() => {
 }
 
 .where-check-item:hover {
-  background: #e3f2fd;
+  background: var(--soft);
 }
 
 .where-check-item input {
@@ -2786,7 +2834,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  background: #fafcff;
+  background: var(--soft-tint);
 }
 
 .soql-fold-btn {
@@ -2799,7 +2847,7 @@ onUnmounted(() => {
   width: 36px;
   padding: 4px 2px;
   border: none;
-  border-right: 1px solid #e3f2fd;
+  border-right: 1px solid var(--soft);
   background: var(--panel);
   color: var(--accent-deep);
   font-size: 10px;
@@ -2823,7 +2871,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #fafcff;
+  background: var(--soft-tint);
 }
 
 .soql-editor {
@@ -2840,7 +2888,7 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.45;
   color: #263238;
-  background: #fafcff;
+  background: var(--soft-tint);
   box-sizing: border-box;
 }
 
@@ -2851,10 +2899,28 @@ onUnmounted(() => {
 
 .soql-suggest {
   flex-shrink: 0;
-  max-height: 120px;
-  overflow: auto;
-  border-top: 1px solid #e3f2fd;
+  display: flex;
+  flex-direction: column;
+  max-height: 148px;
+  border-top: 1px solid var(--soft);
   background: #fff;
+}
+
+.suggest-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.suggest-hint {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: #90a4ae;
+  border-top: 1px solid #f0f4f8;
+  background: var(--panel);
+  user-select: none;
 }
 
 .suggest-item {
@@ -2899,14 +2965,14 @@ onUnmounted(() => {
   padding: 6px 10px;
   border: none;
   border-radius: 0;
-  background: #fafcff;
+  background: var(--soft-tint);
   cursor: pointer;
   text-align: left;
   color: #546e7a;
 }
 
 .soql-preview:hover {
-  background: #f0f7ff;
+  background: var(--soft);
 }
 
 .soql-preview-text {
@@ -2951,9 +3017,9 @@ onUnmounted(() => {
   min-height: 0;
   overflow: auto;
   margin: 0 10px 10px;
-  border: 1px solid #e3f2fd;
+  border: 1px solid var(--soft);
   border-radius: 6px;
-  background: #fafcff;
+  background: var(--soft-tint);
 }
 
 .query-panel:has(.results-edit-bar) .results-wrap {
@@ -3126,8 +3192,8 @@ select.cell-editor {
   margin: 0 0 14px;
   padding: 8px 10px;
   list-style: none;
-  background: #fafcff;
-  border: 1px solid #e3f2fd;
+  background: var(--soft-tint);
+  border: 1px solid var(--soft);
   border-radius: 6px;
   max-height: 200px;
   overflow: auto;
@@ -3138,7 +3204,7 @@ select.cell-editor {
 .confirm-list li + li {
   margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px dashed #e3f2fd;
+  border-top: 1px dashed var(--soft);
 }
 
 .confirm-list code {
@@ -3174,13 +3240,13 @@ select.cell-editor {
 }
 
 .results-table tbody td.col-detail {
-  background: #fafcff;
+  background: var(--soft-tint);
   z-index: 1;
 }
 
 .results-table th,
 .results-table td {
-  border-bottom: 1px solid #e3f2fd;
+  border-bottom: 1px solid var(--soft);
   padding: 6px 8px;
   text-align: left;
   white-space: nowrap;
@@ -3192,7 +3258,7 @@ select.cell-editor {
 .results-table th {
   position: sticky;
   top: 0;
-  background: #e3f2fd;
+  background: var(--soft);
   color: var(--accent-deep);
   font-weight: 600;
   z-index: 1;

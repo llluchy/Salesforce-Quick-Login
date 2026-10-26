@@ -2,13 +2,62 @@
 // 云同步诊断日志（开发版扩展 chrome.storage.sync 行为受限制）
 // 在 Service Worker 控制台查看（chrome://extensions → 检查视图 service worker）
 // ============================================
-import { TOOL_WINDOW_DEFS, buildToolWindowUrl } from './src/tools/_shared/toolWindows.js'
+import { TOOL_WINDOW_DEFS, buildToolWindowUrl, openObjectDetailTab } from './src/tools/_shared/toolWindows.js'
 import {
   listLoggedInSfEnvironments,
   getSession,
   normalizeSfHostname
 } from './src/tools/_shared/sfSessionBg.js'
 import { handleApexLogMessage, initApexLogBackground } from './src/tools/apex-log/apexLogBackground.js'
+
+const SF_API_VERSION = '64.0'
+const SF_REST_CLIENT_ID = 'Salesforce Quick Login SOQL'
+
+/** Content script 代理：用 Cookie sid 调 Salesforce REST（绕过页面 CORS） */
+async function sfRestViaSession(hostname, path) {
+  const hostIn = normalizeSfHostname(hostname || '')
+  if (!hostIn) throw new Error('hostname 为空')
+  const session = await getSession(hostIn)
+  if (!session?.key) throw new Error('未找到 sid Cookie')
+  const host = session.hostname || hostIn
+  const url = path.startsWith('http')
+    ? path
+    : `https://${host}/services/data/v${SF_API_VERSION}${path}`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json; charset=UTF-8',
+      Authorization: `Bearer ${session.key}`,
+      'Sforce-Call-Options': `client=${SF_REST_CLIENT_ID}`
+    }
+  })
+  const text = await res.text()
+  let data = null
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    data = text
+  }
+  if (res.status === 401) {
+    const msg =
+      Array.isArray(data) && data[0]?.message ? data[0].message : 'Session 已过期，请重新登录该 Org'
+    const err = new Error(msg)
+    err.name = 'Unauthorized'
+    throw err
+  }
+  if (res.status < 200 || res.status >= 300) {
+    let message = `HTTP ${res.status}`
+    if (Array.isArray(data)) {
+      message = data
+        .map((d) => `${d.errorCode || ''}: ${d.message || ''}`.trim())
+        .join('\n')
+    } else if (data?.message) {
+      message = data.message
+    }
+    throw new Error(message)
+  }
+  return { success: true, data, hostname: host, sessionId: session.key }
+}
 
 initApexLogBackground().catch((e) => console.warn('[ApexLog] init failed', e))
 
@@ -175,6 +224,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'openToolWindow') {
     openToolWindow(request.toolId, { hostname: request.hostname || '' })
+      .then((result) => sendResponse(result))
+      .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
+    return true
+  }
+
+  // Content 浮动栏：打开 Object Detail（须带 object + hostname，可选 id）
+  if (request.action === 'openObjectDetailTab') {
+    const objectName = request.object || request.objectName || ''
+    const hostname = request.hostname || ''
+    const recordId = request.id || request.recordId || ''
+    if (!objectName) {
+      sendResponse({ success: false, error: '缺少 object 参数' })
+      return true
+    }
+    if (!hostname) {
+      sendResponse({ success: false, error: '缺少 hostname 参数' })
+      return true
+    }
+    openObjectDetailTab({ objectName, hostname, recordId: recordId || undefined })
+      .then((tab) => sendResponse({ success: true, tabId: tab?.id }))
+      .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
+    return true
+  }
+
+  // Content 对象搜索：Global Describe / describeSObject
+  if (request.action === 'sfGetSObjects') {
+    sfRestViaSession(request.hostname || '', '/sobjects/')
+      .then((result) => sendResponse(result))
+      .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
+    return true
+  }
+
+  if (request.action === 'sfDescribeSObject') {
+    const name = request.object || request.objectName || ''
+    if (!name) {
+      sendResponse({ success: false, error: '缺少 object 参数' })
+      return true
+    }
+    sfRestViaSession(
+      request.hostname || '',
+      `/sobjects/${encodeURIComponent(name)}/describe/`
+    )
       .then((result) => sendResponse(result))
       .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
     return true

@@ -1,0 +1,13 @@
+---
+description: 工具窗口主题色使用共享 CSS/JS 变量，禁止硬编码主色
+globs: src/tools/**/*.{vue,js,css},content.js
+alwaysApply: false
+---
+
+# 工具主题色
+
+- 单一数据源：`src/tools/_shared/toolThemes.js` + `toolThemes.css`
+- Vue 根节点：`theme-soql` / `theme-object` / `theme-apex`，样式用 `var(--accent)`、`var(--page)`、`var(--header-shadow)` 等
+- JS：`getToolTheme(id)`、`applyToolThemeVars(id)`
+- `content.js` 浮动栏用本地 `THEME` 对象，改色时与 `toolThemes.js` 同步
+- 勿在 SOQL / Object Detail / 浮动入口再写死蓝/橙/紫主色

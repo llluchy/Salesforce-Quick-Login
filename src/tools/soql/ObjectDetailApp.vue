@@ -1,5 +1,5 @@
 <template>
-  <div class="od-app">
+  <div class="od-app theme-object">
     <header class="od-header">
       <div class="od-header-main">
         <h1>{{ headerTitle }}</h1>
@@ -289,6 +289,7 @@ import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import ToolToast from '../_shared/ToolToast.vue'
 import { useToolToast } from '../_shared/useToolToast.js'
 import { SfRestClient, fetchSfSession } from '../_shared/sfApi.js'
+import '../_shared/toolThemes.css'
 
 const { t } = useI18n()
 const { toastVisible, toastMessage, toastType, showToast, closeToast } = useToolToast()
@@ -578,19 +579,8 @@ onMounted(load)
 </script>
 
 <style scoped>
+/* 主题色：.theme-object → src/tools/_shared/toolThemes.css（淡紫，对齐浮动入口） */
 .od-app {
-  --accent: #1976d2;
-  --accent-2: #1565c0;
-  --accent-deep: #0d47a1;
-  --page: #eef5fc;
-  --card: #fff;
-  --border: #bbdefb;
-  --soft: #e3f2fd;
-  --panel: #f5f9ff;
-  --radius: 10px;
-  --gap: 12px;
-  --shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
-
   height: 100%;
   max-height: 100%;
   overflow: hidden;
@@ -600,7 +590,7 @@ onMounted(load)
   padding: var(--gap);
   box-sizing: border-box;
   background: var(--page);
-  color: #333;
+  color: var(--text);
 }
 
 .od-header {
@@ -612,7 +602,7 @@ onMounted(load)
   padding: 12px 16px;
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
   border-radius: var(--radius);
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.25);
+  box-shadow: var(--header-shadow);
   color: #fff;
 }
 
@@ -642,6 +632,7 @@ onMounted(load)
   font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
+  color: var(--title-on-header);
 }
 
 .od-header-meta {
@@ -720,7 +711,7 @@ onMounted(load)
 .od-caps.inline .cap.on {
   background: var(--soft);
   color: var(--accent-deep);
-  border-color: #90caf9;
+  border-color: var(--border-hover);
 }
 
 .od-empty {
@@ -872,7 +863,7 @@ onMounted(load)
   gap: 2px;
   padding: 8px 10px;
   background: var(--panel);
-  border: 1px solid #e3f2fd;
+  border: 1px solid var(--soft);
   border-radius: 6px;
 }
 
@@ -915,7 +906,7 @@ onMounted(load)
   min-width: 72px;
   padding: 10px 12px;
   background: var(--panel);
-  border: 1px solid #e3f2fd;
+  border: 1px solid var(--soft);
   border-radius: 6px;
   text-align: center;
 }
@@ -964,7 +955,7 @@ onMounted(load)
 .search-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.12);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.12);
 }
 
 .chips {
@@ -1011,7 +1002,7 @@ onMounted(load)
 
 .meta-table th,
 .meta-table td {
-  border-bottom: 1px solid #e3f2fd;
+  border-bottom: 1px solid var(--soft);
   padding: 6px 8px;
   text-align: left;
   vertical-align: top;
@@ -1022,12 +1013,12 @@ onMounted(load)
   position: sticky;
   top: 0;
   z-index: 3;
-  background: #e3f2fd;
+  background: var(--soft);
   color: var(--accent-deep);
   font-weight: 600;
   white-space: nowrap;
   /* 遮住下方滚动行，避免透视 */
-  box-shadow: 0 1px 0 #bbdefb;
+  box-shadow: 0 1px 0 var(--border);
 }
 
 .fields-table td {
@@ -1111,7 +1102,7 @@ onMounted(load)
   margin: 0;
   padding: 8px;
   background: #fff;
-  border: 1px solid #e3f2fd;
+  border: 1px solid var(--soft);
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-word;

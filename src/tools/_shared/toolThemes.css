@@ -1,0 +1,68 @@
+/**
+ * 工具主题 CSS 变量 — 与 toolThemes.js 保持一致。
+ *
+ * 用法：根节点加 class
+ *   class="theme-soql" | "theme-object" | "theme-apex"
+ * 子样式直接用 var(--accent)、var(--page)、var(--header-shadow) 等。
+ */
+
+.theme-apex,
+.theme-soql,
+.theme-object {
+  --radius: 10px;
+  --gap: 12px;
+  --card: #ffffff;
+  --text: #333333;
+  --shadow: 0 2px 8px rgba(var(--accent-rgb), 0.10);
+  --header-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.28);
+  --card-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.12);
+  --focus-ring: 0 0 0 2px rgba(var(--accent-rgb), 0.22);
+}
+
+/* Apex Log — 蓝 */
+.theme-apex {
+  --accent: #0277bd;
+  --accent-2: #01579b;
+  --accent-deep: #014f86;
+  --page: #eef5fc;
+  --border: #90caf9;
+  --border-hover: #64b5f6;
+  --soft: #e3f2fd;
+  --panel: #f5f9ff;
+  --muted: #607d8b;
+  --title-on-header: #e1f5fe;
+  --soft-tint: #fafcff;
+  --accent-rgb: 2, 119, 189;
+}
+
+/* SOQL — 橙黄（对齐浮动入口） */
+.theme-soql {
+  --accent: #f9a825;
+  --accent-2: #ef6c00;
+  --accent-deep: #e65100;
+  --page: #fff8e1;
+  --border: #ffe082;
+  --border-hover: #ffcc80;
+  --soft: #ffecb3;
+  --panel: #fffde7;
+  --muted: #8d6e63;
+  --title-on-header: #fffde7;
+  --soft-tint: #fffbf0;
+  --accent-rgb: 239, 108, 0;
+}
+
+/* Object Detail / 对象搜索 — 淡紫 */
+.theme-object {
+  --accent: #9575cd;
+  --accent-2: #7e57c2;
+  --accent-deep: #5e35b1;
+  --page: #f7f3fb;
+  --border: #d1c4e9;
+  --border-hover: #b39ddb;
+  --soft: #ede7f6;
+  --panel: #faf5ff;
+  --muted: #7e6b9a;
+  --title-on-header: #f3e5f5;
+  --soft-tint: #faf7fc;
+  --accent-rgb: 126, 87, 194;
+}

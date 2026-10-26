@@ -113,7 +113,14 @@
             v-for="log in filteredLogs"
             :key="log.Id"
             type="button"
-            :class="['apex-log-card', { selected: selectedLog?.Id === log.Id, read: readIds.has(log.Id) }]"
+            :class="[
+              'apex-log-card',
+              {
+                selected: selectedLog?.Id === log.Id,
+                read: readIds.has(log.Id),
+                unread: !readIds.has(log.Id)
+              }
+            ]"
             @click="openDetail(log)"
           >
             <span :class="['apex-status', isSuccess(log.Status) ? 'ok' : 'bad']">
@@ -1127,23 +1134,100 @@ watch([appFilter, statusFilter, userFilter], () => {
   padding: 10px 12px;
   margin-bottom: 8px;
   border: 1px solid var(--border);
+  border-left: 3px solid transparent;
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.apex-log-card:hover {
-  border-color: #90caf9;
+.apex-log-card:hover:not(.selected) {
+  border-top-color: #90caf9;
+  border-right-color: #90caf9;
+  border-bottom-color: #90caf9;
 }
 
+.apex-log-card.unread:hover:not(.selected) {
+  border-left-color: var(--accent-2, #1565c0);
+  background: #f7fbff;
+}
+
+.apex-log-card.read:hover:not(.selected) {
+  border-left-color: #b0bec5;
+  background: #eef2f6;
+}
+
+/* 未读：白底 + 左侧蓝条 + 标题加粗（不要大面积蓝底，避免和选中混淆） */
+.apex-log-card.unread {
+  border-left-color: #1976d2;
+  background: #fff;
+}
+
+.apex-log-card.unread .apex-op {
+  font-weight: 700;
+  color: #0d47a1;
+}
+
+.apex-log-card.unread .apex-app-tag,
+.apex-log-card.unread .apex-meta {
+  color: #546e7a;
+  font-weight: 500;
+}
+
+/* 已读：灰底弱化 */
 .apex-log-card.read {
-  opacity: 0.72;
+  background: #f5f7fa;
+  border-color: #e0e6ed;
+  border-left-color: #cfd8dc;
 }
 
+.apex-log-card.read .apex-op {
+  font-weight: 500;
+  color: #78909c;
+}
+
+.apex-log-card.read .apex-app-tag,
+.apex-log-card.read .apex-meta {
+  color: #90a4ae;
+  font-weight: 400;
+}
+
+.apex-log-card.read .apex-status {
+  opacity: 0.55;
+}
+
+/* 选中：实心蓝底白字，和未读白底蓝条明显区分 */
 .apex-log-card.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(25, 118, 210, 0.25);
+  border-color: #0d47a1;
+  border-left-color: #ffca28;
+  border-left-width: 4px;
+  background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%);
+  box-shadow: 0 4px 12px rgba(13, 71, 161, 0.35);
+}
+
+.apex-log-card.selected .apex-op,
+.apex-log-card.selected .apex-app-tag,
+.apex-log-card.selected .apex-meta {
+  color: #fff;
+  font-weight: 600;
+}
+
+.apex-log-card.selected .apex-app-tag {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: transparent;
+  color: #e3f2fd;
+}
+
+.apex-log-card.selected .apex-status.ok {
+  color: #c8e6c9;
+}
+
+.apex-log-card.selected .apex-status.bad {
+  color: #ffcdd2;
+}
+
+.apex-log-card.selected.read .apex-status {
+  opacity: 1;
 }
 
 .apex-status {

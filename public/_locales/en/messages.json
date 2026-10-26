@@ -41,10 +41,88 @@
   "toolFloatSoql": {
     "message": "SOQL"
   },
+  "toolFloatObject": {
+    "message": "Object"
+  },
   "toolFloatApexTitle": {
     "message": "Apex Log Viewer"
   },
   "toolFloatSoqlTitle": {
     "message": "SOQL Creator"
+  },
+  "toolFloatObjectTitle": {
+    "message": "Object Search"
+  },
+  "objectSearchTitle": {
+    "message": "Object Search"
+  },
+  "objectSearchPlaceholder": {
+    "message": "Label, API Name, or Salesforce Id…"
+  },
+  "objectSearchLoading": {
+    "message": "Loading object metadata…"
+  },
+  "objectSearchNoSession": {
+    "message": "No Salesforce session found. Log in to this org first."
+  },
+  "objectSearchLoadFailed": {
+    "message": "Failed to load objects: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "network error"
+      }
+    }
+  },
+  "objectSearchNoMatch": {
+    "message": "No matching objects"
+  },
+  "objectSearchPrefixConflict": {
+    "message": "Multiple objects share this Id prefix — select one"
+  },
+  "objectSearchUnknownPrefix": {
+    "message": "No object found for this Id prefix"
+  },
+  "objectSearchSelectHint": {
+    "message": "Select an object to preview"
+  },
+  "objectSearchExpand": {
+    "message": "Expand"
+  },
+  "objectSearchLabel": {
+    "message": "Label"
+  },
+  "objectSearchApiName": {
+    "message": "API Name"
+  },
+  "objectSearchPrefix": {
+    "message": "Key Prefix"
+  },
+  "objectSearchType": {
+    "message": "Type"
+  },
+  "objectSearchCustom": {
+    "message": "Custom"
+  },
+  "objectSearchStandard": {
+    "message": "Standard"
+  },
+  "objectSearchRecordId": {
+    "message": "Record Id"
+  },
+  "objectSearchClose": {
+    "message": "Close"
+  },
+  "objectSearchDescribeLoading": {
+    "message": "Loading details…"
+  },
+  "objectSearchExpandFailed": {
+    "message": "Failed to open Object Detail: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "unknown"
+      }
+    }
   }
 }

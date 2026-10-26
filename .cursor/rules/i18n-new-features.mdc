@@ -1,0 +1,44 @@
+---
+description: 所有新功能必须适配多语言（vue-i18n + chrome.i18n）
+alwaysApply: true
+---
+
+# 新功能必须适配多语言
+
+凡新增或改动用户可见文案（UI 标签、按钮、占位符、提示、错误、空态、title/aria），**禁止硬编码自然语言**；必须走现有 i18n，并补齐全部已支持语言。
+
+## 两套通道（按入口选对）
+
+| 场景 | 机制 | 语言文件 | 用法 |
+|------|------|----------|------|
+| Side Panel / 工具窗 / Vue 组件与 composable | `vue-i18n` | `src/i18n/locales/{zh-CN,en,ja}.json` | `useI18n().t` 或 `import { t } from '@/i18n'` |
+| content script / page 注入 / manifest 相关 | `chrome.i18n` | `public/_locales/{zh_CN,en}/messages.json` | `chrome.i18n.getMessage('key')` |
+
+- Vue 侧支持：`zh-CN`、`en`、`ja`（三者键集合保持一致）。
+- 扩展 `_locales` 侧：至少同步 `zh_CN` 与 `en`；若日后增加 `ja` locale 目录，新 key 一并补齐。
+- 同一功能若同时有页面注入与工具窗文案，**两套都要加**，勿只改一处。
+
+## 交付检查（新功能必过）
+
+1. 新增 key 写入对应全部 locale 文件，含义一致，无漏译、无残留中文/英文串在模板或 JS 里。
+2. 占位/插值用框架约定（vue-i18n 参数、`messages.json` 的 `placeholders`），不要拼接半截翻译。
+3. 仅调试日志、协议字段名、SF API 名、Id 等非 UI 文本可不翻译；面向用户的说明必须翻译。
+4. PR/改动说明中可一眼看到「补了哪些 locale」；缺语言文件视为未完成。
+
+## 示例
+
+```vue
+<!-- ❌ -->
+<button>展开</button>
+
+<!-- ✅ Vue -->
+<button>{{ t('objectSearch.expand') }}</button>
+```
+
+```js
+// ❌ content.js
+btn.textContent = '对象'
+
+// ✅
+btn.textContent = chrome.i18n.getMessage('toolFloatObject')
+```

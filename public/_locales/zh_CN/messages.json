@@ -41,10 +41,88 @@
   "toolFloatSoql": {
     "message": "SOQL"
   },
+  "toolFloatObject": {
+    "message": "对象"
+  },
   "toolFloatApexTitle": {
     "message": "Apex Log Viewer"
   },
   "toolFloatSoqlTitle": {
     "message": "SOQL Creator"
+  },
+  "toolFloatObjectTitle": {
+    "message": "对象搜索"
+  },
+  "objectSearchTitle": {
+    "message": "对象搜索"
+  },
+  "objectSearchPlaceholder": {
+    "message": "标签、API 名称或 Salesforce Id…"
+  },
+  "objectSearchLoading": {
+    "message": "正在加载对象元数据…"
+  },
+  "objectSearchNoSession": {
+    "message": "未找到 Salesforce 会话，请先登录此 Org"
+  },
+  "objectSearchLoadFailed": {
+    "message": "加载对象失败：$ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "网络错误"
+      }
+    }
+  },
+  "objectSearchNoMatch": {
+    "message": "无匹配对象"
+  },
+  "objectSearchPrefixConflict": {
+    "message": "多个对象共享此前缀，请选择其一"
+  },
+  "objectSearchUnknownPrefix": {
+    "message": "未找到此前缀对应的对象"
+  },
+  "objectSearchSelectHint": {
+    "message": "选择对象以预览"
+  },
+  "objectSearchExpand": {
+    "message": "展开"
+  },
+  "objectSearchLabel": {
+    "message": "标签"
+  },
+  "objectSearchApiName": {
+    "message": "API 名称"
+  },
+  "objectSearchPrefix": {
+    "message": "Key Prefix"
+  },
+  "objectSearchType": {
+    "message": "类型"
+  },
+  "objectSearchCustom": {
+    "message": "自定义"
+  },
+  "objectSearchStandard": {
+    "message": "标准"
+  },
+  "objectSearchRecordId": {
+    "message": "记录 Id"
+  },
+  "objectSearchClose": {
+    "message": "关闭"
+  },
+  "objectSearchDescribeLoading": {
+    "message": "加载详情中…"
+  },
+  "objectSearchExpandFailed": {
+    "message": "打开对象详情失败：$ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "未知错误"
+      }
+    }
   }
 }

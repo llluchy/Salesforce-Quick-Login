@@ -1,0 +1,128 @@
+{
+  "extName": {
+    "message": "Salesforce Quick Login"
+  },
+  "extDescription": {
+    "message": "ワンクリック Salesforce ログイン。Passkey、TOTP 二要素認証、暗号化クラウド同期、環境共有に対応。"
+  },
+  "extActionTitle": {
+    "message": "Salesforce Quick Login"
+  },
+  "qrSelectTip": {
+    "message": "QR コード範囲をドラッグして選択、ESC でキャンセル"
+  },
+  "imageLoadFailed": {
+    "message": "画像の読み込みに失敗しました"
+  },
+  "passkeyBubbleTitle": {
+    "message": "拡張機能パネルを開いてください"
+  },
+  "passkeyBubbleDesc": {
+    "message": "このページが Passkey 認証を要求しています。続行するには拡張機能のサイドパネルを開いてください。"
+  },
+  "passkeyBubbleClickIcon": {
+    "message": "アイコンをクリック"
+  },
+  "passkeyBubbleClose": {
+    "message": "閉じる"
+  },
+  "passkeyBubbleCountdown": {
+    "message": "$SECONDS$ 秒後に自動で閉じます",
+    "placeholders": {
+      "seconds": {
+        "content": "$1",
+        "example": "30"
+      }
+    }
+  },
+  "toolFloatApex": {
+    "message": "Apex Log"
+  },
+  "toolFloatSoql": {
+    "message": "SOQL"
+  },
+  "toolFloatObject": {
+    "message": "オブジェクト"
+  },
+  "toolFloatApexTitle": {
+    "message": "Apex Log Viewer"
+  },
+  "toolFloatSoqlTitle": {
+    "message": "SOQL Creator"
+  },
+  "toolFloatObjectTitle": {
+    "message": "オブジェクト検索"
+  },
+  "objectSearchTitle": {
+    "message": "オブジェクト検索"
+  },
+  "objectSearchPlaceholder": {
+    "message": "ラベル、API 名、または Salesforce Id…"
+  },
+  "objectSearchLoading": {
+    "message": "オブジェクトメタデータを読み込み中…"
+  },
+  "objectSearchNoSession": {
+    "message": "Salesforce セッションが見つかりません。先にこの Org にログインしてください。"
+  },
+  "objectSearchLoadFailed": {
+    "message": "オブジェクトの読み込みに失敗しました：$ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "ネットワークエラー"
+      }
+    }
+  },
+  "objectSearchNoMatch": {
+    "message": "一致するオブジェクトがありません"
+  },
+  "objectSearchPrefixConflict": {
+    "message": "この Id プレフィックスを共有するオブジェクトが複数あります。1 つ選択してください"
+  },
+  "objectSearchUnknownPrefix": {
+    "message": "この Id プレフィックスに該当するオブジェクトがありません"
+  },
+  "objectSearchSelectHint": {
+    "message": "プレビューするオブジェクトを選択"
+  },
+  "objectSearchExpand": {
+    "message": "展開"
+  },
+  "objectSearchLabel": {
+    "message": "ラベル"
+  },
+  "objectSearchApiName": {
+    "message": "API 名"
+  },
+  "objectSearchPrefix": {
+    "message": "Key Prefix"
+  },
+  "objectSearchType": {
+    "message": "種別"
+  },
+  "objectSearchCustom": {
+    "message": "カスタム"
+  },
+  "objectSearchStandard": {
+    "message": "標準"
+  },
+  "objectSearchRecordId": {
+    "message": "レコード Id"
+  },
+  "objectSearchClose": {
+    "message": "閉じる"
+  },
+  "objectSearchDescribeLoading": {
+    "message": "詳細を読み込み中…"
+  },
+  "objectSearchExpandFailed": {
+    "message": "オブジェクト詳細を開けませんでした：$ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "不明なエラー"
+      }
+    }
+  }
+}

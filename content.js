@@ -515,28 +515,312 @@ function cropImage(dataUrl, x, y, width, height) {
   window.__sfToolFloatRailInjected = true;
 
   const HOST_ID = 'sf-ql-tool-float-rail';
+  const MODAL_HOST_ID = 'sf-ql-object-search-modal';
   const POS_KEY = 'sfql_tool_float_pos';
   const DRAG_THRESHOLD = 5;
+  const SF_ID_RE = /^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$/;
+  const MAX_LIST = 40;
 
-  function label(key, fallback) {
+  /**
+   * 与 src/tools/_shared/toolThemes.js 保持同步（content 未走 Vite，无法直接 import）。
+   * 调用：THEME.soql.accent / THEME.object.railGradient
+   */
+  const THEME = {
+    apex: {
+      accent: '#0277bd',
+      accent2: '#01579b',
+      railGradient: 'linear-gradient(180deg, #0277bd 0%, #01579b 100%)',
+      railBorder: '#4fc3f7',
+      railText: '#e1f5fe'
+    },
+    soql: {
+      accent: '#f9a825',
+      accent2: '#ef6c00',
+      railGradient: 'linear-gradient(180deg, #f9a825 0%, #ef6c00 100%)',
+      railBorder: '#ffe082',
+      railText: '#fff8e1'
+    },
+    object: {
+      accent: '#9575cd',
+      accent2: '#7e57c2',
+      accentDeep: '#5e35b1',
+      page: '#f7f3fb',
+      soft: '#ede7f6',
+      softTint: '#faf7fc',
+      border: '#d1c4e9',
+      borderHover: '#b39ddb',
+      panel: '#faf5ff',
+      title: '#5e35b1',
+      railGradient: 'linear-gradient(180deg, #9575cd 0%, #5e35b1 100%)',
+      railBorder: '#b39ddb',
+      railText: '#f3e5f5',
+      expandGradient: 'linear-gradient(180deg, #9575cd 0%, #5e35b1 100%)',
+      expandText: '#f3e5f5',
+      focusRing: '0 0 0 2px rgba(126, 87, 194, 0.22)',
+      listHover: '#ede7f6',
+      listActive: '#d1c4e9',
+      modalHeaderGrad: 'linear-gradient(180deg, #ede7f6 0%, #fff 100%)'
+    }
+  };
+
+  /** @type {Map<string, { hostname: string, sobjects: Array, fetchedAt: number }>} */
+  const sobjectsCache = new Map();
+
+  // 跟随 Side Panel「语言」偏好（chrome.storage.local ui_locale），而非仅浏览器 chrome.i18n
+  const LOCALE_STORAGE_KEY = 'ui_locale';
+  const LOCALE_PREF_SYSTEM = 'system';
+  const SUPPORTED_LOCALES = ['zh-CN', 'en', 'ja'];
+  const DEFAULT_LOCALE = 'zh-CN';
+
+  const CONTENT_I18N = {
+    'zh-CN': {
+      toolFloatApex: 'Apex Log',
+      toolFloatSoql: 'SOQL',
+      toolFloatObject: '对象',
+      toolFloatApexTitle: 'Apex Log Viewer',
+      toolFloatSoqlTitle: 'SOQL Creator',
+      toolFloatObjectTitle: '对象搜索',
+      objectSearchTitle: '对象搜索',
+      objectSearchPlaceholder: '标签、API 名称或 Salesforce Id…',
+      objectSearchLoading: '正在加载对象元数据…',
+      objectSearchNoSession: '未找到 Salesforce 会话，请先登录此 Org',
+      objectSearchLoadFailed: '加载对象失败：$1',
+      objectSearchNoMatch: '无匹配对象',
+      objectSearchPrefixConflict: '多个对象共享此前缀，请选择其一',
+      objectSearchUnknownPrefix: '未找到此前缀对应的对象',
+      objectSearchSelectHint: '选择对象以预览',
+      objectSearchExpand: '展开',
+      objectSearchLabel: '标签',
+      objectSearchApiName: 'API 名称',
+      objectSearchPrefix: 'Key Prefix',
+      objectSearchType: '类型',
+      objectSearchCustom: '自定义',
+      objectSearchStandard: '标准',
+      objectSearchRecordId: '记录 Id',
+      objectSearchClose: '关闭',
+      objectSearchDescribeLoading: '加载详情中…',
+      objectSearchExpandFailed: '打开对象详情失败：$1'
+    },
+    en: {
+      toolFloatApex: 'Apex Log',
+      toolFloatSoql: 'SOQL',
+      toolFloatObject: 'Object',
+      toolFloatApexTitle: 'Apex Log Viewer',
+      toolFloatSoqlTitle: 'SOQL Creator',
+      toolFloatObjectTitle: 'Object Search',
+      objectSearchTitle: 'Object Search',
+      objectSearchPlaceholder: 'Label, API Name, or Salesforce Id…',
+      objectSearchLoading: 'Loading object metadata…',
+      objectSearchNoSession: 'No Salesforce session found. Log in to this org first.',
+      objectSearchLoadFailed: 'Failed to load objects: $1',
+      objectSearchNoMatch: 'No matching objects',
+      objectSearchPrefixConflict: 'Multiple objects share this Id prefix — select one',
+      objectSearchUnknownPrefix: 'No object found for this Id prefix',
+      objectSearchSelectHint: 'Select an object to preview',
+      objectSearchExpand: 'Expand',
+      objectSearchLabel: 'Label',
+      objectSearchApiName: 'API Name',
+      objectSearchPrefix: 'Key Prefix',
+      objectSearchType: 'Type',
+      objectSearchCustom: 'Custom',
+      objectSearchStandard: 'Standard',
+      objectSearchRecordId: 'Record Id',
+      objectSearchClose: 'Close',
+      objectSearchDescribeLoading: 'Loading details…',
+      objectSearchExpandFailed: 'Failed to open Object Detail: $1'
+    },
+    ja: {
+      toolFloatApex: 'Apex Log',
+      toolFloatSoql: 'SOQL',
+      toolFloatObject: 'オブジェクト',
+      toolFloatApexTitle: 'Apex Log Viewer',
+      toolFloatSoqlTitle: 'SOQL Creator',
+      toolFloatObjectTitle: 'オブジェクト検索',
+      objectSearchTitle: 'オブジェクト検索',
+      objectSearchPlaceholder: 'ラベル、API 名、または Salesforce Id…',
+      objectSearchLoading: 'オブジェクトメタデータを読み込み中…',
+      objectSearchNoSession: 'Salesforce セッションが見つかりません。先にこの Org にログインしてください。',
+      objectSearchLoadFailed: 'オブジェクトの読み込みに失敗しました：$1',
+      objectSearchNoMatch: '一致するオブジェクトがありません',
+      objectSearchPrefixConflict: 'この Id プレフィックスを共有するオブジェクトが複数あります。1 つ選択してください',
+      objectSearchUnknownPrefix: 'この Id プレフィックスに該当するオブジェクトがありません',
+      objectSearchSelectHint: 'プレビューするオブジェクトを選択',
+      objectSearchExpand: '展開',
+      objectSearchLabel: 'ラベル',
+      objectSearchApiName: 'API 名',
+      objectSearchPrefix: 'Key Prefix',
+      objectSearchType: '種別',
+      objectSearchCustom: 'カスタム',
+      objectSearchStandard: '標準',
+      objectSearchRecordId: 'レコード Id',
+      objectSearchClose: '閉じる',
+      objectSearchDescribeLoading: '詳細を読み込み中…',
+      objectSearchExpandFailed: 'オブジェクト詳細を開けませんでした：$1'
+    }
+  };
+
+  let effectiveLocale = DEFAULT_LOCALE;
+  /** @type {ShadowRoot | null} */
+  let railShadow = null;
+  /** @type {null | { host: HTMLElement, shadow: ShadowRoot, pageHostname: string, apiHostname: string, sobjects: Array, matches: Array, selected: any, recordId: string, describeCache: Map, searchGen: number, _rerunSearch: null | Function }} */
+  let modalState = null;
+
+  function mapBrowserLanguage(lang) {
+    if (!lang) return DEFAULT_LOCALE;
+    const lower = String(lang).toLowerCase().replace('_', '-');
+    if (lower.startsWith('zh')) return 'zh-CN';
+    if (lower.startsWith('ja')) return 'ja';
+    if (lower.startsWith('en')) return 'en';
+    return DEFAULT_LOCALE;
+  }
+
+  function detectBrowserLocale() {
     try {
-      return chrome.i18n.getMessage(key) || fallback;
+      if (typeof chrome !== 'undefined' && chrome.i18n?.getUILanguage) {
+        return mapBrowserLanguage(chrome.i18n.getUILanguage());
+      }
     } catch {
-      return fallback;
+      /* ignore */
+    }
+    if (typeof navigator !== 'undefined') {
+      return mapBrowserLanguage(navigator.language || navigator.languages?.[0]);
+    }
+    return DEFAULT_LOCALE;
+  }
+
+  function resolveEffectiveLocale() {
+    return new Promise((resolve) => {
+      const finish = (pref) => {
+        const locale =
+          pref === LOCALE_PREF_SYSTEM || !SUPPORTED_LOCALES.includes(pref)
+            ? detectBrowserLocale()
+            : pref;
+        effectiveLocale = locale;
+        resolve(locale);
+      };
+      try {
+        chrome.storage.local.get([LOCALE_STORAGE_KEY], (data) => {
+          if (chrome.runtime.lastError) {
+            finish(LOCALE_PREF_SYSTEM);
+            return;
+          }
+          finish(data?.[LOCALE_STORAGE_KEY] || LOCALE_PREF_SYSTEM);
+        });
+      } catch {
+        finish(LOCALE_PREF_SYSTEM);
+      }
+    });
+  }
+
+  function applySubs(template, substitutions) {
+    if (substitutions == null) return template;
+    const arr = Array.isArray(substitutions) ? substitutions : [substitutions];
+    return String(template)
+      .replace(/\$1/g, arr[0] != null ? String(arr[0]) : '')
+      .replace(/\$ERROR\$/g, arr[0] != null ? String(arr[0]) : '');
+  }
+
+  function label(key, fallback, substitutions) {
+    const catalog = CONTENT_I18N[effectiveLocale] || CONTENT_I18N[DEFAULT_LOCALE];
+    let msg = catalog?.[key];
+    if (!msg) {
+      try {
+        msg = chrome.i18n.getMessage(key, substitutions);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!msg) msg = fallback;
+    return applySubs(msg, substitutions);
+  }
+
+  function applyRailLocale() {
+    if (!railShadow) return;
+    const map = [
+      ['apex-log', 'toolFloatApex', 'toolFloatApexTitle', 'Apex Log', 'Apex Log Viewer'],
+      ['soql', 'toolFloatSoql', 'toolFloatSoqlTitle', 'SOQL', 'SOQL Creator'],
+      ['object-search', 'toolFloatObject', 'toolFloatObjectTitle', 'Object', 'Object Search']
+    ];
+    map.forEach(([tool, textKey, titleKey, textFb, titleFb]) => {
+      const btn = railShadow.querySelector(`.tab[data-tool="${tool}"]`);
+      if (!btn) return;
+      btn.title = label(titleKey, titleFb);
+      const text = btn.querySelector('.text');
+      if (text) text.textContent = label(textKey, textFb);
+    });
+  }
+
+  function applyModalLocale() {
+    if (!modalState?.shadow) return;
+    const shadow = modalState.shadow;
+    const title = shadow.querySelector('.title');
+    if (title) title.textContent = label('objectSearchTitle', 'Object Search');
+    const panel = shadow.querySelector('.panel');
+    if (panel) panel.setAttribute('aria-label', label('objectSearchTitle', 'Object Search'));
+    const closeBtn = shadow.querySelector('.close');
+    if (closeBtn) {
+      const closeLabel = label('objectSearchClose', 'Close');
+      closeBtn.title = closeLabel;
+      closeBtn.setAttribute('aria-label', closeLabel);
+    }
+    const input = shadow.querySelector('.search');
+    if (input) {
+      input.placeholder = label(
+        'objectSearchPlaceholder',
+        'Label, API Name, or Salesforce Id…'
+      );
+    }
+    const setK = (sel, key, fb) => {
+      const el = shadow.querySelector(sel);
+      if (el) el.textContent = label(key, fb);
+    };
+    setK('.preview .row:nth-child(1) .k', 'objectSearchLabel', 'Label');
+    setK('.preview .row:nth-child(2) .k', 'objectSearchApiName', 'API Name');
+    setK('.preview .row:nth-child(3) .k', 'objectSearchPrefix', 'Key Prefix');
+    setK('.preview .row:nth-child(4) .k', 'objectSearchType', 'Type');
+    setK('.preview .record-row .k', 'objectSearchRecordId', 'Record Id');
+    const expandBtn = shadow.querySelector('.btn-expand');
+    if (expandBtn) expandBtn.textContent = label('objectSearchExpand', 'Expand');
+    if (modalState.selected) {
+      const typeEl = shadow.querySelector('[data-f="type"]');
+      if (typeEl) {
+        typeEl.textContent = modalState.selected.custom
+          ? label('objectSearchCustom', 'Custom')
+          : label('objectSearchStandard', 'Standard');
+      }
+    }
+    // 刷新状态/列表提示文案
+    const statusEl = shadow.querySelector('.status');
+    const q = input?.value?.trim() || '';
+    if (!modalState.sobjects?.length && statusEl && !statusEl.classList.contains('error')) {
+      statusEl.textContent = label('objectSearchLoading', 'Loading object metadata…');
+    } else if (q && typeof modalState._rerunSearch === 'function') {
+      modalState._rerunSearch();
     }
   }
 
-  function openTool(toolId) {
-    chrome.runtime.sendMessage(
-      {
-        action: 'openToolWindow',
-        toolId,
-        hostname: location.hostname || ''
-      },
-      () => {
-        void chrome.runtime.lastError;
+  function sendMsg(payload) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(payload, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve({ success: false, error: chrome.runtime.lastError.message });
+            return;
+          }
+          resolve(response || { success: false, error: '无响应' });
+        });
+      } catch (e) {
+        resolve({ success: false, error: e?.message || String(e) });
       }
-    );
+    });
+  }
+
+  function openTool(toolId) {
+    sendMsg({
+      action: 'openToolWindow',
+      toolId,
+      hostname: location.hostname || ''
+    });
   }
 
   function loadPos() {
@@ -565,19 +849,17 @@ function cropImage(dataUrl, x, y, width, height) {
     }
   }
 
-  function clampPos(top, right, host) {
-    const w = host.offsetWidth || 28;
+  function clampPos(top, host) {
     const h = host.offsetHeight || 200;
     const maxTop = Math.max(8, window.innerHeight - h - 8);
-    const maxRight = Math.max(0, window.innerWidth - w - 8);
     return {
       top: Math.min(Math.max(8, top), maxTop),
-      right: Math.min(Math.max(0, right), maxRight)
+      right: 0
     };
   }
 
   function applyPos(host, pos) {
-    if (!pos || typeof pos.top !== 'number' || typeof pos.right !== 'number') {
+    if (!pos || typeof pos.top !== 'number') {
       host.style.top = '50%';
       host.style.right = '0';
       host.style.left = 'auto';
@@ -585,16 +867,528 @@ function cropImage(dataUrl, x, y, width, height) {
       host.style.transform = 'translateY(-50%)';
       return;
     }
-    const clamped = clampPos(pos.top, pos.right, host);
+    const clamped = clampPos(pos.top, host);
     host.style.top = `${clamped.top}px`;
-    host.style.right = `${clamped.right}px`;
+    host.style.right = '0';
     host.style.left = 'auto';
     host.style.bottom = 'auto';
     host.style.transform = 'none';
   }
 
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function ensureSObjects(pageHostname) {
+    const key = pageHostname || location.hostname || '';
+    const cached = sobjectsCache.get(key);
+    if (cached?.sobjects?.length) return cached;
+
+    const res = await sendMsg({ action: 'sfGetSObjects', hostname: key });
+    if (!res?.success) {
+      const err = new Error(res?.error || 'load failed');
+      if (/sid|session|未找到/i.test(String(res?.error || ''))) err.code = 'NO_SESSION';
+      throw err;
+    }
+    const list = Array.isArray(res.data?.sobjects) ? res.data.sobjects : [];
+    const entry = {
+      hostname: res.hostname || key,
+      sobjects: list.map((o) => ({
+        name: o.name,
+        label: o.label || o.name,
+        labelPlural: o.labelPlural || '',
+        keyPrefix: o.keyPrefix || '',
+        custom: !!o.custom,
+        queryable: !!o.queryable,
+        searchable: !!o.searchable
+      })),
+      fetchedAt: Date.now()
+    };
+    sobjectsCache.set(key, entry);
+    return entry;
+  }
+
+  function isSfId(q) {
+    return SF_ID_RE.test(q);
+  }
+
+  function filterSObjects(sobjects, query) {
+    const q = String(query || '').trim();
+    if (!q) return { matches: [], recordId: '', idMode: false, prefixConflict: false, unknownPrefix: false };
+
+    if (isSfId(q)) {
+      const prefix = q.slice(0, 3);
+      const matches = sobjects.filter((o) => o.keyPrefix && o.keyPrefix === prefix);
+      return {
+        matches,
+        recordId: q,
+        idMode: true,
+        prefixConflict: matches.length > 1,
+        unknownPrefix: matches.length === 0
+      };
+    }
+
+    const lower = q.toLowerCase();
+    const matches = sobjects.filter((o) => {
+      const name = (o.name || '').toLowerCase();
+      const lab = (o.label || '').toLowerCase();
+      const plural = (o.labelPlural || '').toLowerCase();
+      return name.includes(lower) || lab.includes(lower) || plural.includes(lower);
+    });
+    // Prefer exact / prefix API name matches
+    matches.sort((a, b) => {
+      const an = (a.name || '').toLowerCase();
+      const bn = (b.name || '').toLowerCase();
+      const al = (a.label || '').toLowerCase();
+      const bl = (b.label || '').toLowerCase();
+      const score = (n, l) => {
+        if (n === lower || l === lower) return 0;
+        if (n.startsWith(lower) || l.startsWith(lower)) return 1;
+        return 2;
+      };
+      return score(an, al) - score(bn, bl) || an.localeCompare(bn);
+    });
+    return {
+      matches: matches.slice(0, MAX_LIST),
+      recordId: '',
+      idMode: false,
+      prefixConflict: false,
+      unknownPrefix: false
+    };
+  }
+
+  // ---------- Object Search Modal (Shadow DOM on page) ----------
+  function closeObjectSearchModal() {
+    const el = document.getElementById(MODAL_HOST_ID);
+    if (el) el.remove();
+    modalState = null;
+  }
+
+  function openObjectSearchModal() {
+    closeObjectSearchModal();
+
+    const host = document.createElement('div');
+    host.id = MODAL_HOST_ID;
+    host.setAttribute('data-sf-ql', 'object-search-modal');
+    host.style.cssText = [
+      'all: initial',
+      'position: fixed',
+      'inset: 0',
+      'z-index: 2147483600',
+      'pointer-events: none',
+      'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    ].join(';');
+
+    const ot = THEME.object;
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `
+      <style>
+        :host { all: initial; }
+        * { box-sizing: border-box; }
+        .backdrop {
+          pointer-events: auto;
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.38);
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding: 12vh 16px 24px;
+        }
+        .panel {
+          width: min(440px, 100%);
+          max-height: min(72vh, 640px);
+          display: flex;
+          flex-direction: column;
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 16px 48px rgba(94, 53, 177, 0.22);
+          border: 1px solid ${ot.border};
+          overflow: hidden;
+          color: ${ot.accentDeep};
+        }
+        .header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 12px 14px 8px;
+          background: ${ot.modalHeaderGrad};
+          border-bottom: 1px solid ${ot.border};
+        }
+        .title {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          color: ${ot.title};
+        }
+        .close {
+          border: none;
+          background: transparent;
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 18px;
+          line-height: 1;
+          color: #546e7a;
+        }
+        .close:hover { background: ${ot.soft}; color: ${ot.accentDeep}; }
+        .body { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; overflow: hidden; }
+        .search {
+          width: 100%;
+          padding: 9px 12px;
+          border: 1px solid ${ot.borderHover};
+          border-radius: 8px;
+          font-size: 13px;
+          outline: none;
+          color: #263238;
+        }
+        .search:focus { border-color: ${ot.accent}; box-shadow: ${ot.focusRing}; }
+        .status {
+          font-size: 12px;
+          color: #607d8b;
+          min-height: 1.2em;
+        }
+        .status.error { color: #c62828; }
+        .status.warn { color: #ef6c00; }
+        .results {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          overflow-y: auto;
+          max-height: 160px;
+          border: 1px solid ${ot.border};
+          border-radius: 8px;
+        }
+        .results:empty { display: none; }
+        .results li {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          padding: 8px 10px;
+          cursor: pointer;
+          border-bottom: 1px solid #f5f5f5;
+          font-size: 12px;
+        }
+        .results li:last-child { border-bottom: none; }
+        .results li:hover { background: ${ot.listHover}; }
+        .results li.active { background: ${ot.listActive}; }
+        .results .lab { font-weight: 600; color: ${ot.accentDeep}; }
+        .results .api { color: #607d8b; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+        .preview {
+          border: 1px solid ${ot.border};
+          border-radius: 8px;
+          padding: 10px 12px;
+          background: ${ot.softTint};
+          font-size: 12px;
+          display: none;
+        }
+        .preview.visible { display: block; }
+        .preview .row {
+          display: grid;
+          grid-template-columns: 88px 1fr;
+          gap: 4px 8px;
+          margin-bottom: 4px;
+        }
+        .preview .k { color: #78909c; }
+        .preview .v { color: #263238; word-break: break-all; }
+        .preview .v.mono { font-family: ui-monospace, Consolas, monospace; }
+        .actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+          margin-top: 8px;
+        }
+        .btn {
+          border: none;
+          border-radius: 8px;
+          padding: 7px 14px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .btn-expand {
+          background: ${ot.expandGradient};
+          color: ${ot.expandText};
+          box-shadow: 0 1px 4px rgba(94, 53, 177, 0.35);
+        }
+        .btn-expand:hover { filter: brightness(1.06); }
+        .btn-expand:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+        .hidden { display: none !important; }
+      </style>
+      <div class="backdrop" part="backdrop">
+        <div class="panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(label('objectSearchTitle', 'Object Search'))}">
+          <div class="header">
+            <h2 class="title">${escapeHtml(label('objectSearchTitle', 'Object Search'))}</h2>
+            <button type="button" class="close" title="${escapeHtml(label('objectSearchClose', 'Close'))}" aria-label="${escapeHtml(label('objectSearchClose', 'Close'))}">×</button>
+          </div>
+          <div class="body">
+            <input class="search" type="search" autocomplete="off" spellcheck="false"
+              placeholder="${escapeHtml(label('objectSearchPlaceholder', 'Label, API Name, or Salesforce Id…'))}" />
+            <div class="status"></div>
+            <ul class="results"></ul>
+            <div class="preview">
+              <div class="row"><span class="k">${escapeHtml(label('objectSearchLabel', 'Label'))}</span><span class="v" data-f="label"></span></div>
+              <div class="row"><span class="k">${escapeHtml(label('objectSearchApiName', 'API Name'))}</span><span class="v mono" data-f="name"></span></div>
+              <div class="row"><span class="k">${escapeHtml(label('objectSearchPrefix', 'Key Prefix'))}</span><span class="v mono" data-f="prefix"></span></div>
+              <div class="row"><span class="k">${escapeHtml(label('objectSearchType', 'Type'))}</span><span class="v" data-f="type"></span></div>
+              <div class="row record-row hidden"><span class="k">${escapeHtml(label('objectSearchRecordId', 'Record Id'))}</span><span class="v mono" data-f="recordId"></span></div>
+              <div class="actions">
+                <button type="button" class="btn btn-expand" disabled>${escapeHtml(label('objectSearchExpand', 'Expand'))}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const backdrop = shadow.querySelector('.backdrop');
+    const panel = shadow.querySelector('.panel');
+    const closeBtn = shadow.querySelector('.close');
+    const input = shadow.querySelector('.search');
+    const statusEl = shadow.querySelector('.status');
+    const resultsEl = shadow.querySelector('.results');
+    const previewEl = shadow.querySelector('.preview');
+    const expandBtn = shadow.querySelector('.btn-expand');
+
+    modalState = {
+      host,
+      shadow,
+      pageHostname: location.hostname || '',
+      apiHostname: '',
+      sobjects: [],
+      matches: [],
+      selected: null,
+      recordId: '',
+      describeCache: new Map(),
+      searchGen: 0,
+      _rerunSearch: null
+    };
+
+    function setStatus(text, kind) {
+      statusEl.textContent = text || '';
+      statusEl.classList.toggle('error', kind === 'error');
+      statusEl.classList.toggle('warn', kind === 'warn');
+    }
+
+    function renderPreview(obj) {
+      if (!obj) {
+        previewEl.classList.remove('visible');
+        expandBtn.disabled = true;
+        return;
+      }
+      previewEl.classList.add('visible');
+      previewEl.querySelector('[data-f="label"]').textContent = obj.label || obj.name || '—';
+      previewEl.querySelector('[data-f="name"]').textContent = obj.name || '—';
+      previewEl.querySelector('[data-f="prefix"]').textContent = obj.keyPrefix || '—';
+      previewEl.querySelector('[data-f="type"]').textContent = obj.custom
+        ? label('objectSearchCustom', 'Custom')
+        : label('objectSearchStandard', 'Standard');
+      const recordRow = previewEl.querySelector('.record-row');
+      if (modalState.recordId) {
+        recordRow.classList.remove('hidden');
+        previewEl.querySelector('[data-f="recordId"]').textContent = modalState.recordId;
+      } else {
+        recordRow.classList.add('hidden');
+      }
+      expandBtn.disabled = !obj.name;
+    }
+
+    function renderResults(matches, { autoSelect } = {}) {
+      resultsEl.innerHTML = '';
+      matches.forEach((obj, idx) => {
+        const li = document.createElement('li');
+        li.dataset.name = obj.name;
+        if (modalState.selected?.name === obj.name) li.classList.add('active');
+        li.innerHTML = `<span class="lab">${escapeHtml(obj.label || obj.name)}</span><span class="api">${escapeHtml(obj.name)}${obj.keyPrefix ? ' · ' + escapeHtml(obj.keyPrefix) : ''}</span>`;
+        li.addEventListener('click', () => {
+          selectObject(obj);
+        });
+        resultsEl.appendChild(li);
+        if (autoSelect && idx === 0 && matches.length === 1) {
+          selectObject(obj);
+        }
+      });
+    }
+
+    async function enrichPreview(obj) {
+      if (!obj?.name || !modalState) return;
+      const cacheKey = obj.name;
+      if (modalState.describeCache.has(cacheKey)) {
+        const d = modalState.describeCache.get(cacheKey);
+        if (d?.label) previewEl.querySelector('[data-f="label"]').textContent = d.label;
+        if (d?.keyPrefix) previewEl.querySelector('[data-f="prefix"]').textContent = d.keyPrefix;
+        return;
+      }
+      setStatus(label('objectSearchDescribeLoading', 'Loading details…'));
+      const res = await sendMsg({
+        action: 'sfDescribeSObject',
+        hostname: modalState.pageHostname,
+        object: obj.name
+      });
+      if (!modalState || modalState.selected?.name !== obj.name) return;
+      if (res?.success && res.data) {
+        modalState.describeCache.set(cacheKey, res.data);
+        if (res.data.label) previewEl.querySelector('[data-f="label"]').textContent = res.data.label;
+        if (res.data.keyPrefix) previewEl.querySelector('[data-f="prefix"]').textContent = res.data.keyPrefix;
+        if (typeof res.data.custom === 'boolean') {
+          previewEl.querySelector('[data-f="type"]').textContent = res.data.custom
+            ? label('objectSearchCustom', 'Custom')
+            : label('objectSearchStandard', 'Standard');
+        }
+        setStatus('');
+      } else {
+        setStatus('');
+      }
+    }
+
+    function selectObject(obj) {
+      if (!modalState) return;
+      modalState.selected = obj;
+      resultsEl.querySelectorAll('li').forEach((li) => {
+        li.classList.toggle('active', li.dataset.name === obj.name);
+      });
+      renderPreview(obj);
+      enrichPreview(obj);
+    }
+
+    function runSearch() {
+      if (!modalState) return;
+      const q = input.value.trim();
+      const gen = ++modalState.searchGen;
+      modalState.selected = null;
+      renderPreview(null);
+
+      if (!q) {
+        resultsEl.innerHTML = '';
+        setStatus('');
+        return;
+      }
+      if (!modalState.sobjects.length) {
+        setStatus(label('objectSearchLoading', 'Loading object metadata…'));
+        return;
+      }
+
+      const result = filterSObjects(modalState.sobjects, q);
+      if (gen !== modalState.searchGen) return;
+      modalState.matches = result.matches;
+      modalState.recordId = result.recordId;
+
+      if (result.idMode && result.unknownPrefix) {
+        resultsEl.innerHTML = '';
+        setStatus(label('objectSearchUnknownPrefix', 'No object found for this Id prefix'), 'warn');
+        return;
+      }
+      if (result.matches.length === 0) {
+        resultsEl.innerHTML = '';
+        setStatus(label('objectSearchNoMatch', 'No matching objects'), 'warn');
+        return;
+      }
+      if (result.prefixConflict) {
+        setStatus(label('objectSearchPrefixConflict', 'Multiple objects share this Id prefix — select one'), 'warn');
+        renderResults(result.matches);
+        return;
+      }
+      if (result.matches.length === 1) {
+        setStatus('');
+        renderResults(result.matches, { autoSelect: true });
+        return;
+      }
+      setStatus(label('objectSearchSelectHint', 'Select an object to preview'));
+      renderResults(result.matches);
+    }
+
+    let searchTimer = null;
+    input.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(runSearch, 80);
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeObjectSearchModal();
+      } else if (e.key === 'Enter' && modalState?.selected && !expandBtn.disabled) {
+        e.preventDefault();
+        expandBtn.click();
+      }
+    });
+
+    closeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      closeObjectSearchModal();
+    });
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) closeObjectSearchModal();
+    });
+    panel.addEventListener('click', (e) => e.stopPropagation());
+
+    expandBtn.addEventListener('click', async () => {
+      if (!modalState?.selected?.name) return;
+      expandBtn.disabled = true;
+      const res = await sendMsg({
+        action: 'openObjectDetailTab',
+        object: modalState.selected.name,
+        hostname: modalState.apiHostname || modalState.pageHostname,
+        id: modalState.recordId || undefined
+      });
+      if (!res?.success) {
+        setStatus(
+          label('objectSearchExpandFailed', 'Failed to open Object Detail: $1', [
+            res?.error || 'unknown'
+          ]),
+          'error'
+        );
+        expandBtn.disabled = false;
+        return;
+      }
+      closeObjectSearchModal();
+    });
+
+    modalState._rerunSearch = runSearch;
+
+    const mount = () => {
+      if (!document.documentElement) return;
+      document.documentElement.appendChild(host);
+      input.focus();
+    };
+    if (document.documentElement) mount();
+    else document.addEventListener('DOMContentLoaded', mount, { once: true });
+
+    setStatus(label('objectSearchLoading', 'Loading object metadata…'));
+    ensureSObjects(modalState.pageHostname)
+      .then((entry) => {
+        if (!modalState || modalState.host !== host) return;
+        modalState.sobjects = entry.sobjects;
+        modalState.apiHostname = entry.hostname;
+        setStatus('');
+        if (input.value.trim()) runSearch();
+      })
+      .catch((err) => {
+        if (!modalState || modalState.host !== host) return;
+        if (err?.code === 'NO_SESSION' || /sid|session|未找到/i.test(String(err?.message || ''))) {
+          setStatus(label('objectSearchNoSession', 'No Salesforce session found. Log in to this org first.'), 'error');
+        } else {
+          setStatus(
+            label('objectSearchLoadFailed', 'Failed to load objects: $1', [err?.message || String(err)]),
+            'error'
+          );
+        }
+      });
+  }
+
   function ensureRail() {
-    if (document.getElementById(HOST_ID)) return;
+    const existing = document.getElementById(HOST_ID);
+    if (existing) {
+      if (existing.shadowRoot) railShadow = existing.shadowRoot;
+      applyRailLocale();
+      return;
+    }
 
     const host = document.createElement('div');
     host.id = HOST_ID;
@@ -611,6 +1405,7 @@ function cropImage(dataUrl, x, y, width, height) {
     ].join(';');
 
     const shadow = host.attachShadow({ mode: 'open' });
+    railShadow = shadow;
     shadow.innerHTML = `
       <style>
         :host { all: initial; }
@@ -659,35 +1454,52 @@ function cropImage(dataUrl, x, y, width, height) {
           pointer-events: none;
         }
         .apex {
-          background: linear-gradient(180deg, #0277bd 0%, #01579b 100%);
-          border-color: #4fc3f7;
-          color: #e1f5fe;
+          background: ${THEME.apex.railGradient};
+          border-color: ${THEME.apex.railBorder};
+          color: ${THEME.apex.railText};
         }
         .apex:hover { color: #fff; }
         .soql {
-          background: linear-gradient(180deg, #f9a825 0%, #ef6c00 100%);
-          border-color: #ffe082;
-          color: #fff8e1;
+          background: ${THEME.soql.railGradient};
+          border-color: ${THEME.soql.railBorder};
+          color: ${THEME.soql.railText};
         }
         .soql:hover { color: #fff; }
+        .object {
+          background: ${THEME.object.railGradient};
+          border-color: ${THEME.object.railBorder};
+          color: ${THEME.object.railText};
+        }
+        .object:hover { color: #fff; }
       </style>
       <div class="rail" part="rail">
-        <button type="button" class="tab apex" data-tool="apex-log" title="${label('toolFloatApexTitle', 'Apex Log Viewer')}">
-          <span class="text">${label('toolFloatApex', 'Apex Log')}</span>
+        <button type="button" class="tab apex" data-tool="apex-log" title="">
+          <span class="text"></span>
         </button>
-        <button type="button" class="tab soql" data-tool="soql" title="${label('toolFloatSoqlTitle', 'SOQL Creator')}">
-          <span class="text">${label('toolFloatSoql', 'SOQL')}</span>
+        <button type="button" class="tab soql" data-tool="soql" title="">
+          <span class="text"></span>
+        </button>
+        <button type="button" class="tab object" data-tool="object-search" title="">
+          <span class="text"></span>
         </button>
       </div>
     `;
+    applyRailLocale();
 
     const rail = shadow.querySelector('.rail');
     let dragState = null;
     let savedPos = null;
 
     loadPos().then((pos) => {
-      savedPos = pos;
-      applyPos(host, savedPos);
+      // Migrate old free-X positions: keep Y, always pin to right edge
+      if (pos && typeof pos.top === 'number') {
+        savedPos = clampPos(pos.top, host);
+        applyPos(host, savedPos);
+        if (pos.right !== 0) savePos(savedPos);
+      } else {
+        savedPos = null;
+        applyPos(host, null);
+      }
     });
 
     const onPointerMove = (e) => {
@@ -700,7 +1512,8 @@ function cropImage(dataUrl, x, y, width, height) {
       }
       if (!dragState.moved) return;
       e.preventDefault();
-      const next = clampPos(dragState.originTop + dy, dragState.originRight - dx, host);
+      // Edge-constrained: stay on right edge; only vertical (Y) movement
+      const next = clampPos(dragState.originTop + dy, host);
       applyPos(host, next);
       dragState.current = next;
     };
@@ -721,6 +1534,10 @@ function cropImage(dataUrl, x, y, width, height) {
         }
         return;
       }
+      if (state.toolId === 'object-search') {
+        openObjectSearchModal();
+        return;
+      }
       if (state.toolId) openTool(state.toolId);
     };
 
@@ -734,20 +1551,16 @@ function cropImage(dataUrl, x, y, width, height) {
           savedPos && typeof savedPos.top === 'number'
             ? savedPos.top
             : rect.top;
-        const originRight =
-          savedPos && typeof savedPos.right === 'number'
-            ? savedPos.right
-            : Math.max(0, window.innerWidth - rect.right);
-        // 首次拖动前把百分比定位固化为像素，避免跳动
-        applyPos(host, { top: originTop, right: originRight });
+        // 首次拖动前把百分比定位固化为像素，避免跳动；始终贴右边缘
+        const pinned = clampPos(originTop, host);
+        applyPos(host, pinned);
         dragState = {
           startX: e.clientX,
           startY: e.clientY,
-          originTop,
-          originRight,
+          originTop: pinned.top,
           moved: false,
           toolId: btn.getAttribute('data-tool'),
-          current: { top: originTop, right: originRight }
+          current: pinned
         };
         window.addEventListener('pointermove', onPointerMove, true);
         window.addEventListener('pointerup', endDrag, true);
@@ -760,8 +1573,8 @@ function cropImage(dataUrl, x, y, width, height) {
     });
 
     window.addEventListener('resize', () => {
-      if (!savedPos) return;
-      savedPos = clampPos(savedPos.top, savedPos.right, host);
+      if (!savedPos || typeof savedPos.top !== 'number') return;
+      savedPos = clampPos(savedPos.top, host);
       applyPos(host, savedPos);
       savePos(savedPos);
     });
@@ -775,12 +1588,33 @@ function cropImage(dataUrl, x, y, width, height) {
     else document.addEventListener('DOMContentLoaded', mount, { once: true });
   }
 
-  ensureRail();
+  function onLocalePreferenceChanged() {
+    resolveEffectiveLocale().then(() => {
+      applyRailLocale();
+      applyModalLocale();
+    });
+  }
 
-  // Lightning SPA 可能重建 DOM，定期确认入口仍在
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes[LOCALE_STORAGE_KEY]) return;
+      onLocalePreferenceChanged();
+    });
+  } catch {
+    /* ignore */
+  }
+
+  resolveEffectiveLocale().then(() => {
+    ensureRail();
+  });
+
+  // Lightning SPA 可能重建 DOM，定期确认入口仍在；弹层被清掉则丢弃状态
   const recheck = () => {
     try {
       ensureRail();
+      if (modalState && !document.getElementById(MODAL_HOST_ID)) {
+        modalState = null;
+      }
     } catch {
       /* ignore */
     }

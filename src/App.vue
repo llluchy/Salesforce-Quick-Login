@@ -1,9 +1,7 @@
 <template>
   <div class="shell">
-    <SideNavTabs v-model="activeTab" />
-
-    <!-- 标签「登录」：扩展账户鉴权仅锁此区域 -->
-    <div v-show="activeTab === 'login'" class="tab-panel tab-panel-login">
+    <!-- 工具入口已迁至 Salesforce 页面浮动栏；Side Panel 仅保留登录与环境管理 -->
+    <div class="main-panel">
       <AuthScreen v-if="!isAuthed" @authed="onAuthed" />
       <div v-else class="app-container">
         <Toolbar
@@ -142,8 +140,8 @@
         </div>
       </div>
 
-      <!-- 启动 / 同步遮罩仅覆盖登录标签，不挡工具宫格 -->
-      <div v-if="bootOverlay.visible" class="boot-overlay boot-overlay-login">
+      <!-- 启动 / 同步遮罩 -->
+      <div v-if="bootOverlay.visible" class="boot-overlay">
         <div class="boot-box">
           <div class="pk-spinner"></div>
           <span class="boot-message">{{ bootOverlay.message }}</span>
@@ -152,12 +150,6 @@
       </div>
     </div>
 
-    <!-- 标签「工具」：不依赖扩展账户 -->
-    <div v-show="activeTab === 'tools'" class="tab-panel">
-      <ToolHub @open-tool="openToolWindow" />
-    </div>
-
-    <!-- Toast 提升到壳层，工具标签也能看到错误提示 -->
     <Toast
       :visible="toastVisible"
       :message="toastMessage"
@@ -190,9 +182,6 @@ import Toast from './components/Toast.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import AccountDialog from './components/AccountDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
-import SideNavTabs from './components/SideNavTabs.vue'
-import ToolHub from './components/ToolHub.vue'
-import { getToolWindowDef, buildToolWindowUrl } from './tools/_shared/toolWindows.js'
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
@@ -204,8 +193,6 @@ const environments = ref([])
 const groups = ref([])
 const envListRef = ref(null)
 const toolbarRef = ref(null)
-/** 工具导航：login | tools；默认登录标签 */
-const activeTab = ref('login')
 
 const toastVisible = ref(false)
 const toastMessage = ref('')
@@ -222,46 +209,6 @@ const showToast = (message, type = 'success') => {
 
 const closeToast = () => {
   toastVisible.value = false
-}
-
-const openToolWindow = async (toolId) => {
-  const def = getToolWindowDef(toolId)
-  if (!def) {
-    showToast(t('app.unknownTool', { id: toolId }), 'error')
-    return
-  }
-  if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
-    showToast(t('app.notExtension'), 'error')
-    return
-  }
-
-  // 优先走 Service Worker（便于聚焦已开窗口）；失败则 Side Panel 直开
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'openToolWindow', toolId })
-    if (response?.success) return
-    if (response && response.success === false) {
-      console.warn('[ToolHub] SW 开窗失败，尝试直开', response)
-    }
-  } catch (e) {
-    console.warn('[ToolHub] SW 消息失败，尝试直开', e)
-  }
-
-  if (!chrome.windows?.create) {
-    showToast(t('app.noWindowApi'), 'error')
-    return
-  }
-
-  try {
-    await chrome.windows.create({
-      url: buildToolWindowUrl(toolId),
-      type: def.type || 'popup',
-      width: def.width,
-      height: def.height,
-      focused: true
-    })
-  } catch (e) {
-    showToast(e.message || t('app.openToolFailed'), 'error')
-  }
 }
 
 const editModalVisible = ref(false)
@@ -1088,18 +1035,15 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
-.tab-panel {
+.main-panel {
   flex: 1;
   min-height: 0;
   position: relative;
-}
-
-.tab-panel-login {
   background: #eef5fc;
 }
 
 .app-container {
-  min-height: calc(100vh - 42px);
+  min-height: 100vh;
   background-color: #eef5fc;
 }
 
@@ -1107,7 +1051,7 @@ onBeforeUnmount(() => {
   padding: 10px;
 }
 
-/* 启动 / 数据同步遮罩：仅盖住登录标签区域 */
+/* 启动 / 数据同步遮罩 */
 .boot-overlay {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -1116,10 +1060,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.boot-overlay-login {
-  min-height: calc(100vh - 42px);
+  min-height: 100vh;
 }
 .boot-box {
   background: #fff;
