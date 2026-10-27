@@ -462,6 +462,10 @@
   },
   "soql": {
     "productTitle": "SOQL Creator",
+    "queryTabs": "Query tabs",
+    "newTab": "New tab",
+    "addTab": "Add tab",
+    "closeTab": "Close tab",
     "scanningEnvs": "Scanning logged-in orgs…",
     "selectLoggedInEnv": "Select logged-in org",
     "noLoggedInEnv": "No logged-in org",

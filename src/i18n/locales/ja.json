@@ -462,6 +462,10 @@
   },
   "soql": {
     "productTitle": "SOQL Creator",
+    "queryTabs": "クエリタブ",
+    "newTab": "新規タブ",
+    "addTab": "タブを追加",
+    "closeTab": "タブを閉じる",
     "scanningEnvs": "ログイン済み Org をスキャン中…",
     "selectLoggedInEnv": "ログイン済み Org を選択",
     "noLoggedInEnv": "ログイン済み Org なし",

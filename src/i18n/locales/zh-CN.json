@@ -462,6 +462,10 @@
   },
   "soql": {
     "productTitle": "SOQL Creator",
+    "queryTabs": "查询标签",
+    "newTab": "新标签",
+    "addTab": "新建标签",
+    "closeTab": "关闭标签",
     "scanningEnvs": "正在扫描已登录环境…",
     "selectLoggedInEnv": "选择已登录环境",
     "noLoggedInEnv": "无已登录环境",

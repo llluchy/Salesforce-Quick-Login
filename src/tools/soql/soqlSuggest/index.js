@@ -90,7 +90,10 @@ export function buildSoqlSuggestions({
     if (resolved.pendingDescribe) {
       return pack([], 'none', context, resolved.pendingDescribe)
     }
-    const items = provideChildSuggestions(context.prefix, resolved.children)
+    const childPrefix = /__r/i.test(context.prefix || '')
+      ? String(context.prefix).replace(/__r/gi, '')
+      : context.prefix
+    const items = provideChildSuggestions(childPrefix, resolved.children)
     return pack(items, items.length ? 'child' : 'none', context)
   }
 
@@ -129,6 +132,23 @@ export function buildSoqlSuggestions({
     const relationships = provideRelationshipSuggestions(leaf, walked.fields)
     const fields = provideFieldSuggestions(leaf, walked.fields)
     let items = leaf ? [...relationships, ...fields] : [...fields, ...relationships]
+    // 输入含 __r 时：去掉这段后缀再匹配关系名。
+    // 标准对象的父关系是 Owner / Account，子关系是 Contacts，名称本身不含 __r，
+    // 若按字面匹配，SELECT __r 会一条都没有。
+    if (!segments.length && /__r/i.test(leaf)) {
+      const q = leaf.replace(/__r/gi, '')
+      const relHits = provideRelationshipSuggestions(q, walked.fields)
+      const childHits = provideChildSuggestions(q, opened.children || [])
+      const taken = new Set()
+      const merged = []
+      for (const item of [...relHits, ...childHits]) {
+        const key = String(item.name || '').toLowerCase()
+        if (!key || taken.has(key)) continue
+        taken.add(key)
+        merged.push(item)
+      }
+      items = [...merged, ...provideFieldSuggestions(leaf, walked.fields)]
+    }
     if (!segments.length && context.fieldScope === 'select') {
       items = [...provideFunctionSuggestions(leaf), ...items]
     }

@@ -130,3 +130,20 @@ export function nextConditionId(list) {
   const max = (list || []).reduce((m, c) => Math.max(m, Number(c.id) || 0), 0)
   return max + 1
 }
+
+/** 空值或 yyyy-mm-dd 才用 date 控件，TODAY 等字面量留在文本框 */
+export function isDateInputValue(value) {
+  const v = String(value ?? '')
+  return v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v)
+}
+
+/** 空值或 datetime-local（可带秒）才用 datetime-local 控件 */
+export function isDatetimeLocalValue(value) {
+  const v = String(value ?? '')
+  return v === '' || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)
+}
+
+export function isTimeInputValue(value) {
+  const v = String(value ?? '')
+  return v === '' || /^\d{2}:\d{2}/.test(v)
+}

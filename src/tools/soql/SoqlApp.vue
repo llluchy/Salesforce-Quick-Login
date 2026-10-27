@@ -34,7 +34,35 @@
       </div>
     </div>
 
-    <div v-else class="soql-body">
+    <div v-else class="soql-workspace">
+      <div class="soql-tabs" role="tablist" :aria-label="t('soql.queryTabs')">
+        <div
+          v-for="tab in queryTabs"
+          :key="tab.id"
+          :class="['soql-tab', { active: tab.id === activeTabId }]"
+          role="tab"
+          :aria-selected="tab.id === activeTabId"
+          @click="switchQueryTab(tab.id)"
+        >
+          <span class="soql-tab-title">{{ queryTabTitle(tab) }}</span>
+          <button
+            v-if="queryTabs.length > 1"
+            type="button"
+            class="soql-tab-close"
+            :title="t('soql.closeTab')"
+            :aria-label="t('soql.closeTab')"
+            @click.stop="closeQueryTab(tab.id)"
+          >×</button>
+        </div>
+        <button
+          type="button"
+          class="soql-tab-add"
+          :title="t('soql.addTab')"
+          :aria-label="t('soql.addTab')"
+          @click="addQueryTab"
+        >+</button>
+      </div>
+      <div class="soql-body">
       <aside class="panel objects-panel">
         <div class="panel-head">
           <span>{{ t('soql.objects') }}</span>
@@ -46,10 +74,11 @@
           type="search"
           :placeholder="t('soql.searchObjectPlaceholder')"
         />
-        <div class="list-scroll">
+        <div ref="objectListEl" class="list-scroll">
           <div
             v-for="obj in filteredObjects"
             :key="obj.name"
+            :data-object-name="obj.name"
             :class="['list-item', { active: currentObject?.name === obj.name }]"
             role="button"
             tabindex="0"
@@ -127,13 +156,14 @@
             <button type="button" class="btn btn-sm" :disabled="!currentObject || fieldPanelMode !== 'select'" @click="clearFields">{{ t('soql.clear') }}</button>
           </div>
         </div>
-        <div class="list-scroll fields-list">
+        <div ref="fieldListEl" class="list-scroll fields-list">
           <button
             v-for="field in filteredFields"
             :key="field.name"
             type="button"
+            :data-field-name="field.name"
             :class="['field-item', {
-              selected: fieldPanelMode === 'select' && selectedFieldSet.has(field.name),
+              selected: selectedFieldSet.has(field.name),
               whereable: fieldPanelMode === 'where' && field.filterable,
               unfilterable: fieldPanelMode === 'where' && !field.filterable
             }]"
@@ -319,19 +349,19 @@
                     <p v-if="!picklistOptions(cond.fieldApiName).length" class="where-multi-empty">{{ t('soql.noPicklistOptions') }}</p>
                   </div>
                   <input
-                    v-else-if="whereKind(cond) === 'date'"
+                    v-else-if="whereKind(cond) === 'date' && isDateInputValue(cond.value)"
                     v-model="cond.value"
                     type="date"
                     class="where-input"
                   />
                   <input
-                    v-else-if="whereKind(cond) === 'datetime'"
+                    v-else-if="whereKind(cond) === 'datetime' && isDatetimeLocalValue(cond.value)"
                     v-model="cond.value"
                     type="datetime-local"
                     class="where-input"
                   />
                   <input
-                    v-else-if="whereKind(cond) === 'time'"
+                    v-else-if="whereKind(cond) === 'time' && isTimeInputValue(cond.value)"
                     v-model="cond.value"
                     type="time"
                     class="where-input"
@@ -352,13 +382,13 @@
                   <template v-if="needsValue2(cond.operator)">
                     <span class="where-to">{{ t('soql.to') }}</span>
                     <input
-                      v-if="whereKind(cond) === 'date'"
+                      v-if="whereKind(cond) === 'date' && isDateInputValue(cond.value2)"
                       v-model="cond.value2"
                       type="date"
                       class="where-input"
                     />
                     <input
-                      v-else-if="whereKind(cond) === 'datetime'"
+                      v-else-if="whereKind(cond) === 'datetime' && isDatetimeLocalValue(cond.value2)"
                       v-model="cond.value2"
                       type="datetime-local"
                       class="where-input"
@@ -409,7 +439,7 @@
             >{{ t('soql.exportCsv') }}</button>
           </div>
         </div>
-        <div class="results-wrap">
+        <div ref="resultsWrapEl" class="results-wrap">
           <table v-if="resultColumns.length" class="results-table">
             <thead>
               <tr>
@@ -593,6 +623,7 @@
           </button>
         </div>
       </section>
+      </div>
     </div>
 
     <Teleport to="body">
@@ -655,13 +686,18 @@ import {
   buildWhereClause,
   defaultOperator,
   formatCondition,
+  isDateInputValue,
+  isDatetimeLocalValue,
   isMultiValue,
+  isTimeInputValue,
   needsValue,
   needsValue2,
   nextConditionId,
   operatorsForKind,
   valueKind
 } from './soqlWhere.js'
+import { flattenSoqlRecord } from './flattenSoqlRecord.js'
+import { parseManualSoql } from './parseManualSoql.js'
 import { buildSoqlSuggestions } from './soqlSuggest/index.js'
 import { mapDescribe } from './soqlSuggest/relationships.js'
 import '../_shared/toolThemes.css'
@@ -675,27 +711,95 @@ const loadingEnvs = ref(false)
 const pagePrefer = ref(readPageEnvPreferFromUrl())
 
 const objects = ref([])
-const objectSearch = ref('')
-const currentObject = ref(null)
+const objectListEl = ref(null)
 const loadingObjects = ref(false)
 
-const fieldsMap = ref({})
-const childRelationships = ref([])
 /** @type {Map<string, { fields: Record<string, any>, children: Array }>} */
 const describeCache = new Map()
 const describeFailed = new Set()
 /** @type {Map<string, Promise<void>>} */
 const describeInflight = new Map()
-const fieldSearch = ref('')
-const fieldKindFilter = ref('all') // all | standard | custom
-const selectedFieldSet = ref(new Set())
-const selectedFieldNames = ref([])
-const loadingFields = ref(false)
-const fieldPanelMode = ref('select') // select | where
-const whereConditions = ref([])
+const fieldListEl = ref(null)
+const resultsWrapEl = ref(null)
 
-const soqlText = ref('')
-const soqlEditorOpen = ref(false)
+let queryTabSeq = 0
+/** 切换标签时抑制 watch，避免把另一张标签的 SOQL 重写或重新 describe */
+let switchingTab = false
+
+function createQueryTabState() {
+  queryTabSeq += 1
+  return {
+    id: queryTabSeq,
+    title: '',
+    titled: false,
+    objectScroll: 0,
+    fieldScroll: 0,
+    resultsScroll: 0,
+    editorStart: null,
+    editorEnd: null,
+    abortController: null,
+    queryRunId: 0,
+    objectSearch: '',
+    currentObject: null,
+    fieldsMap: {},
+    childRelationships: [],
+    fieldSearch: '',
+    fieldKindFilter: 'all',
+    selectedFieldSet: new Set(),
+    selectedFieldNames: [],
+    loadingFields: false,
+    fieldPanelMode: 'select',
+    whereConditions: [],
+    soqlText: '',
+    soqlEditorOpen: false,
+    limitEnabled: false,
+    queryLimit: 10,
+    executing: false,
+    countingTotal: false,
+    objectCountHint: '',
+    resultColumns: [],
+    resultRows: [],
+    resultDone: true,
+    resultTotalSize: null,
+    resultNextUrl: '',
+    cellEdits: {},
+    selectedCell: null,
+    editingCell: null,
+    errorMessage: ''
+  }
+}
+
+const queryTabs = ref([createQueryTabState()])
+const activeTabId = ref(queryTabs.value[0].id)
+
+function activeState() {
+  return queryTabs.value.find((tab) => tab.id === activeTabId.value) || queryTabs.value[0]
+}
+
+function tabField(key) {
+  return computed({
+    get() {
+      return activeState()[key]
+    },
+    set(value) {
+      activeState()[key] = value
+    }
+  })
+}
+
+const objectSearch = tabField('objectSearch')
+const currentObject = tabField('currentObject')
+const fieldsMap = tabField('fieldsMap')
+const childRelationships = tabField('childRelationships')
+const fieldSearch = tabField('fieldSearch')
+const fieldKindFilter = tabField('fieldKindFilter')
+const selectedFieldSet = tabField('selectedFieldSet')
+const selectedFieldNames = tabField('selectedFieldNames')
+const loadingFields = tabField('loadingFields')
+const fieldPanelMode = tabField('fieldPanelMode')
+const whereConditions = tabField('whereConditions')
+const soqlText = tabField('soqlText')
+const soqlEditorOpen = tabField('soqlEditorOpen')
 const soqlEditorEl = ref(null)
 /** 编辑器联想：字段（SELECT）或对象（FROM），项形如 { name, label } */
 const fieldSuggestions = ref([])
@@ -703,32 +807,28 @@ const fieldSuggestions = ref([])
 const suggestKind = ref('field')
 const suggestIndex = ref(0)
 const suggestReplace = ref(null) // { start, end }
-const limitEnabled = ref(false)
-const queryLimit = ref(10)
-const executing = ref(false)
-const countingTotal = ref(false)
-const objectCountHint = ref('')
-const resultColumns = ref([])
-const resultRows = ref([])
-const resultDone = ref(true)
-const resultTotalSize = ref(null)
-const resultNextUrl = ref('')
+const limitEnabled = tabField('limitEnabled')
+const queryLimit = tabField('queryLimit')
+const executing = tabField('executing')
+const countingTotal = tabField('countingTotal')
+const objectCountHint = tabField('objectCountHint')
+const resultColumns = tabField('resultColumns')
+const resultRows = tabField('resultRows')
+const resultDone = tabField('resultDone')
+const resultTotalSize = tabField('resultTotalSize')
+const resultNextUrl = tabField('resultNextUrl')
+const cellEdits = tabField('cellEdits')
+const selectedCell = tabField('selectedCell')
+const editingCell = tabField('editingCell')
+const errorMessage = tabField('errorMessage')
 /** 表格内最多继续加载到的行数，防止一次塞太多导致卡顿 */
 const RESULT_SOFT_CAP = 10000
-/** @type {AbortController | null} */
-let queryAbortController = null
-let queryRunId = 0
 
 /** 单元格编辑：key = `${rowIdx}::${col}` → { original, current } */
-const cellEdits = ref({})
-const selectedCell = ref(null) // { row, col }
-const editingCell = ref(null)
 const cellEditorEl = ref(null)
 const ctxMenu = ref({ show: false, x: 0, y: 0, canCopy: false, row: -1, col: '' })
 const submitConfirmOpen = ref(false)
 const submittingEdits = ref(false)
-
-const errorMessage = ref('')
 
 let client = null
 
@@ -858,10 +958,10 @@ function onFieldCardClick(field) {
   toggleField(field.name)
 }
 
-function syncSelectedArray() {
+function syncSelectedArray(state = activeState()) {
   // 按字段列表（describe）顺序，而非点击顺序
-  selectedFieldNames.value = Object.keys(fieldsMap.value).filter((name) =>
-    selectedFieldSet.value.has(name)
+  state.selectedFieldNames = Object.keys(state.fieldsMap).filter((name) =>
+    state.selectedFieldSet.has(name)
   )
 }
 
@@ -1067,7 +1167,7 @@ function selectResultCell(rowIdx, col) {
 }
 
 function canEditColumn(col) {
-  if (!col || col === 'Id' || col === 'attributes') return false
+  if (!col || col === 'Id' || col === 'attributes' || col.includes('.')) return false
   const meta = fieldsMap.value[col]
   if (meta && meta.updateable === false) return false
   return true
@@ -1338,22 +1438,92 @@ async function refreshEnvs() {
   }
 }
 
+function queryTabTitle(tab) {
+  if (tab?.titled && tab.title) return tab.title
+  return t('soql.newTab')
+}
+
+function rememberTabScroll(state) {
+  state.objectScroll = objectListEl.value?.scrollTop || 0
+  state.fieldScroll = fieldListEl.value?.scrollTop || 0
+  state.resultsScroll = resultsWrapEl.value?.scrollTop || 0
+  if (soqlEditorEl.value) {
+    state.editorStart = soqlEditorEl.value.selectionStart
+    state.editorEnd = soqlEditorEl.value.selectionEnd
+  }
+}
+
+function restoreTabScroll(state) {
+  if (objectListEl.value) objectListEl.value.scrollTop = state.objectScroll || 0
+  if (fieldListEl.value) fieldListEl.value.scrollTop = state.fieldScroll || 0
+  if (resultsWrapEl.value) resultsWrapEl.value.scrollTop = state.resultsScroll || 0
+  if (soqlEditorEl.value && state.editorStart != null) {
+    const end = state.editorEnd ?? state.editorStart
+    soqlEditorEl.value.setSelectionRange(state.editorStart, end)
+  }
+}
+
+function resetQueryTabs() {
+  for (const tab of queryTabs.value) abortWorkspace(tab)
+  const fresh = createQueryTabState()
+  switchingTab = true
+  queryTabs.value = [fresh]
+  activeTabId.value = fresh.id
+  nextTick(() => {
+    switchingTab = false
+  })
+}
+
+function switchQueryTab(id) {
+  if (id === activeTabId.value) return
+  const current = activeState()
+  rememberTabScroll(current)
+  if (current.editingCell) current.editingCell = null
+  clearFieldSuggestions()
+  submitConfirmOpen.value = false
+  ctxMenu.value = { ...ctxMenu.value, show: false }
+  switchingTab = true
+  activeTabId.value = id
+  nextTick(() => {
+    restoreTabScroll(activeState())
+    switchingTab = false
+  })
+}
+
+function addQueryTab() {
+  rememberTabScroll(activeState())
+  const tab = createQueryTabState()
+  queryTabs.value = [...queryTabs.value, tab]
+  switchQueryTab(tab.id)
+}
+
+function closeQueryTab(id) {
+  const list = queryTabs.value
+  if (list.length <= 1) return
+  const index = list.findIndex((tab) => tab.id === id)
+  if (index < 0) return
+  abortWorkspace(list[index])
+  if (activeTabId.value === id) {
+    const neighbor = list[index === list.length - 1 ? index - 1 : index + 1]
+    switchQueryTab(neighbor.id)
+  }
+  queryTabs.value = queryTabs.value.filter((tab) => tab.id !== id)
+}
+
+function nameTabFromQuery(state) {
+  const raw = parseManualSoql(state.soqlText, state.fieldsMap).objectName
+  if (!raw) return
+  const listed = objects.value.find((obj) => obj.name.toLowerCase() === raw.toLowerCase())
+  state.title = listed?.name || raw
+  state.titled = true
+}
+
 function resetWorkspace() {
   objects.value = []
-  currentObject.value = null
-  fieldsMap.value = {}
-  selectedFieldSet.value = new Set()
-  syncSelectedArray()
-  whereConditions.value = []
-  fieldPanelMode.value = 'select'
-  soqlText.value = ''
-  resultColumns.value = []
-  resultRows.value = []
-  resultDone.value = true
-  resultTotalSize.value = null
-  resultNextUrl.value = ''
-  objectCountHint.value = ''
-  clearCellEdits()
+  resetQueryTabs()
+  clearFieldSuggestions()
+  describeCache.clear()
+  describeFailed.clear()
   client = null
 }
 
@@ -1385,19 +1555,10 @@ async function connectSelectedEnv() {
 }
 
 async function onEnvChange() {
-  resultColumns.value = []
-  resultRows.value = []
-  resultDone.value = true
-  resultTotalSize.value = null
-  resultNextUrl.value = ''
-  currentObject.value = null
-  fieldsMap.value = {}
-  selectedFieldSet.value = new Set()
-  syncSelectedArray()
-  whereConditions.value = []
-  fieldPanelMode.value = 'select'
-  soqlText.value = ''
-  clearCellEdits()
+  resetQueryTabs()
+  clearFieldSuggestions()
+  describeCache.clear()
+  describeFailed.clear()
   await connectSelectedEnv()
 }
 
@@ -1439,32 +1600,33 @@ async function loadObjects() {
 
 async function selectObject(obj) {
   if (!client || !obj) return
-  currentObject.value = obj
-  fieldSearch.value = ''
-  fieldKindFilter.value = 'all'
-  fieldPanelMode.value = 'select'
-  whereConditions.value = []
-  loadingFields.value = true
-  errorMessage.value = ''
+  const state = activeState()
+  state.currentObject = obj
+  state.fieldSearch = ''
+  state.fieldKindFilter = 'all'
+  state.fieldPanelMode = 'select'
+  state.whereConditions = []
+  state.loadingFields = true
+  state.errorMessage = ''
   try {
     const desc = await client.describeSObject(obj.name)
+    if (state.currentObject?.name !== obj.name) return
     const packed = rememberDescribe(obj.name, desc)
-    fieldsMap.value = packed.fields
-    childRelationships.value = packed.children
-    // 默认只选 Id、Name（存在才选）
+    state.fieldsMap = packed.fields
+    state.childRelationships = packed.children
     const defaults = ['Id', 'Name'].filter((n) => packed.fields[n])
-    selectedFieldSet.value = new Set(defaults)
-    syncSelectedArray()
-    syncSoqlFromBuilder()
+    state.selectedFieldSet = new Set(defaults)
+    syncSelectedArray(state)
+    syncSoqlFromBuilder(state)
   } catch (e) {
-    fieldsMap.value = {}
-    childRelationships.value = []
-    selectedFieldSet.value = new Set()
-    syncSelectedArray()
-    whereConditions.value = []
-    errorMessage.value = e.message || String(e)
+    state.fieldsMap = {}
+    state.childRelationships = []
+    state.selectedFieldSet = new Set()
+    syncSelectedArray(state)
+    state.whereConditions = []
+    state.errorMessage = e.message || String(e)
   } finally {
-    loadingFields.value = false
+    state.loadingFields = false
   }
 }
 
@@ -1544,23 +1706,180 @@ function clearFields() {
   syncSoqlFromBuilder()
 }
 
-function buildSoql() {
-  if (!currentObject.value || selectedFieldNames.value.length === 0) return ''
-  const fields = selectedFieldNames.value.join(', ')
-  let soql = `SELECT ${fields} FROM ${currentObject.value.name}`
-  soql += buildWhereClause(whereConditions.value, fieldsMap.value)
-  if (limitEnabled.value) {
-    const limit = Math.min(Math.max(Number(queryLimit.value) || 10, 1), 2000)
+function buildSoql(state = activeState()) {
+  if (!state.currentObject || state.selectedFieldNames.length === 0) return ''
+  const fields = state.selectedFieldNames.join(', ')
+  let soql = `SELECT ${fields} FROM ${state.currentObject.name}`
+  soql += buildWhereClause(state.whereConditions, state.fieldsMap)
+  if (state.limitEnabled) {
+    const limit = Math.min(Math.max(Number(state.queryLimit) || 10, 1), 2000)
     soql += ` LIMIT ${limit}`
   }
   return soql
 }
 
+/** 从手写 SOQL 回填左侧列表时，避免再写回编辑器把 __r 等片段冲掉 */
+let applyingSoqlLink = false
+let skipNextSoqlLink = false
+let soqlLinkTimer = 0
+let soqlLinkGen = 0
+
 /** 点选 / 条件 / LIMIT 变更后立刻同步 SOQL */
-function syncSoqlFromBuilder() {
-  const q = buildSoql()
-  soqlText.value = q
-  clearFieldSuggestions()
+function syncSoqlFromBuilder(state = activeState()) {
+  if (applyingSoqlLink && state === activeState()) return
+  const q = buildSoql(state)
+  if (state === activeState()) clearFieldSuggestions()
+  if (q === state.soqlText) return
+  if (state === activeState()) skipNextSoqlLink = true
+  state.soqlText = q
+}
+
+function scheduleSoqlLink() {
+  if (switchingTab) return
+  if (skipNextSoqlLink) {
+    skipNextSoqlLink = false
+    return
+  }
+  const state = activeState()
+  clearTimeout(soqlLinkTimer)
+  soqlLinkTimer = setTimeout(() => {
+    applySoqlToLists(state).catch(() => {})
+  }, 160)
+}
+
+function findListedObject(name) {
+  const key = String(name || '').toLowerCase()
+  if (!key) return null
+  return objects.value.find((obj) => obj.name.toLowerCase() === key) || null
+}
+
+function sameNameList(set, names) {
+  if (set.size !== names.length) return false
+  return names.every((name) => set.has(name))
+}
+
+function sameCondValue(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const left = Array.isArray(a) ? a : []
+    const right = Array.isArray(b) ? b : []
+    return left.length === right.length && left.every((item, index) => item === right[index])
+  }
+  return String(a ?? '') === String(b ?? '')
+}
+
+function applyParsedWhere(nextRaw, state = activeState()) {
+  const prev = state.whereConditions
+  let seq = nextConditionId(prev)
+  const used = new Set()
+  const next = nextRaw.map((item) => {
+    const hit = prev.find((row) => {
+      if (used.has(row.id)) return false
+      return (
+        row.fieldApiName === item.fieldApiName &&
+        row.operator === item.operator &&
+        sameCondValue(row.value, item.value) &&
+        String(row.value2 || '') === String(item.value2 || '')
+      )
+    })
+    if (hit) {
+      used.add(hit.id)
+      return hit
+    }
+    const row = {
+      id: seq,
+      fieldApiName: item.fieldApiName,
+      operator: item.operator,
+      value: item.value,
+      value2: item.value2 || ''
+    }
+    seq += 1
+    return row
+  })
+  if (next.length === prev.length && next.every((row, index) => row === prev[index])) return
+  state.whereConditions = next
+}
+
+function scrollListTo(container, attr, value) {
+  const root = container?.value
+  if (!root || !value) return
+  const esc = window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/"/g, '')
+  root.querySelector(`[${attr}="${esc}"]`)?.scrollIntoView({ block: 'nearest' })
+}
+
+async function revealLinkedObject(name, state) {
+  if (state !== activeState()) return
+  if (state.objectSearch && !filteredObjects.value.some((item) => item.name === name)) {
+    state.objectSearch = ''
+    await nextTick()
+  }
+  scrollListTo(objectListEl, 'data-object-name', name)
+}
+
+/** 手写 SOQL → 左侧对象高亮并滚动、勾选字段、填 WHERE。不回写编辑器。 */
+async function applySoqlToLists(forState) {
+  const state = forState || activeState()
+  const gen = ++soqlLinkGen
+  const preview = parseManualSoql(state.soqlText, state.fieldsMap)
+  if (!preview.objectName || !client) return
+  if (!queryTabs.value.includes(state)) return
+  const obj = findListedObject(preview.objectName)
+  if (!obj) return
+
+  const needDescribe =
+    state.currentObject?.name !== obj.name || Object.keys(state.fieldsMap).length === 0
+  if (needDescribe) {
+    state.currentObject = obj
+    state.loadingFields = true
+    state.errorMessage = ''
+    await revealLinkedObject(obj.name, state)
+    try {
+      const desc = await client.describeSObject(obj.name)
+      if (gen !== soqlLinkGen || !queryTabs.value.includes(state)) return
+      const packed = rememberDescribe(obj.name, desc)
+      state.fieldsMap = packed.fields
+      state.childRelationships = packed.children
+    } catch (e) {
+      if (gen === soqlLinkGen) {
+        state.fieldsMap = {}
+        state.childRelationships = []
+        state.errorMessage = e.message || String(e)
+      }
+      return
+    } finally {
+      if (gen === soqlLinkGen) state.loadingFields = false
+    }
+  }
+  if (gen !== soqlLinkGen || !queryTabs.value.includes(state)) return
+
+  const parsed = parseManualSoql(state.soqlText, state.fieldsMap)
+  if (String(parsed.objectName).toLowerCase() !== obj.name.toLowerCase()) return
+  if (state.currentObject?.name !== obj.name) state.currentObject = obj
+
+  const live = state === activeState()
+  if (live) applyingSoqlLink = true
+  try {
+    if (!sameNameList(state.selectedFieldSet, parsed.selectFields)) {
+      state.selectedFieldSet = new Set(parsed.selectFields)
+      syncSelectedArray(state)
+    }
+    applyParsedWhere(parsed.whereConditions, state)
+    const visibleNames = new Set(
+      (live ? filteredFields.value : Object.values(state.fieldsMap)).map((field) => field.name)
+    )
+    if (parsed.selectFields.some((name) => !visibleNames.has(name))) {
+      if (state.fieldSearch) state.fieldSearch = ''
+      if (state.fieldKindFilter !== 'all') state.fieldKindFilter = 'all'
+    }
+  } finally {
+    if (live) applyingSoqlLink = false
+  }
+
+  if (!live) return
+  await nextTick()
+  if (gen !== soqlLinkGen || state !== activeState()) return
+  await revealLinkedObject(obj.name, state)
+  const fieldName = parsed.selectFields[0] || ''
+  if (fieldName) scrollListTo(fieldListEl, 'data-field-name', fieldName)
 }
 
 function clearFieldSuggestions() {
@@ -1660,28 +1979,30 @@ function onSoqlEditorActivity(e) {
 /** 选中 FROM 对象时：加载 describe 供后续字段联想，不重写用户手写 SOQL */
 async function hydrateObjectFromSuggest(obj) {
   if (!client || !obj?.name) return
+  const state = activeState()
   if (
-    currentObject.value?.name === obj.name &&
-    Object.keys(fieldsMap.value).length > 0
+    state.currentObject?.name === obj.name &&
+    Object.keys(state.fieldsMap).length > 0
   ) {
     return
   }
-  currentObject.value = obj
-  fieldSearch.value = ''
-  fieldKindFilter.value = 'all'
-  loadingFields.value = true
+  state.currentObject = obj
+  state.fieldSearch = ''
+  state.fieldKindFilter = 'all'
+  state.loadingFields = true
   try {
     const desc = await client.describeSObject(obj.name)
+    if (state.currentObject?.name !== obj.name) return
     const packed = rememberDescribe(obj.name, desc)
-    fieldsMap.value = packed.fields
-    childRelationships.value = packed.children
+    state.fieldsMap = packed.fields
+    state.childRelationships = packed.children
     // 不改 selectedFieldSet / soqlText，避免覆盖手写语句
   } catch (e) {
-    fieldsMap.value = {}
-    childRelationships.value = []
-    errorMessage.value = e.message || String(e)
+    state.fieldsMap = {}
+    state.childRelationships = []
+    state.errorMessage = e.message || String(e)
   } finally {
-    loadingFields.value = false
+    state.loadingFields = false
   }
 }
 
@@ -1755,14 +2076,14 @@ async function copySoql() {
   }
 }
 
-function mergeResultColumns(records) {
-  const cols = new Set(resultColumns.value)
+function mergeResultColumns(records, state = activeState()) {
+  const cols = new Set(state.resultColumns)
   for (const rec of records) {
     Object.keys(rec || {}).forEach((k) => {
       if (k !== 'attributes') cols.add(k)
     })
   }
-  resultColumns.value = Array.from(cols)
+  state.resultColumns = Array.from(cols)
 }
 
 function csvEscape(val) {
@@ -1811,11 +2132,11 @@ async function refreshSessionIfNeeded() {
 /**
  * 基于当前对象 + WHERE 条件生成 COUNT，不读也不改 soqlText
  */
-function buildObjectCountSoql() {
-  if (!currentObject.value?.name) return ''
-  return `SELECT COUNT() FROM ${currentObject.value.name}${buildWhereClause(
-    whereConditions.value,
-    fieldsMap.value
+function buildObjectCountSoql(state = activeState()) {
+  if (!state.currentObject?.name) return ''
+  return `SELECT COUNT() FROM ${state.currentObject.name}${buildWhereClause(
+    state.whereConditions,
+    state.fieldsMap
   )}`
 }
 
@@ -1825,209 +2146,238 @@ function yieldToUi() {
   })
 }
 
-function stopQuery() {
-  if (queryAbortController) {
-    try {
-      queryAbortController.abort()
-    } catch {
-      /* ignore */
-    }
+function abortWorkspace(state) {
+  if (!state?.abortController) return
+  try {
+    state.abortController.abort()
+  } catch {
+    /* ignore */
   }
 }
 
-function beginQueryRun() {
-  stopQuery()
-  queryAbortController = new AbortController()
-  queryRunId += 1
-  return { signal: queryAbortController.signal, runId: queryRunId }
+function stopQuery() {
+  abortWorkspace(activeState())
+}
+
+function stopAllQueries() {
+  for (const tab of queryTabs.value) abortWorkspace(tab)
+}
+
+function beginQueryRun(state = activeState()) {
+  abortWorkspace(state)
+  state.abortController = new AbortController()
+  state.queryRunId += 1
+  return { signal: state.abortController.signal, runId: state.queryRunId, state }
 }
 
 function isAbortError(e) {
   return e?.name === 'AbortError' || /abort|取消/i.test(String(e?.message || ''))
 }
 
-function applyQueryPage(data, { append = false } = {}) {
-  const records = data?.records || []
+function applyQueryPage(data, { append = false, state = activeState() } = {}) {
+  const records = (data?.records || []).map(flattenSoqlRecord)
   if (!append) {
-    resultColumns.value = []
-    resultRows.value = []
+    state.resultColumns = []
+    state.resultRows = []
   }
-  mergeResultColumns(records)
+  mergeResultColumns(records, state)
   // 整页追加，不在页内截断，避免丢掉本页后半段却丢掉 nextUrl 对应关系
-  resultRows.value = append ? resultRows.value.concat(records) : records
+  state.resultRows = append ? state.resultRows.concat(records) : records
 
   const serverDone = data?.done !== false
   const next = data?.nextRecordsUrl || ''
-  resultDone.value = serverDone
-  resultNextUrl.value = serverDone ? '' : next
+  state.resultDone = serverDone
+  state.resultNextUrl = serverDone ? '' : next
 
-  if (typeof data?.totalSize === 'number') resultTotalSize.value = data.totalSize
-  else if (!append) resultTotalSize.value = records.length
+  if (typeof data?.totalSize === 'number') state.resultTotalSize = data.totalSize
+  else if (!append) state.resultTotalSize = records.length
 }
 
 /**
  * 分阶段拉取后续页。
  * @param maxRows 本轮最多加载到的行数（自动查询用软上限；手动继续 = 当前行数 + 软上限）
  */
-async function continueQueryPages(signal, runId, { maxRows = RESULT_SOFT_CAP } = {}) {
+async function continueQueryPages(signal, runId, { maxRows = RESULT_SOFT_CAP, state = activeState() } = {}) {
   let guard = 0
   while (
-    runId === queryRunId &&
+    runId === state.queryRunId &&
     !signal.aborted &&
-    resultDone.value === false &&
-    resultNextUrl.value &&
-    resultRows.value.length < maxRows &&
+    state.resultDone === false &&
+    state.resultNextUrl &&
+    state.resultRows.length < maxRows &&
     guard < 200
   ) {
     guard += 1
     await yieldToUi()
-    if (signal.aborted || runId !== queryRunId) break
-    const data = await client.queryMore(resultNextUrl.value, { signal })
-    if (signal.aborted || runId !== queryRunId) break
-    applyQueryPage(data, { append: true })
-    if (resultRows.value.length >= maxRows && !resultDone.value && resultNextUrl.value) {
-      showToast(t('soql.loadMoreCapped', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
-      }))
+    if (signal.aborted || runId !== state.queryRunId) break
+    const data = await client.queryMore(state.resultNextUrl, { signal })
+    if (signal.aborted || runId !== state.queryRunId) break
+    applyQueryPage(data, { append: true, state })
+    if (state.resultRows.length >= maxRows && !state.resultDone && state.resultNextUrl) {
+      if (state === activeState()) {
+        showToast(t('soql.loadMoreCapped', {
+          loaded: state.resultRows.length,
+          total: state.resultTotalSize ?? state.resultRows.length
+        }))
+      }
       break
     }
   }
 }
 
+function toastOnTab(state, message) {
+  if (state === activeState()) showToast(message)
+}
+
 async function countObjectRows() {
-  if (!currentObject.value || !selectedEnv.value) return
+  const state = activeState()
+  if (!state.currentObject || !selectedEnv.value) return
   if (!client) {
-    errorMessage.value = t('soql.selectEnvFirst')
+    state.errorMessage = t('soql.selectEnvFirst')
     return
   }
-  const countSoql = buildObjectCountSoql()
+  const countSoql = buildObjectCountSoql(state)
   if (!countSoql) {
-    errorMessage.value = t('soql.countSoqlFailed')
+    state.errorMessage = t('soql.countSoqlFailed')
     return
   }
-  countingTotal.value = true
-  errorMessage.value = ''
+  state.countingTotal = true
+  state.errorMessage = ''
   // 不碰 soqlText / 结果区
   try {
     await refreshSessionIfNeeded()
     const total = await client.countQuery(countSoql)
-    const label = currentObject.value.label || currentObject.value.name
-    objectCountHint.value = t('soql.objectCountHint', {
+    const label = state.currentObject?.label || state.currentObject?.name
+    state.objectCountHint = t('soql.objectCountHint', {
       object: label,
       total
     })
-    showToast(t('soql.countResult', { total }))
+    toastOnTab(state, t('soql.countResult', { total }))
   } catch (e) {
-    errorMessage.value = e.message || String(e)
+    state.errorMessage = e.message || String(e)
   } finally {
-    countingTotal.value = false
+    state.countingTotal = false
   }
 }
 
 async function loadMoreResults() {
-  if (!client || !canLoadMore.value || executing.value) return
-  const { signal, runId } = beginQueryRun()
-  executing.value = true
-  errorMessage.value = ''
-  showToast(t('soql.loadingMore'))
-  // 每点一次再拉一批（当前行数 + 软上限），避免一次灌爆 UI
-  const batchTarget = resultRows.value.length + RESULT_SOFT_CAP
+  const state = activeState()
+  if (!client || !state.resultNextUrl || state.resultDone !== false || state.executing) return
+  if (!state.resultRows.length) return
+  const { signal, runId } = beginQueryRun(state)
+  state.executing = true
+  state.errorMessage = ''
+  toastOnTab(state, t('soql.loadingMore'))
+  const batchTarget = state.resultRows.length + RESULT_SOFT_CAP
   try {
     await refreshSessionIfNeeded()
-    await continueQueryPages(signal, runId, { maxRows: batchTarget })
+    await continueQueryPages(signal, runId, { maxRows: batchTarget, state })
     if (signal.aborted) {
-      showToast(t('soql.queryCancelled', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+      toastOnTab(state, t('soql.queryCancelled', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
-    } else if (resultDone.value || !resultNextUrl.value) {
-      showToast(t('soql.rowsLoadedOfTotal', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+    } else if (state.resultDone || !state.resultNextUrl) {
+      toastOnTab(state, t('soql.rowsLoadedOfTotal', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
     } else {
-      showToast(t('soql.loadMoreCapped', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+      toastOnTab(state, t('soql.loadMoreCapped', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
     }
   } catch (e) {
     if (isAbortError(e)) {
-      showToast(t('soql.queryCancelled', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+      toastOnTab(state, t('soql.queryCancelled', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
     } else {
-      errorMessage.value = e.message || String(e)
+      state.errorMessage = e.message || String(e)
     }
   } finally {
-    if (runId === queryRunId) {
-      executing.value = false
-      queryAbortController = null
+    if (runId === state.queryRunId) {
+      state.executing = false
+      state.abortController = null
     }
   }
 }
 
 async function executeQuery() {
-  if (!client || !soqlText.value.trim() || executing.value) return
-  const { signal, runId } = beginQueryRun()
-  executing.value = true
-  errorMessage.value = ''
-  showToast(t('soql.executing'))
-  resultColumns.value = []
-  resultRows.value = []
-  resultDone.value = true
-  resultTotalSize.value = null
-  resultNextUrl.value = ''
-  clearCellEdits()
+  const state = activeState()
+  if (!client || !state.soqlText.trim() || state.executing) return
+  const { signal, runId } = beginQueryRun(state)
+  const soql = state.soqlText.trim()
+  state.executing = true
+  state.errorMessage = ''
+  toastOnTab(state, t('soql.executing'))
+  state.resultColumns = []
+  state.resultRows = []
+  state.resultDone = true
+  state.resultTotalSize = null
+  state.resultNextUrl = ''
+  state.cellEdits = {}
+  state.selectedCell = null
+  state.editingCell = null
   try {
     await refreshSessionIfNeeded()
-    const data = await client.query(soqlText.value.trim(), { signal })
-    if (signal.aborted || runId !== queryRunId) return
-    applyQueryPage(data, { append: false })
+    const data = await client.query(soql, { signal })
+    if (signal.aborted || runId !== state.queryRunId) return
+    applyQueryPage(data, { append: false, state })
+    nameTabFromQuery(state)
 
-    // 分阶段继续拉后续页，边拉边更新表格；自动停在软上限，之后用「继续加载」
-    if (!resultDone.value && resultNextUrl.value) {
-      await continueQueryPages(signal, runId, { maxRows: RESULT_SOFT_CAP })
+    if (!state.resultDone && state.resultNextUrl) {
+      await continueQueryPages(signal, runId, { maxRows: RESULT_SOFT_CAP, state })
     }
 
     if (signal.aborted) {
-      showToast(t('soql.queryCancelled', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+      toastOnTab(state, t('soql.queryCancelled', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
-    } else if (!resultDone.value && resultNextUrl.value) {
-      showToast(t('soql.loadMoreCapped', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+    } else if (!state.resultDone && state.resultNextUrl) {
+      toastOnTab(state, t('soql.loadMoreCapped', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
     } else {
-      showToast(t('soql.rowsLoadedOfTotal', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+      toastOnTab(state, t('soql.rowsLoadedOfTotal', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
     }
   } catch (e) {
     if (isAbortError(e)) {
-      showToast(t('soql.queryCancelled', {
-        loaded: resultRows.value.length,
-        total: resultTotalSize.value ?? resultRows.value.length
+      toastOnTab(state, t('soql.queryCancelled', {
+        loaded: state.resultRows.length,
+        total: state.resultTotalSize ?? state.resultRows.length
       }))
     } else {
-      errorMessage.value = e.message || String(e)
-      showToast('')
+      state.errorMessage = e.message || String(e)
+      if (state === activeState()) showToast('')
     }
   } finally {
-    if (runId === queryRunId) {
-      executing.value = false
-      queryAbortController = null
+    if (runId === state.queryRunId) {
+      state.executing = false
+      state.abortController = null
     }
   }
 }
 
 watch([limitEnabled, queryLimit], () => {
+  if (switchingTab) return
   syncSoqlFromBuilder()
+})
+
+watch(soqlText, () => {
+  if (switchingTab) return
+  scheduleSoqlLink()
+})
+
+watch(objects, () => {
+  scheduleSoqlLink()
 })
 
 watch(soqlEditorOpen, (open) => {
@@ -2035,10 +2385,12 @@ watch(soqlEditorOpen, (open) => {
 })
 
 watch(currentObject, () => {
+  if (switchingTab) return
   objectCountHint.value = ''
 })
 
 watch(whereConditions, () => {
+  if (switchingTab) return
   // WHERE 变更后旧的对象总数提示失效
   objectCountHint.value = ''
 }, { deep: true })
@@ -2064,7 +2416,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  stopQuery()
+  clearTimeout(soqlLinkTimer)
+  stopAllQueries()
   window.removeEventListener('scroll', closeCtxOnScroll, true)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   try {
@@ -2168,6 +2521,87 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.soql-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.soql-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 0 2px;
+}
+
+.soql-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  min-width: 72px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 8px 8px 0 0;
+  padding: 7px 8px 7px 12px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.soql-tab.active {
+  background: var(--card);
+  color: var(--accent-deep);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+.soql-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soql-tab-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+  font-size: 14px;
+}
+
+.soql-tab-close:hover {
+  color: var(--accent-deep);
+}
+
+.soql-tab-add {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 0 0 2px 2px;
+  border: 1px dashed var(--border-hover);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent-deep);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.soql-tab-add:hover {
+  background: var(--soft);
+  border-color: var(--accent);
 }
 
 .soql-body {
@@ -2458,6 +2892,7 @@ onUnmounted(() => {
   background: var(--panel);
 }
 
+.field-item.selected,
 .mode-select .field-item.selected {
   background: var(--soft);
   border-color: var(--accent);
@@ -2474,6 +2909,13 @@ onUnmounted(() => {
   padding: 8px 10px;
   gap: 3px;
   min-height: 44px;
+}
+
+.mode-where .field-item.selected {
+  background: var(--soft);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.08);
+  opacity: 1;
 }
 
 .mode-where .field-item.whereable:hover {
