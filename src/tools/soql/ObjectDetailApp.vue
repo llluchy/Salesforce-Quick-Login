@@ -19,6 +19,14 @@
         </div>
       </div>
       <div class="od-header-right">
+        <button
+          v-if="recordId"
+          type="button"
+          class="od-delete"
+          :disabled="!canDeleteRecord"
+          :title="deleteDisabledTitle"
+          @click="openDeleteConfirm"
+        >{{ deletingRecord ? t('objectDetail.deleting') : t('objectDetail.deleteRecord') }}</button>
         <LocaleSwitcher variant="dark" />
         <div v-if="capabilityChips.length" class="od-caps">
           <span
@@ -279,6 +287,19 @@
       :type="toastType"
       @close="closeToast"
     />
+
+    <div v-if="deleteConfirmOpen" class="confirm-overlay" @click.self="closeDeleteConfirm">
+      <div class="confirm-dialog" role="dialog" aria-modal="true">
+        <h3>{{ t('objectDetail.confirmDeleteTitle') }}</h3>
+        <p>{{ t('objectDetail.confirmDeleteBody', { object: describe?.name || objectName, id: recordId }) }}</p>
+        <div class="confirm-actions">
+          <button type="button" class="od-dialog-btn" :disabled="deletingRecord" @click="closeDeleteConfirm">{{ t('common.cancel') }}</button>
+          <button type="button" class="od-dialog-btn danger" :disabled="deletingRecord" @click="confirmDeleteRecord">
+            {{ deletingRecord ? t('objectDetail.deleting') : t('objectDetail.confirmDelete') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -288,7 +309,7 @@ import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import ToolToast from '../_shared/ToolToast.vue'
 import { useToolToast } from '../_shared/useToolToast.js'
-import { SfRestClient, fetchSfSession } from '../_shared/sfApi.js'
+import { SfRestClient, fetchSfSession, isSalesforceId, isSalesforceObjectApi } from '../_shared/sfApi.js'
 import '../_shared/toolThemes.css'
 
 const { t } = useI18n()
@@ -305,6 +326,10 @@ const loading = ref(true)
 const bootError = ref('')
 const recordWarning = ref('')
 const recordValues = ref(null)
+const recordDeleted = ref(false)
+const deleteConfirmOpen = ref(false)
+const deletingRecord = ref(false)
+let sfClient = null
 const activeSection = ref('fields')
 const fieldSearch = ref('')
 const fieldKind = ref('all')
@@ -345,6 +370,43 @@ const allCapabilityChips = computed(() => {
 })
 
 const capabilityChips = computed(() => allCapabilityChips.value.filter((c) => c.on))
+
+function loadedRecordId(values) {
+  const direct = String(values?.Id ?? values?.id ?? '').trim()
+  const url = String(values?.attributes?.url || '')
+  const fromUrl = url.match(/\/sobjects\/([A-Za-z][A-Za-z0-9_]*)\/([a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?)(?:\/|$|\?)/)
+  if (fromUrl) {
+    if (direct && direct !== fromUrl[2]) return ''
+    return fromUrl[2]
+  }
+  return isSalesforceId(direct) ? direct : ''
+}
+
+function deleteTargetReady() {
+  const objectApi = describe.value?.name || ''
+  const id = String(recordId || '').trim()
+  const loadedId = loadedRecordId(recordValues.value)
+  const sameObject = objectApi.toLowerCase() === String(objectName || '').trim().toLowerCase()
+  return (
+    sameObject &&
+    isSalesforceObjectApi(objectApi) &&
+    isSalesforceId(id) &&
+    loadedId === id &&
+    !!describe.value?.deletable &&
+    !recordDeleted.value
+  )
+}
+
+const canDeleteRecord = computed(() => deleteTargetReady() && !deletingRecord.value)
+
+const deleteDisabledTitle = computed(() => {
+  if (recordDeleted.value) return t('objectDetail.recordDeleted', { id: recordId })
+  if (describe.value && !describe.value.deletable) return t('objectDetail.notDeletable')
+  if (loading.value) return t('objectDetail.loadingMetadata')
+  if (!recordValues.value) return recordWarning.value || bootError.value || t('objectDetail.recordMissing', { id: recordId })
+  if (!deleteTargetReady()) return t('objectDetail.deleteRejected')
+  return t('objectDetail.deleteRecord')
+})
 
 const fieldStats = computed(() => {
   const list = fields.value
@@ -529,11 +591,56 @@ async function loadRecordById(client, objectApiName, id, fieldList) {
   }
 }
 
+function closeDeleteConfirm() {
+  if (deletingRecord.value) return
+  deleteConfirmOpen.value = false
+}
+
+function openDeleteConfirm() {
+  if (!canDeleteRecord.value) return
+  deleteConfirmOpen.value = true
+}
+
+async function confirmDeleteRecord() {
+  if (!sfClient || !recordId || deletingRecord.value || recordDeleted.value) return
+  deletingRecord.value = true
+  try {
+    const res = await fetchSfSession(hostname.value || hostnameParam)
+    if (res?.success && res.session?.sessionId) {
+      sfClient.sessionId = res.session.sessionId
+      sfClient.hostname = res.session.hostname || sfClient.hostname
+      hostname.value = sfClient.hostname
+    }
+    const objectApi = describe.value?.name || ''
+    const id = String(recordId || '').trim()
+    if (!deleteTargetReady() || loadedRecordId(recordValues.value) !== id) {
+      throw Object.assign(new Error('Invalid delete target'), { name: 'InvalidDeleteTarget' })
+    }
+    await sfClient.deleteSObject(objectApi, id)
+    recordDeleted.value = true
+    recordValues.value = null
+    recordWarning.value = t('objectDetail.recordDeleted', { id })
+    deleteConfirmOpen.value = false
+    showToast(t('objectDetail.deletedRecord', { object: objectApi, id }))
+  } catch (e) {
+    const msg = e?.name === 'InvalidDeleteTarget'
+      ? t('objectDetail.deleteRejected')
+      : (e?.message || t('objectDetail.deleteFailed'))
+    recordWarning.value = msg
+    showToast(msg, 'error')
+  } finally {
+    deletingRecord.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   bootError.value = ''
   recordWarning.value = ''
   recordValues.value = null
+  recordDeleted.value = false
+  deleteConfirmOpen.value = false
+  sfClient = null
   if (!objectName) {
     bootError.value = t('objectDetail.missingObjectParam')
     loading.value = false
@@ -554,6 +661,7 @@ async function load() {
       hostname: hostname.value,
       sessionId: res.session.sessionId
     })
+    sfClient = client
     describe.value = await client.describeSObject(objectName)
     document.title = recordId
       ? `${describe.value.label || objectName} · ${recordId}`
@@ -561,9 +669,11 @@ async function load() {
 
     if (recordId) {
       await loadRecordById(client, objectName, recordId, describe.value.fields || [])
-      showToast(recordValues.value)
-        ? t('objectDetail.recordLoaded', { id: recordId })
-        : t('objectDetail.objectOnlyLoaded')
+      showToast(
+        recordValues.value
+          ? t('objectDetail.recordLoaded', { id: recordId })
+          : t('objectDetail.objectOnlyLoaded')
+      )
     } else {
       showToast(t('objectDetail.objectLoaded', { name: objectName }))
     }
@@ -612,6 +722,87 @@ onMounted(load)
   align-items: flex-end;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.od-delete {
+  border: 1px solid #ffcdd2;
+  background: #ffebee;
+  color: #c62828;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.od-delete:hover:not(:disabled) {
+  background: #ffcdd2;
+}
+
+.od-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(40, 20, 60, 0.35);
+}
+
+.confirm-dialog {
+  width: min(420px, 100%);
+  background: #fff;
+  color: var(--text);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(40, 20, 60, 0.22);
+  padding: 16px 18px;
+}
+
+.confirm-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--accent-deep);
+}
+
+.confirm-dialog p {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.od-dialog-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.od-dialog-btn.danger {
+  border-color: #ef9a9a;
+  background: #ffebee;
+  color: #c62828;
+  font-weight: 600;
+}
+
+.od-dialog-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .od-warning {

@@ -6,6 +6,53 @@
 export const SF_API_VERSION = '64.0'
 const CLIENT_ID = 'Salesforce Quick Login SOQL'
 
+/** 15 或 18 位 Salesforce Id，不允许空串、引号、空格或 SOQL 片段 */
+const SF_RECORD_ID_RE = /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/
+/** 单个对象 API 名，不允许斜杠、空格、引号 */
+const SF_OBJECT_API_RE = /^[A-Za-z][A-Za-z0-9_]*$/
+const SF_API_VERSION_RE = /^\d+\.\d+$/
+
+export function isSalesforceId(value) {
+  return SF_RECORD_ID_RE.test(String(value ?? '').trim())
+}
+
+export function isSalesforceObjectApi(value) {
+  return SF_OBJECT_API_RE.test(String(value ?? '').trim())
+}
+
+/**
+ * 只生成「删除这一条记录」的路径。
+ * 对象名或 Id 缺了、短了、带了空格/引号/斜杠，直接抛错，不发请求。
+ */
+export function buildSingleRecordDeletePath(apiVersion, objectApiName, recordId) {
+  const version = String(apiVersion ?? '').trim()
+  const objectApi = String(objectApiName ?? '').trim()
+  const id = String(recordId ?? '').trim()
+  if (!SF_API_VERSION_RE.test(version) || !SF_OBJECT_API_RE.test(objectApi) || !SF_RECORD_ID_RE.test(id)) {
+    const err = new Error('Invalid delete target')
+    err.name = 'InvalidDeleteTarget'
+    throw err
+  }
+  const path = `/services/data/v${version}/sobjects/${objectApi}/${id}`
+  const parts = path.split('/')
+  const singleRecord =
+    parts.length === 7 &&
+    parts[1] === 'services' &&
+    parts[2] === 'data' &&
+    parts[3] === `v${version}` &&
+    parts[4] === 'sobjects' &&
+    parts[5] === objectApi &&
+    parts[6] === id &&
+    !path.includes('?') &&
+    !path.includes('&')
+  if (!singleRecord) {
+    const err = new Error('Invalid delete target')
+    err.name = 'InvalidDeleteTarget'
+    throw err
+  }
+  return path
+}
+
 export function normalizeSfHostname(host) {
   if (!host) return host
   return String(host)
@@ -125,6 +172,12 @@ export class SfRestClient {
       `/services/data/v${this.apiVersion}/sobjects/${encodeURIComponent(objectApiName)}/${encodeURIComponent(recordId)}`,
       { method: 'PATCH', body: fields }
     )
+  }
+
+  /** 删除单条记录。路径不合法时抛 InvalidDeleteTarget，不会发出请求。 */
+  deleteSObject(objectApiName, recordId) {
+    const path = buildSingleRecordDeletePath(this.apiVersion, objectApiName, recordId)
+    return this.rest(path, { method: 'DELETE' })
   }
 }
 

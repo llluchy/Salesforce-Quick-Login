@@ -183,7 +183,7 @@
           <table v-if="resultColumns.length" class="results-table">
             <thead>
               <tr>
-                <th class="col-detail">{{ t('soql.detailShort') }}</th>
+                <th class="col-detail">{{ t('soql.rowActions') }}</th>
                 <th v-for="col in resultColumns" :key="col" class="col-head">
                   <button
                     type="button"
@@ -203,13 +203,22 @@
             <tbody>
               <tr v-for="(row, idx) in resultRows" :key="idx">
                 <td class="col-detail">
-                  <button
-                    type="button"
-                    class="obj-detail-btn"
-                    :title="t('soql.viewRecordDetail')"
-                    :disabled="!rowRecordId(row)"
-                    @click="openRecordDetail(row)"
-                  >{{ t('soql.detailShort') }}</button>
+                  <div class="row-actions">
+                    <button
+                      type="button"
+                      class="obj-detail-btn"
+                      :title="t('soql.viewRecordDetail')"
+                      :disabled="!rowRecordId(row)"
+                      @click="openRecordDetail(row)"
+                    >{{ t('soql.detailShort') }}</button>
+                    <button
+                      type="button"
+                      class="obj-detail-btn obj-delete-btn"
+                      :title="t('soql.deleteRecordTitle')"
+                      :disabled="!canDeleteRow(row) || deletingRecord"
+                      @click="openDeleteConfirm(idx)"
+                    >{{ t('soql.deleteShort') }}</button>
+                  </div>
                 </td>
                 <td
                   v-for="col in resultColumns"
@@ -378,6 +387,21 @@
     </Teleport>
 
     <Teleport to="body">
+      <div v-if="deleteConfirm" class="confirm-overlay" @click.self="closeDeleteConfirm">
+        <div class="confirm-dialog" role="dialog" aria-modal="true">
+          <h3>{{ t('soql.confirmDeleteTitle') }}</h3>
+          <p>{{ t('soql.confirmDeleteBody', { object: deleteConfirm.objectApi, id: deleteConfirm.id }) }}</p>
+          <div class="confirm-actions">
+            <button type="button" class="btn btn-sm" :disabled="deletingRecord" @click="closeDeleteConfirm">{{ t('common.cancel') }}</button>
+            <button type="button" class="btn btn-sm btn-stop" :disabled="deletingRecord" @click="confirmDeleteRecord">
+              {{ deletingRecord ? t('soql.deleting') : t('soql.confirmDelete') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
       <div v-if="submitConfirmOpen" class="confirm-overlay" @click.self="submitConfirmOpen = false">
         <div class="confirm-dialog" role="dialog" aria-modal="true">
           <h3>{{ t('soql.confirmSubmitTitle') }}</h3>
@@ -418,7 +442,7 @@ import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import ToolToast from '../_shared/ToolToast.vue'
 import { useToolToast } from '../_shared/useToolToast.js'
-import { SfRestClient, listSfEnvironments, fetchSfSession, pickEnvForPage, readPageEnvPreferFromUrl } from '../_shared/sfApi.js'
+import { SfRestClient, listSfEnvironments, fetchSfSession, pickEnvForPage, readPageEnvPreferFromUrl, isSalesforceId, isSalesforceObjectApi } from '../_shared/sfApi.js'
 import { DEFAULT_STANDARD_WHITELIST, getObjectKind } from './soqlConstants.js'
 import { openObjectDetailTab } from '../_shared/toolWindows.js'
 import { activePicklistOptions, valueKind } from './soqlWhere.js'
@@ -534,6 +558,8 @@ const RESULT_SOFT_CAP = 10000
 const cellEditorEl = ref(null)
 const ctxMenu = ref({ show: false, x: 0, y: 0, canCopy: false, row: -1, col: '' })
 const submitConfirmOpen = ref(false)
+const deleteConfirm = ref(null)
+const deletingRecord = ref(false)
 const submittingEdits = ref(false)
 
 let client = null
@@ -1023,6 +1049,7 @@ function restoreTabScroll(state) {
 }
 
 function resetQueryTabs() {
+  deleteConfirm.value = null
   for (const tab of queryTabs.value) abortWorkspace(tab)
   const fresh = createQueryTabState()
   switchingTab = true
@@ -1040,6 +1067,7 @@ function switchQueryTab(id) {
   if (current.editingCell) current.editingCell = null
   clearFieldSuggestions()
   submitConfirmOpen.value = false
+  deleteConfirm.value = null
   ctxMenu.value = { ...ctxMenu.value, show: false }
   switchingTab = true
   activeTabId.value = id
@@ -1168,6 +1196,100 @@ function rowRecordId(row) {
 
 function rowObjectType(row) {
   return row?.attributes?.type || currentObject.value?.name || ''
+}
+
+/** 删除只用查询结果自带的身份：attributes.url，或 type + 合法 Id。不用当前对象兜底。 */
+function recordDeleteTarget(row) {
+  const url = String(row?.attributes?.url || '')
+  const fromUrl = url.match(/\/sobjects\/([A-Za-z][A-Za-z0-9_]*)\/([a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?)(?:\/|$|\?)/)
+  const type = String(row?.attributes?.type || '').trim()
+  if (fromUrl) {
+    if (type && type !== fromUrl[1]) return null
+    if (!isSalesforceObjectApi(fromUrl[1]) || !isSalesforceId(fromUrl[2])) return null
+    return { objectApi: fromUrl[1], id: fromUrl[2] }
+  }
+  const id = String(row?.Id ?? row?.id ?? '').trim()
+  if (!isSalesforceObjectApi(type) || !isSalesforceId(id)) return null
+  return { objectApi: type, id }
+}
+
+function canDeleteRow(row) {
+  return !!recordDeleteTarget(row)
+}
+
+function closeDeleteConfirm() {
+  if (deletingRecord.value) return
+  deleteConfirm.value = null
+}
+
+function openDeleteConfirm(rowIdx) {
+  const target = recordDeleteTarget(resultRows.value[rowIdx])
+  if (!target) {
+    errorMessage.value = t('soql.deleteRejected')
+    return
+  }
+  deleteConfirm.value = { state: activeState(), rowIdx, objectApi: target.objectApi, id: target.id }
+}
+
+function dropDeletedRow(state, objectApi, id) {
+  const idx = state.resultRows.findIndex((row) => {
+    if (rowRecordId(row) !== id) return false
+    const type = row?.attributes?.type
+    return !type || type === objectApi
+  })
+  if (idx < 0) return
+  const nextEdits = {}
+  for (const [key, edit] of Object.entries(state.cellEdits || {})) {
+    const splitAt = key.indexOf('::')
+    const row = Number(key.slice(0, splitAt))
+    const col = key.slice(splitAt + 2)
+    if (!Number.isFinite(row) || row === idx) continue
+    const nextRow = row > idx ? row - 1 : row
+    nextEdits[`${nextRow}::${col}`] = edit
+  }
+  state.cellEdits = nextEdits
+  if (state.selectedCell?.row === idx) state.selectedCell = null
+  else if (state.selectedCell && state.selectedCell.row > idx) {
+    state.selectedCell = { ...state.selectedCell, row: state.selectedCell.row - 1 }
+  }
+  if (state.editingCell?.row === idx) state.editingCell = null
+  else if (state.editingCell && state.editingCell.row > idx) {
+    state.editingCell = { ...state.editingCell, row: state.editingCell.row - 1 }
+  }
+  state.resultRows.splice(idx, 1)
+  if (typeof state.resultTotalSize === 'number' && state.resultTotalSize > 0) {
+    state.resultTotalSize -= 1
+  }
+}
+
+async function confirmDeleteRecord() {
+  const pending = deleteConfirm.value
+  if (!pending || !client || deletingRecord.value) return
+  deletingRecord.value = true
+  errorMessage.value = ''
+  try {
+    const env = selectedEnv.value
+    if (env) {
+      const res = await fetchSfSession(env.hostname)
+      if (res?.success && res.session?.sessionId) {
+        client.sessionId = res.session.sessionId
+        client.hostname = res.session.hostname || client.hostname
+      }
+    }
+    await client.deleteSObject(pending.objectApi, pending.id)
+    const live = queryTabs.value.find((tab) => tab.id === pending.state.id)
+    if (live) dropDeletedRow(live, pending.objectApi, pending.id)
+    deleteConfirm.value = null
+    if (pending.state === activeState()) {
+      showToast(t('soql.deletedRecord', { object: pending.objectApi, id: pending.id }))
+    }
+  } catch (e) {
+    errorMessage.value = e?.name === 'InvalidDeleteTarget'
+      ? t('soql.deleteRejected')
+      : (e?.message || String(e))
+  } finally {
+    deletingRecord.value = false
+  }
 }
 
 async function openRecordDetail(row) {
@@ -2045,6 +2167,22 @@ onUnmounted(() => {
 .obj-detail-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+}
+
+.obj-delete-btn {
+  color: #c62828;
+  border-color: #ef9a9a;
+}
+
+.obj-delete-btn:hover:not(:disabled) {
+  background: #ffebee;
+  border-color: #e57373;
 }
 
 .item-api {
@@ -2974,13 +3112,13 @@ select.cell-editor {
 }
 
 .results-table .col-detail {
-  width: 36px;
+  width: 72px;
   text-align: center;
   position: sticky;
   left: 0;
   z-index: 2;
   background: var(--soft);
-  max-width: 40px;
+  max-width: 80px;
 }
 
 .results-table tbody td.col-detail {
