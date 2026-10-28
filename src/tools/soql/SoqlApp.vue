@@ -63,135 +63,6 @@
         >+</button>
       </div>
       <div class="soql-body">
-      <aside class="panel objects-panel">
-        <div class="panel-head">
-          <span>{{ t('soql.objects') }}</span>
-          <span class="count">{{ filteredObjects.length }}</span>
-        </div>
-        <input
-          v-model.trim="objectSearch"
-          class="search-input"
-          type="search"
-          :placeholder="t('soql.searchObjectPlaceholder')"
-        />
-        <div ref="objectListEl" class="list-scroll">
-          <div
-            v-for="obj in filteredObjects"
-            :key="obj.name"
-            :data-object-name="obj.name"
-            :class="['list-item', { active: currentObject?.name === obj.name }]"
-            role="button"
-            tabindex="0"
-            @click="selectObject(obj)"
-            @keydown.enter.prevent="selectObject(obj)"
-          >
-            <div class="item-top">
-              <span class="item-label">{{ obj.label }}</span>
-              <button
-                type="button"
-                class="obj-detail-btn"
-                :title="t('soql.viewObjectDetail')"
-                @click.stop="openObjectDetail(obj)"
-              >{{ t('soql.detailShort') }}</button>
-            </div>
-            <span class="item-api">{{ obj.name }}</span>
-          </div>
-          <p v-if="loadingObjects" class="list-hint">{{ t('soql.loadingObjects') }}</p>
-          <p v-else-if="filteredObjects.length === 0" class="list-hint">{{ t('soql.noMatchingObjects') }}</p>
-        </div>
-      </aside>
-
-      <section :class="['panel', 'fields-panel', `mode-${fieldPanelMode}`]">
-        <div class="panel-head">
-          <div class="panel-head-left">
-            <span>{{ t('soql.fields') }}{{ currentObject ? ` · ${currentObject.label}` : '' }}</span>
-            <span class="mode-badge">{{ fieldPanelMode === 'where' ? t('soql.modeWhere') : t('soql.modeSelect') }}</span>
-          </div>
-          <span class="count">{{ selectedFieldNames.length }}/{{ filteredFields.length }}</span>
-        </div>
-        <div class="field-toolbar">
-          <input
-            v-model.trim="fieldSearch"
-            class="search-input"
-            type="search"
-            :placeholder="t('soql.searchFieldPlaceholder')"
-            :disabled="!currentObject"
-          />
-          <div class="field-filter-chips">
-            <button
-              type="button"
-              :class="['chip', { active: fieldKindFilter === 'all' }]"
-              :disabled="!currentObject"
-              @click="fieldKindFilter = 'all'"
-            >{{ t('soql.chipAll') }}</button>
-            <button
-              type="button"
-              :class="['chip', { active: fieldKindFilter === 'standard' }]"
-              :disabled="!currentObject"
-              @click="fieldKindFilter = 'standard'"
-            >{{ t('soql.chipStandard') }}</button>
-            <button
-              type="button"
-              :class="['chip', { active: fieldKindFilter === 'custom' }]"
-              :disabled="!currentObject"
-              @click="fieldKindFilter = 'custom'"
-            >{{ t('soql.chipCustom') }}</button>
-          </div>
-          <div class="field-mode-chips">
-            <button
-              type="button"
-              :class="['chip', 'chip-select', { active: fieldPanelMode === 'select' }]"
-              :disabled="!currentObject"
-              @click="fieldPanelMode = 'select'"
-            >{{ t('soql.modeSelect') }}</button>
-            <button
-              type="button"
-              :class="['chip', 'chip-where', { active: fieldPanelMode === 'where' }]"
-              :disabled="!currentObject"
-              @click="fieldPanelMode = 'where'"
-            >{{ t('soql.modeWhere') }}</button>
-          </div>
-          <div class="field-actions">
-            <button type="button" class="btn btn-sm" :disabled="!currentObject || fieldPanelMode !== 'select'" @click="selectAllFields">{{ t('soql.selectAll') }}</button>
-            <button type="button" class="btn btn-sm" :disabled="!currentObject || fieldPanelMode !== 'select'" @click="clearFields">{{ t('soql.clear') }}</button>
-          </div>
-        </div>
-        <div ref="fieldListEl" class="list-scroll fields-list">
-          <button
-            v-for="field in filteredFields"
-            :key="field.name"
-            type="button"
-            :data-field-name="field.name"
-            :class="['field-item', {
-              selected: selectedFieldSet.has(field.name),
-              whereable: fieldPanelMode === 'where' && field.filterable,
-              unfilterable: fieldPanelMode === 'where' && !field.filterable
-            }]"
-            :title="fieldTooltip(field)"
-            :disabled="fieldPanelMode === 'where' && !field.filterable"
-            @click="onFieldCardClick(field)"
-            @dblclick.stop="copyFieldText(field)"
-          >
-            <span
-              class="field-line1 field-copyable"
-              :title="field.label"
-              @click.stop="onFieldTextClick(field.name, field.label)"
-            >{{ field.label }}</span>
-            <span class="field-line2">
-              <span
-                class="field-api field-copyable"
-                :title="field.name"
-                @click.stop="onFieldTextClick(field.name, field.name)"
-              >{{ field.name }}</span>
-              <span class="field-type">{{ field.type }}</span>
-            </span>
-          </button>
-          <p v-if="loadingFields" class="list-hint">{{ t('soql.loadingFields') }}</p>
-          <p v-else-if="!currentObject" class="list-hint">{{ t('soql.selectObjectFirst') }}</p>
-          <p v-else-if="filteredFields.length === 0" class="list-hint">{{ t('soql.noMatchingFields') }}</p>
-        </div>
-      </section>
-
       <section class="query-panel">
         <div class="panel-head">
           <span>SOQL</span>
@@ -280,137 +151,6 @@
           >
             <span class="soql-preview-text">{{ soqlText || t('soql.soqlPreviewEmpty') }}</span>
           </button>
-        </div>
-        <div class="where-panel">
-          <div class="where-head">
-            <span>WHERE</span>
-            <span class="count" v-if="whereConditions.length">{{ validWhereCount }}/{{ whereConditions.length }}</span>
-            <button
-              type="button"
-              class="btn btn-sm"
-              :disabled="whereConditions.length === 0"
-              @click="clearWhereConditions"
-            >{{ t('soql.clearConditions') }}</button>
-          </div>
-          <p v-if="whereConditions.length === 0" class="where-empty">{{ t('soql.whereEmpty') }}</p>
-          <div v-else class="where-list">
-            <div
-              v-for="cond in whereConditions"
-              :key="cond.id"
-              :class="['where-row', { wide: isMultiValue(cond.operator) && whereKind(cond) === 'picklist' }]"
-            >
-              <div class="where-field">
-                <span class="where-label">{{ fieldLabel(cond.fieldApiName) }}</span>
-                <span class="where-api">{{ cond.fieldApiName }}</span>
-              </div>
-              <select v-model="cond.operator" class="where-op" @change="onWhereOperatorChange(cond)">
-                <option v-for="op in operatorsForField(cond.fieldApiName)" :key="op" :value="op">{{ op }}</option>
-              </select>
-              <div class="where-values" @change="syncSoqlFromBuilder" @input="syncSoqlFromBuilder">
-                <template v-if="needsValue(cond.operator)">
-                  <select
-                    v-if="whereKind(cond) === 'boolean'"
-                    v-model="cond.value"
-                    class="where-input"
-                  >
-                    <option disabled value="">{{ t('soql.selectOption') }}</option>
-                    <option value="true">true</option>
-                    <option value="false">false</option>
-                  </select>
-                  <select
-                    v-else-if="whereKind(cond) === 'picklist' && !isMultiValue(cond.operator)"
-                    v-model="cond.value"
-                    class="where-input"
-                  >
-                    <option disabled value="">{{ t('soql.selectPicklist') }}</option>
-                    <option
-                      v-for="opt in picklistOptions(cond.fieldApiName)"
-                      :key="opt.value"
-                      :value="opt.value"
-                    >{{ opt.label || opt.value }}</option>
-                  </select>
-                  <div
-                    v-else-if="whereKind(cond) === 'picklist' && isMultiValue(cond.operator)"
-                    class="where-multi-checks"
-                  >
-                    <label
-                      v-for="opt in picklistOptions(cond.fieldApiName)"
-                      :key="opt.value"
-                      class="where-check-item"
-                    >
-                      <input
-                        type="checkbox"
-                        :value="opt.value"
-                        :checked="Array.isArray(cond.value) && cond.value.includes(opt.value)"
-                        @change="toggleWhereMultiValue(cond, opt.value, $event.target.checked)"
-                      />
-                      <span class="where-check-label">{{ opt.label || opt.value }}</span>
-                    </label>
-                    <p v-if="!picklistOptions(cond.fieldApiName).length" class="where-multi-empty">{{ t('soql.noPicklistOptions') }}</p>
-                  </div>
-                  <input
-                    v-else-if="whereKind(cond) === 'date' && isDateInputValue(cond.value)"
-                    v-model="cond.value"
-                    type="date"
-                    class="where-input"
-                  />
-                  <input
-                    v-else-if="whereKind(cond) === 'datetime' && isDatetimeLocalValue(cond.value)"
-                    v-model="cond.value"
-                    type="datetime-local"
-                    class="where-input"
-                  />
-                  <input
-                    v-else-if="whereKind(cond) === 'time' && isTimeInputValue(cond.value)"
-                    v-model="cond.value"
-                    type="time"
-                    class="where-input"
-                  />
-                  <input
-                    v-else-if="whereKind(cond) === 'number'"
-                    v-model="cond.value"
-                    type="number"
-                    class="where-input"
-                  />
-                  <input
-                    v-else
-                    v-model.trim="cond.value"
-                    type="text"
-                    class="where-input"
-                    :placeholder="cond.operator === 'IN' ? 'a, b, c' : (cond.operator === 'LIKE' ? '%text%' : '')"
-                  />
-                  <template v-if="needsValue2(cond.operator)">
-                    <span class="where-to">{{ t('soql.to') }}</span>
-                    <input
-                      v-if="whereKind(cond) === 'date' && isDateInputValue(cond.value2)"
-                      v-model="cond.value2"
-                      type="date"
-                      class="where-input"
-                    />
-                    <input
-                      v-else-if="whereKind(cond) === 'datetime' && isDatetimeLocalValue(cond.value2)"
-                      v-model="cond.value2"
-                      type="datetime-local"
-                      class="where-input"
-                    />
-                    <input
-                      v-else-if="whereKind(cond) === 'number'"
-                      v-model="cond.value2"
-                      type="number"
-                      class="where-input"
-                    />
-                    <input
-                      v-else
-                      v-model.trim="cond.value2"
-                      type="text"
-                      class="where-input"
-                    />
-                  </template>
-                </template>
-              </div>
-              <button type="button" class="where-remove" :title="t('soql.removeCondition')" @click="removeWhereCondition(cond.id)">×</button>
-            </div>
-          </div>
         </div>
         <p v-if="errorMessage" class="error-text inline-error">{{ errorMessage }}</p>
 
@@ -681,21 +421,7 @@ import { useToolToast } from '../_shared/useToolToast.js'
 import { SfRestClient, listSfEnvironments, fetchSfSession, pickEnvForPage, readPageEnvPreferFromUrl } from '../_shared/sfApi.js'
 import { DEFAULT_STANDARD_WHITELIST, getObjectKind } from './soqlConstants.js'
 import { openObjectDetailTab } from '../_shared/toolWindows.js'
-import {
-  activePicklistOptions,
-  buildWhereClause,
-  defaultOperator,
-  formatCondition,
-  isDateInputValue,
-  isDatetimeLocalValue,
-  isMultiValue,
-  isTimeInputValue,
-  needsValue,
-  needsValue2,
-  nextConditionId,
-  operatorsForKind,
-  valueKind
-} from './soqlWhere.js'
+import { activePicklistOptions, valueKind } from './soqlWhere.js'
 import { flattenSoqlRecord } from './flattenSoqlRecord.js'
 import { parseManualSoql } from './parseManualSoql.js'
 import { buildSoqlSuggestions } from './soqlSuggest/index.js'
@@ -711,7 +437,6 @@ const loadingEnvs = ref(false)
 const pagePrefer = ref(readPageEnvPreferFromUrl())
 
 const objects = ref([])
-const objectListEl = ref(null)
 const loadingObjects = ref(false)
 
 /** @type {Map<string, { fields: Record<string, any>, children: Array }>} */
@@ -719,7 +444,6 @@ const describeCache = new Map()
 const describeFailed = new Set()
 /** @type {Map<string, Promise<void>>} */
 const describeInflight = new Map()
-const fieldListEl = ref(null)
 const resultsWrapEl = ref(null)
 
 let queryTabSeq = 0
@@ -732,26 +456,16 @@ function createQueryTabState() {
     id: queryTabSeq,
     title: '',
     titled: false,
-    objectScroll: 0,
-    fieldScroll: 0,
     resultsScroll: 0,
     editorStart: null,
     editorEnd: null,
     abortController: null,
     queryRunId: 0,
-    objectSearch: '',
     currentObject: null,
     fieldsMap: {},
     childRelationships: [],
-    fieldSearch: '',
-    fieldKindFilter: 'all',
-    selectedFieldSet: new Set(),
-    selectedFieldNames: [],
-    loadingFields: false,
-    fieldPanelMode: 'select',
-    whereConditions: [],
     soqlText: '',
-    soqlEditorOpen: false,
+    soqlEditorOpen: true,
     limitEnabled: false,
     queryLimit: 10,
     executing: false,
@@ -787,17 +501,9 @@ function tabField(key) {
   })
 }
 
-const objectSearch = tabField('objectSearch')
 const currentObject = tabField('currentObject')
 const fieldsMap = tabField('fieldsMap')
 const childRelationships = tabField('childRelationships')
-const fieldSearch = tabField('fieldSearch')
-const fieldKindFilter = tabField('fieldKindFilter')
-const selectedFieldSet = tabField('selectedFieldSet')
-const selectedFieldNames = tabField('selectedFieldNames')
-const loadingFields = tabField('loadingFields')
-const fieldPanelMode = tabField('fieldPanelMode')
-const whereConditions = tabField('whereConditions')
 const soqlText = tabField('soqlText')
 const soqlEditorOpen = tabField('soqlEditorOpen')
 const soqlEditorEl = ref(null)
@@ -834,36 +540,8 @@ let client = null
 
 const selectedEnv = computed(() => envs.value.find((e) => e.id === selectedEnvId.value) || null)
 
-const filteredObjects = computed(() => {
-  const q = objectSearch.value.toLowerCase()
-  let list = objects.value
-  if (q) {
-    list = list.filter(
-      (o) => o.label.toLowerCase().includes(q) || o.name.toLowerCase().includes(q)
-    )
-  }
-  return list
-})
-
-const filteredFields = computed(() => {
-  let list = Object.values(fieldsMap.value)
-  if (fieldKindFilter.value === 'standard') {
-    list = list.filter((f) => !String(f.name).endsWith('__c'))
-  } else if (fieldKindFilter.value === 'custom') {
-    list = list.filter((f) => String(f.name).endsWith('__c'))
-  }
-  const q = fieldSearch.value.toLowerCase()
-  if (q) {
-    list = list.filter(
-      (f) => f.label.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)
-    )
-  }
-  return list
-})
-
 const canExecute = computed(() => !!selectedEnv.value && !!soqlText.value.trim())
-/** client 是非响应式局部变量，这里不能依赖它，否则选对象后按钮会一直灰 */
-const canCountObject = computed(() => !!selectedEnv.value && !!currentObject.value)
+const canCountObject = computed(() => !!selectedEnv.value && !!parseManualSoql(soqlText.value, {}).objectName)
 /** 软上限只约束自动续拉；手动「继续加载」只要还有下一页就可用 */
 const canLoadMore = computed(
   () =>
@@ -873,107 +551,12 @@ const canLoadMore = computed(
     resultRows.value.length > 0
 )
 
-const validWhereCount = computed(() => {
-  let n = 0
-  for (const cond of whereConditions.value) {
-    const field = fieldsMap.value[cond.fieldApiName]
-    if (formatCondition(cond, field)) n += 1
-  }
-  return n
-})
-
 function fieldLabel(apiName) {
   return fieldsMap.value[apiName]?.label || apiName
 }
 
-function whereKind(cond) {
-  return valueKind(fieldsMap.value[cond.fieldApiName]?.type)
-}
-
-function operatorsForField(apiName) {
-  return operatorsForKind(valueKind(fieldsMap.value[apiName]?.type))
-}
-
 function picklistOptions(apiName) {
   return activePicklistOptions(fieldsMap.value[apiName])
-}
-
-function onWhereOperatorChange(cond) {
-  if (cond.operator === 'IN' && whereKind(cond) === 'picklist') {
-    cond.value = Array.isArray(cond.value) ? cond.value : cond.value ? [cond.value] : []
-  } else if (Array.isArray(cond.value)) {
-    cond.value = cond.value[0] ?? ''
-  }
-  if (!needsValue2(cond.operator)) cond.value2 = ''
-  if (!needsValue(cond.operator)) {
-    cond.value = ''
-    cond.value2 = ''
-  }
-  syncSoqlFromBuilder()
-}
-
-function addWhereCondition(field) {
-  if (!field?.filterable) return
-  const kind = valueKind(field.type)
-  whereConditions.value = [
-    ...whereConditions.value,
-    {
-      id: nextConditionId(whereConditions.value),
-      fieldApiName: field.name,
-      operator: defaultOperator(kind),
-      value: kind === 'boolean' ? 'true' : '',
-      value2: ''
-    }
-  ]
-  syncSoqlFromBuilder()
-}
-
-function removeWhereCondition(id) {
-  whereConditions.value = whereConditions.value.filter((c) => c.id !== id)
-  syncSoqlFromBuilder()
-}
-
-function clearWhereConditions() {
-  whereConditions.value = []
-  syncSoqlFromBuilder()
-}
-
-function toggleWhereMultiValue(cond, value, checked) {
-  const prev = Array.isArray(cond.value) ? [...cond.value] : []
-  if (checked) {
-    if (!prev.includes(value)) prev.push(value)
-  } else {
-    const idx = prev.indexOf(value)
-    if (idx >= 0) prev.splice(idx, 1)
-  }
-  cond.value = prev
-  syncSoqlFromBuilder()
-}
-
-function onFieldCardClick(field) {
-  if (fieldPanelMode.value === 'where') {
-    addWhereCondition(field)
-    return
-  }
-  toggleField(field.name)
-}
-
-function syncSelectedArray(state = activeState()) {
-  // 按字段列表（describe）顺序，而非点击顺序
-  state.selectedFieldNames = Object.keys(state.fieldsMap).filter((name) =>
-    state.selectedFieldSet.has(name)
-  )
-}
-
-function fieldTooltip(field) {
-  if (fieldPanelMode.value === 'where' && !field.filterable) {
-    return t('soql.fieldTooltipNotFilterable', {
-      label: field.label,
-      name: field.name,
-      type: field.type
-    })
-  }
-  return t('soql.fieldTooltip', { label: field.label, name: field.name, type: field.type })
 }
 
 async function copyText(text) {
@@ -985,26 +568,6 @@ async function copyText(text) {
   } catch {
     errorMessage.value = t('soql.copyFailed')
   }
-}
-
-async function copyFieldText(field) {
-  await copyText(`${field.label} (${field.name})`)
-}
-
-/** 点标签/API：选字段模式下选中并复制；加条件模式下添加条件并复制 */
-async function onFieldTextClick(name, text) {
-  if (fieldPanelMode.value === 'where') {
-    addWhereCondition(fieldsMap.value[name])
-    await copyText(text)
-    return
-  }
-  if (!selectedFieldSet.value.has(name)) {
-    const next = new Set(selectedFieldSet.value)
-    next.add(name)
-    selectedFieldSet.value = next
-    syncSelectedArray()
-  }
-  await copyText(text)
 }
 
 function formatCell(val) {
@@ -1444,8 +1007,6 @@ function queryTabTitle(tab) {
 }
 
 function rememberTabScroll(state) {
-  state.objectScroll = objectListEl.value?.scrollTop || 0
-  state.fieldScroll = fieldListEl.value?.scrollTop || 0
   state.resultsScroll = resultsWrapEl.value?.scrollTop || 0
   if (soqlEditorEl.value) {
     state.editorStart = soqlEditorEl.value.selectionStart
@@ -1454,8 +1015,6 @@ function rememberTabScroll(state) {
 }
 
 function restoreTabScroll(state) {
-  if (objectListEl.value) objectListEl.value.scrollTop = state.objectScroll || 0
-  if (fieldListEl.value) fieldListEl.value.scrollTop = state.fieldScroll || 0
   if (resultsWrapEl.value) resultsWrapEl.value.scrollTop = state.resultsScroll || 0
   if (soqlEditorEl.value && state.editorStart != null) {
     const end = state.editorEnd ?? state.editorStart
@@ -1589,61 +1148,11 @@ async function loadObjects() {
   try {
     const data = await client.getSObjects()
     objects.value = filterApplicationObjects(data?.sobjects)
-    showToast(t('soql.loadedObjects', { count: objects.value.length }))
   } catch (e) {
     objects.value = []
     errorMessage.value = e.message || String(e)
   } finally {
     loadingObjects.value = false
-  }
-}
-
-async function selectObject(obj) {
-  if (!client || !obj) return
-  const state = activeState()
-  state.currentObject = obj
-  state.fieldSearch = ''
-  state.fieldKindFilter = 'all'
-  state.fieldPanelMode = 'select'
-  state.whereConditions = []
-  state.loadingFields = true
-  state.errorMessage = ''
-  try {
-    const desc = await client.describeSObject(obj.name)
-    if (state.currentObject?.name !== obj.name) return
-    const packed = rememberDescribe(obj.name, desc)
-    state.fieldsMap = packed.fields
-    state.childRelationships = packed.children
-    const defaults = ['Id', 'Name'].filter((n) => packed.fields[n])
-    state.selectedFieldSet = new Set(defaults)
-    syncSelectedArray(state)
-    syncSoqlFromBuilder(state)
-  } catch (e) {
-    state.fieldsMap = {}
-    state.childRelationships = []
-    state.selectedFieldSet = new Set()
-    syncSelectedArray(state)
-    state.whereConditions = []
-    state.errorMessage = e.message || String(e)
-  } finally {
-    state.loadingFields = false
-  }
-}
-
-async function openObjectDetail(obj) {
-  if (!obj?.name) return
-  const hostname = selectedEnv.value?.hostname || client?.hostname
-  if (!hostname) {
-    errorMessage.value = t('soql.selectEnvFirst')
-    return
-  }
-  try {
-    showToast(t('soql.openingObjectDetail', { label: obj.label || obj.name }))
-    await openObjectDetailTab({ objectName: obj.name, hostname })
-    showToast(t('soql.openedObjectDetail', { label: obj.label || obj.name }))
-  } catch (e) {
-    errorMessage.value = e?.message || t('soql.openObjectDetailFailed')
-    showToast('')
   }
 }
 
@@ -1683,203 +1192,16 @@ async function openRecordDetail(row) {
   }
 }
 
-function toggleField(name) {
-  const next = new Set(selectedFieldSet.value)
-  if (next.has(name)) next.delete(name)
-  else next.add(name)
-  selectedFieldSet.value = next
-  syncSelectedArray()
-  syncSoqlFromBuilder()
-}
-
-function selectAllFields() {
-  const next = new Set(selectedFieldSet.value)
-  for (const f of filteredFields.value) next.add(f.name)
-  selectedFieldSet.value = next
-  syncSelectedArray()
-  syncSoqlFromBuilder()
-}
-
-function clearFields() {
-  selectedFieldSet.value = new Set()
-  syncSelectedArray()
-  syncSoqlFromBuilder()
-}
-
-function buildSoql(state = activeState()) {
-  if (!state.currentObject || state.selectedFieldNames.length === 0) return ''
-  const fields = state.selectedFieldNames.join(', ')
-  let soql = `SELECT ${fields} FROM ${state.currentObject.name}`
-  soql += buildWhereClause(state.whereConditions, state.fieldsMap)
-  if (state.limitEnabled) {
-    const limit = Math.min(Math.max(Number(state.queryLimit) || 10, 1), 2000)
-    soql += ` LIMIT ${limit}`
-  }
-  return soql
-}
-
-/** 从手写 SOQL 回填左侧列表时，避免再写回编辑器把 __r 等片段冲掉 */
-let applyingSoqlLink = false
-let skipNextSoqlLink = false
-let soqlLinkTimer = 0
-let soqlLinkGen = 0
-
-/** 点选 / 条件 / LIMIT 变更后立刻同步 SOQL */
-function syncSoqlFromBuilder(state = activeState()) {
-  if (applyingSoqlLink && state === activeState()) return
-  const q = buildSoql(state)
-  if (state === activeState()) clearFieldSuggestions()
-  if (q === state.soqlText) return
-  if (state === activeState()) skipNextSoqlLink = true
-  state.soqlText = q
-}
-
-function scheduleSoqlLink() {
-  if (switchingTab) return
-  if (skipNextSoqlLink) {
-    skipNextSoqlLink = false
+function syncLimitInSoql(state = activeState()) {
+  const raw = String(state.soqlText || '')
+  const stripped = raw.replace(/\s+LIMIT\s+\d+\s*$/i, '').trimEnd()
+  if (!state.limitEnabled) {
+    if (stripped !== raw.trimEnd()) state.soqlText = stripped
     return
   }
-  const state = activeState()
-  clearTimeout(soqlLinkTimer)
-  soqlLinkTimer = setTimeout(() => {
-    applySoqlToLists(state).catch(() => {})
-  }, 160)
-}
-
-function findListedObject(name) {
-  const key = String(name || '').toLowerCase()
-  if (!key) return null
-  return objects.value.find((obj) => obj.name.toLowerCase() === key) || null
-}
-
-function sameNameList(set, names) {
-  if (set.size !== names.length) return false
-  return names.every((name) => set.has(name))
-}
-
-function sameCondValue(a, b) {
-  if (Array.isArray(a) || Array.isArray(b)) {
-    const left = Array.isArray(a) ? a : []
-    const right = Array.isArray(b) ? b : []
-    return left.length === right.length && left.every((item, index) => item === right[index])
-  }
-  return String(a ?? '') === String(b ?? '')
-}
-
-function applyParsedWhere(nextRaw, state = activeState()) {
-  const prev = state.whereConditions
-  let seq = nextConditionId(prev)
-  const used = new Set()
-  const next = nextRaw.map((item) => {
-    const hit = prev.find((row) => {
-      if (used.has(row.id)) return false
-      return (
-        row.fieldApiName === item.fieldApiName &&
-        row.operator === item.operator &&
-        sameCondValue(row.value, item.value) &&
-        String(row.value2 || '') === String(item.value2 || '')
-      )
-    })
-    if (hit) {
-      used.add(hit.id)
-      return hit
-    }
-    const row = {
-      id: seq,
-      fieldApiName: item.fieldApiName,
-      operator: item.operator,
-      value: item.value,
-      value2: item.value2 || ''
-    }
-    seq += 1
-    return row
-  })
-  if (next.length === prev.length && next.every((row, index) => row === prev[index])) return
-  state.whereConditions = next
-}
-
-function scrollListTo(container, attr, value) {
-  const root = container?.value
-  if (!root || !value) return
-  const esc = window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/"/g, '')
-  root.querySelector(`[${attr}="${esc}"]`)?.scrollIntoView({ block: 'nearest' })
-}
-
-async function revealLinkedObject(name, state) {
-  if (state !== activeState()) return
-  if (state.objectSearch && !filteredObjects.value.some((item) => item.name === name)) {
-    state.objectSearch = ''
-    await nextTick()
-  }
-  scrollListTo(objectListEl, 'data-object-name', name)
-}
-
-/** 手写 SOQL → 左侧对象高亮并滚动、勾选字段、填 WHERE。不回写编辑器。 */
-async function applySoqlToLists(forState) {
-  const state = forState || activeState()
-  const gen = ++soqlLinkGen
-  const preview = parseManualSoql(state.soqlText, state.fieldsMap)
-  if (!preview.objectName || !client) return
-  if (!queryTabs.value.includes(state)) return
-  const obj = findListedObject(preview.objectName)
-  if (!obj) return
-
-  const needDescribe =
-    state.currentObject?.name !== obj.name || Object.keys(state.fieldsMap).length === 0
-  if (needDescribe) {
-    state.currentObject = obj
-    state.loadingFields = true
-    state.errorMessage = ''
-    await revealLinkedObject(obj.name, state)
-    try {
-      const desc = await client.describeSObject(obj.name)
-      if (gen !== soqlLinkGen || !queryTabs.value.includes(state)) return
-      const packed = rememberDescribe(obj.name, desc)
-      state.fieldsMap = packed.fields
-      state.childRelationships = packed.children
-    } catch (e) {
-      if (gen === soqlLinkGen) {
-        state.fieldsMap = {}
-        state.childRelationships = []
-        state.errorMessage = e.message || String(e)
-      }
-      return
-    } finally {
-      if (gen === soqlLinkGen) state.loadingFields = false
-    }
-  }
-  if (gen !== soqlLinkGen || !queryTabs.value.includes(state)) return
-
-  const parsed = parseManualSoql(state.soqlText, state.fieldsMap)
-  if (String(parsed.objectName).toLowerCase() !== obj.name.toLowerCase()) return
-  if (state.currentObject?.name !== obj.name) state.currentObject = obj
-
-  const live = state === activeState()
-  if (live) applyingSoqlLink = true
-  try {
-    if (!sameNameList(state.selectedFieldSet, parsed.selectFields)) {
-      state.selectedFieldSet = new Set(parsed.selectFields)
-      syncSelectedArray(state)
-    }
-    applyParsedWhere(parsed.whereConditions, state)
-    const visibleNames = new Set(
-      (live ? filteredFields.value : Object.values(state.fieldsMap)).map((field) => field.name)
-    )
-    if (parsed.selectFields.some((name) => !visibleNames.has(name))) {
-      if (state.fieldSearch) state.fieldSearch = ''
-      if (state.fieldKindFilter !== 'all') state.fieldKindFilter = 'all'
-    }
-  } finally {
-    if (live) applyingSoqlLink = false
-  }
-
-  if (!live) return
-  await nextTick()
-  if (gen !== soqlLinkGen || state !== activeState()) return
-  await revealLinkedObject(obj.name, state)
-  const fieldName = parsed.selectFields[0] || ''
-  if (fieldName) scrollListTo(fieldListEl, 'data-field-name', fieldName)
+  const limit = Math.min(Math.max(Number(state.queryLimit) || 10, 1), 2000)
+  const next = stripped ? `${stripped} LIMIT ${limit}` : ''
+  if (next && next !== raw.trimEnd()) state.soqlText = next
 }
 
 function clearFieldSuggestions() {
@@ -1987,22 +1309,16 @@ async function hydrateObjectFromSuggest(obj) {
     return
   }
   state.currentObject = obj
-  state.fieldSearch = ''
-  state.fieldKindFilter = 'all'
-  state.loadingFields = true
   try {
     const desc = await client.describeSObject(obj.name)
     if (state.currentObject?.name !== obj.name) return
     const packed = rememberDescribe(obj.name, desc)
     state.fieldsMap = packed.fields
     state.childRelationships = packed.children
-    // 不改 selectedFieldSet / soqlText，避免覆盖手写语句
   } catch (e) {
     state.fieldsMap = {}
     state.childRelationships = []
     state.errorMessage = e.message || String(e)
-  } finally {
-    state.loadingFields = false
   }
 }
 
@@ -2133,11 +1449,13 @@ async function refreshSessionIfNeeded() {
  * 基于当前对象 + WHERE 条件生成 COUNT，不读也不改 soqlText
  */
 function buildObjectCountSoql(state = activeState()) {
-  if (!state.currentObject?.name) return ''
-  return `SELECT COUNT() FROM ${state.currentObject.name}${buildWhereClause(
-    state.whereConditions,
-    state.fieldsMap
-  )}`
+  const name = parseManualSoql(state.soqlText, {}).objectName
+  if (!name) return ''
+  const src = String(state.soqlText || '')
+  const where = src.match(/\bWHERE\b[\s\S]*?(?=\b(?:GROUP\s+BY|ORDER\s+BY|LIMIT|OFFSET|HAVING|WITH|FOR)\b|$)/i)
+  let soql = `SELECT COUNT() FROM ${name}`
+  if (where && where[0].trim()) soql += ` ${where[0].trim()}`
+  return soql
 }
 
 function yieldToUi() {
@@ -2368,16 +1686,7 @@ async function executeQuery() {
 
 watch([limitEnabled, queryLimit], () => {
   if (switchingTab) return
-  syncSoqlFromBuilder()
-})
-
-watch(soqlText, () => {
-  if (switchingTab) return
-  scheduleSoqlLink()
-})
-
-watch(objects, () => {
-  scheduleSoqlLink()
+  syncLimitInSoql()
 })
 
 watch(soqlEditorOpen, (open) => {
@@ -2388,12 +1697,6 @@ watch(currentObject, () => {
   if (switchingTab) return
   objectCountHint.value = ''
 })
-
-watch(whereConditions, () => {
-  if (switchingTab) return
-  // WHERE 变更后旧的对象总数提示失效
-  objectCountHint.value = ''
-}, { deep: true })
 
 function onPreferEnvironmentMessage(message) {
   if (message?.action !== 'toolPreferEnvironment' || message.toolId !== 'soql') return
@@ -2416,7 +1719,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  clearTimeout(soqlLinkTimer)
   stopAllQueries()
   window.removeEventListener('scroll', closeCtxOnScroll, true)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
@@ -2609,7 +1911,7 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 240px 280px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: var(--gap);
 }
@@ -3826,11 +3128,8 @@ select.cell-editor {
 
 @media (max-width: 960px) {
   .soql-body {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1.2fr);
-  }
-  .query-panel {
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 }
 </style>
