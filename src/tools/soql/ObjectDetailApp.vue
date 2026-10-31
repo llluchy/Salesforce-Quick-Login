@@ -543,6 +543,10 @@ function selectableFieldNames(fieldList) {
 async function loadRecordById(client, objectApiName, id, fieldList) {
   recordValues.value = null
   recordWarning.value = ''
+  if (!isSalesforceObjectApi(objectApiName) || !isSalesforceId(id)) {
+    recordWarning.value = t('objectDetail.invalidRecordQuery')
+    return
+  }
   const safeId = escapeSoqlLiteral(id)
 
   const applyEmpty = (msg) => {
@@ -646,6 +650,11 @@ async function load() {
     loading.value = false
     return
   }
+  if (!isSalesforceObjectApi(objectName)) {
+    bootError.value = t('objectDetail.invalidObjectName')
+    loading.value = false
+    return
+  }
   if (!hostnameParam) {
     bootError.value = t('objectDetail.missingHostnameParam')
     loading.value = false
@@ -667,8 +676,16 @@ async function load() {
       ? `${describe.value.label || objectName} · ${recordId}`
       : `${describe.value.label || objectName} · ${t('objectDetail.titleSuffix')}`
 
+    const canonicalObject = describe.value?.name || ''
+    if (!isSalesforceObjectApi(canonicalObject)) {
+      throw new Error(t('objectDetail.invalidObjectName'))
+    }
     if (recordId) {
-      await loadRecordById(client, objectName, recordId, describe.value.fields || [])
+      if (!isSalesforceId(recordId)) {
+        recordWarning.value = t('objectDetail.invalidRecordQuery')
+      } else {
+        await loadRecordById(client, canonicalObject, recordId, describe.value.fields || [])
+      }
       showToast(
         recordValues.value
           ? t('objectDetail.recordLoaded', { id: recordId })

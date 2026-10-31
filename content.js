@@ -206,13 +206,15 @@ function cropImage(dataUrl, x, y, width, height) {
       source: 'sf-extension',
       requestId: requestId,
       data: data
-    }, '*');
+    }, location.origin);
   }
 
   // ============================================
   // postMessage 监听（接收 page-world.js 的请求）
   // ============================================
   window.addEventListener('message', async (event) => {
+    // 只接受本页主世界的消息，不接受 iframe 或其他窗口伪造
+    if (event.source !== window || event.origin !== location.origin) return;
     if (!event.data || event.data.source !== 'sf-page-world') return;
 
     const action = event.data.action;

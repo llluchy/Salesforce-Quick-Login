@@ -20,6 +20,20 @@ export function isSalesforceObjectApi(value) {
   return SF_OBJECT_API_RE.test(String(value ?? '').trim())
 }
 
+/** API 主机必须落在 Salesforce 域名上，避免把会话发到任意主机 */
+export function isSalesforceApiHost(host) {
+  const h = String(normalizeSfHostname(host) || '').toLowerCase()
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(h)) return false
+  return (
+    h.endsWith('.salesforce.com') ||
+    h.endsWith('.force.com') ||
+    h.endsWith('.cloudforce.com') ||
+    h.endsWith('.salesforce-sites.com') ||
+    h.endsWith('.site.com') ||
+    h.endsWith('.salesforce-setup.com')
+  )
+}
+
 /**
  * 只生成「删除这一条记录」的路径。
  * 对象名或 Id 缺了、短了、带了空格/引号/斜杠，直接抛错，不发请求。
@@ -73,12 +87,21 @@ export class SfRestClient {
   }
 
   async rest(path, { method = 'GET', body, headers = {}, signal } = {}) {
-    if (!this.hostname) throw new Error('未设置 Salesforce 主机')
+    const host = normalizeSfHostname(this.hostname)
+    if (!host) throw new Error('未设置 Salesforce 主机')
+    if (!isSalesforceApiHost(host)) throw new Error('拒绝向非 Salesforce 主机发送会话')
     if (!this.sessionId) throw new Error('无有效 Session，请重新选择已登录环境')
 
-    const url = path.startsWith('http')
-      ? path
-      : new URL(path, this.baseUrl).toString()
+    let url
+    if (String(path).startsWith('http')) {
+      const parsed = new URL(path)
+      if (parsed.protocol !== 'https:' || normalizeSfHostname(parsed.hostname) !== host) {
+        throw new Error('拒绝向其他主机发送会话')
+      }
+      url = parsed.toString()
+    } else {
+      url = new URL(path, `https://${host}`).toString()
+    }
 
     const init = {
       method,

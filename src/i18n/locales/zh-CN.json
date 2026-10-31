@@ -650,6 +650,8 @@
     "recordDeleted": "记录 {id} 已删除，值列已清空。字段定义仍可查看。",
     "notDeletable": "此对象不允许删除记录",
     "deleteFailed": "删除失败",
-    "deleteRejected": "已拒绝删除：对象名或记录 Id 不合法，未发送删除请求。"
+    "deleteRejected": "已拒绝删除：对象名或记录 Id 不合法，未发送删除请求。",
+    "invalidObjectName": "对象名不合法，未加载。",
+    "invalidRecordQuery": "记录 Id 不合法，未按 Id 查询。"
   }
 }

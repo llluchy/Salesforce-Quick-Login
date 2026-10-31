@@ -650,6 +650,8 @@
     "recordDeleted": "Record {id} was deleted. Values are cleared; field definitions remain.",
     "notDeletable": "This object does not allow deleting records",
     "deleteFailed": "Delete failed",
-    "deleteRejected": "Delete was refused: the object name or record Id is not valid. No delete request was sent."
+    "deleteRejected": "Delete was refused: the object name or record Id is not valid. No delete request was sent.",
+    "invalidObjectName": "Object name is not valid, so nothing was loaded.",
+    "invalidRecordQuery": "Record Id is not valid, so no query by Id was sent."
   }
 }

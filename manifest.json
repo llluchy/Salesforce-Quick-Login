@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "default_locale": "zh_CN",
   "name": "__MSG_extName__",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "__MSG_extDescription__",
   "permissions": [
     "storage",
@@ -51,8 +51,7 @@
     {
       "resources": [
         "page-world.js",
-        "icons/icon48.png",
-        "tool-window.html"
+        "icons/icon48.png"
       ],
       "matches": [
         "https://*.salesforce.com/*",

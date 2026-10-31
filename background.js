@@ -281,6 +281,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'getSfSession') {
+    const extensionOrigin = chrome.runtime.getURL('')
+    if (!sender?.url || !sender.url.startsWith(extensionOrigin)) {
+      sendResponse({ success: false, error: '仅扩展页面可读取会话' })
+      return true
+    }
     const hostname = normalizeSfHostname(request.hostname || '')
     if (!hostname) {
       sendResponse({ success: false, error: 'hostname 为空' })
