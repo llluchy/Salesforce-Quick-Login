@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Salesforce Quick Login</title>
+  <meta name="description" content="在侧栏管理多个 Salesforce 环境，一键登录。登录后还可从页面右侧使用查询、日志与对象工具。" />
+  <link rel="icon" href="img/icon48.png" />
+  <style>
+    :root {
+      --paper: #eef5fc;
+      --ink: #14324d;
+      --muted: #4d6478;
+      --line: #c9dceb;
+      --cloud: #0277bd;
+      --cloud-deep: #01579b;
+      --amber: #ef6c00;
+      --violet: #7e57c2;
+      --white: #ffffff;
+      --nav: 68px;
+      --radius: 16px;
+      --shadow: 0 22px 50px rgba(2, 87, 149, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      color: var(--ink);
+      font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+      background:
+        radial-gradient(920px 460px at 12% -10%, rgba(2, 119, 189, 0.18), transparent 58%),
+        radial-gradient(700px 380px at 92% 8%, rgba(2, 119, 189, 0.08), transparent 55%),
+        linear-gradient(180deg, #e6f0f9 0%, var(--paper) 38%, #f7fbfe 100%);
+    }
+    body[data-lang="zh"] .en { display: none !important; }
+    body[data-lang="en"] .zh { display: none !important; }
+    img { max-width: 100%; height: auto; display: block; }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible, button:focus-visible {
+      outline: 2px solid var(--cloud);
+      outline-offset: 3px;
+    }
+    .wrap { width: min(1100px, calc(100% - 40px)); margin: 0 auto; }
+
+    /* Nav */
+    .top {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      height: var(--nav);
+      backdrop-filter: blur(14px);
+      background: rgba(238, 245, 252, 0.88);
+      border-bottom: 1px solid rgba(201, 220, 235, 0.85);
+    }
+    .nav {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 750;
+      letter-spacing: -0.03em;
+      margin-right: auto;
+    }
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(155deg, #039be5, var(--cloud-deep));
+      box-shadow: 0 8px 16px rgba(2, 119, 189, 0.28);
+    }
+    .brand-mark img { width: 15px; height: 15px; filter: brightness(0) invert(1); }
+    .nav-links { display: flex; gap: 18px; }
+    .nav-links a {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 650;
+    }
+    .nav-links a:hover { color: var(--cloud-deep); }
+    .lang {
+      display: flex;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--white);
+    }
+    .lang button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 6px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .lang button[aria-pressed="true"] {
+      background: var(--cloud);
+      color: #fff;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 18px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 14px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary {
+      background: var(--cloud);
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(2, 119, 189, 0.28);
+    }
+    .btn-primary:hover { background: var(--cloud-deep); }
+    .btn-ghost {
+      background: rgba(255,255,255,0.75);
+      border-color: var(--line);
+      color: var(--ink);
+    }
+    .btn-nav { min-height: 34px; padding: 0 14px; font-size: 13px; }
+
+    /* Hero: login first */
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+      gap: 28px;
+      align-items: center;
+      padding: 28px 0 8px;
+      min-height: calc(100dvh - var(--nav) - 12px);
+    }
+    .hero-brand {
+      margin: 0 0 10px;
+      font-size: clamp(15px, 1.5vw, 17px);
+      font-weight: 750;
+      color: var(--cloud-deep);
+      letter-spacing: -0.02em;
+    }
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(32px, 4.6vw, 52px);
+      line-height: 1.12;
+      letter-spacing: -0.04em;
+      font-weight: 750;
+      max-width: 11em;
+    }
+    .lede {
+      margin: 0 0 22px;
+      max-width: 32ch;
+      color: var(--muted);
+      font-size: 17px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.82);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .hero-visual {
+      position: relative;
+      justify-self: center;
+      width: min(100%, 460px);
+    }
+    .hero-visual img {
+      width: 100%;
+      filter: drop-shadow(0 18px 36px rgba(2, 87, 149, 0.16));
+    }
+
+    /* Login capabilities */
+    section { padding: 48px 0 4px; }
+    .sec-title {
+      margin: 0 0 8px;
+      font-size: clamp(26px, 3vw, 34px);
+      letter-spacing: -0.035em;
+      line-height: 1.2;
+    }
+    .sec-sub {
+      margin: 0 0 22px;
+      color: var(--muted);
+      max-width: 40ch;
+    }
+    .caps {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: rgba(255,255,255,0.78);
+      box-shadow: 0 12px 28px rgba(18, 42, 66, 0.05);
+    }
+    .cap {
+      padding: 20px 22px;
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }
+    .cap:nth-child(2n) { border-right: 0; }
+    .cap:nth-last-child(-n+2) { border-bottom: 0; }
+    .cap h3 {
+      margin: 0 0 6px;
+      font-size: 17px;
+      letter-spacing: -0.02em;
+    }
+    .cap p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 36ch;
+    }
+
+    /* Tools as secondary */
+    .tools-band {
+      margin-top: 8px;
+      padding: 28px 24px 22px;
+      border-radius: calc(var(--radius) + 2px);
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.92), rgba(247,251,254,0.95));
+      box-shadow: 0 14px 34px rgba(18, 42, 66, 0.06);
+    }
+    .tools-intro {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .tools-intro h2 {
+      margin: 0;
+      font-size: clamp(22px, 2.4vw, 28px);
+      letter-spacing: -0.03em;
+    }
+    .tools-intro p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 34ch;
+    }
+    .tool-stage {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(200px, 0.8fr);
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .tool-stage:last-child { margin-bottom: 0; }
+    .tool-copy h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+    .tool-copy p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 34ch;
+    }
+    .tool-shot {
+      justify-self: end;
+      width: min(100%, 420px);
+    }
+    .tool-shot img {
+      width: 100%;
+      filter: drop-shadow(0 12px 24px rgba(18, 42, 66, 0.12));
+    }
+    .tool-stage.flip {
+      grid-template-columns: minmax(200px, 0.85fr) minmax(0, 1.15fr);
+    }
+    .tool-stage.flip .tool-shot { justify-self: start; order: -1; }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    .dot.soql { background: var(--amber); }
+    .dot.apex { background: var(--cloud); }
+    .dot.object { background: var(--violet); }
+
+    /* Start */
+    .start {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: rgba(255,255,255,0.86);
+    }
+    .step {
+      padding: 22px 20px;
+      border-right: 1px solid var(--line);
+    }
+    .step:last-child { border-right: 0; }
+    .num {
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--cloud);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+    .step h3 {
+      margin: 0 0 6px;
+      font-size: 17px;
+    }
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .trust {
+      margin-top: 16px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      border: 1px dashed #9eb9d1;
+      background: rgba(255,255,255,0.7);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    footer {
+      margin-top: 44px;
+      border-top: 1px solid var(--line);
+      padding: 20px 0 28px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .foot {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      align-items: center;
+    }
+    .foot .brand {
+      margin-right: auto;
+      font-size: 14px;
+      color: var(--ink);
+    }
+
+    @media (max-width: 900px) {
+      .nav-links { display: none; }
+      .hero {
+        grid-template-columns: 1fr;
+        min-height: 0;
+        padding-top: 24px;
+      }
+      .hero-visual { width: min(100%, 380px); order: -1; }
+      .caps { grid-template-columns: 1fr; }
+      .cap { border-right: 0 !important; }
+      .cap:nth-last-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .cap:last-child { border-bottom: 0; }
+      .tool-stage,
+      .tool-stage.flip {
+        grid-template-columns: 1fr;
+      }
+      .tool-stage.flip .tool-shot { order: 0; justify-self: stretch; }
+      .tool-shot { justify-self: stretch; width: 100%; }
+      .start { grid-template-columns: 1fr; }
+      .step { border-right: 0; border-bottom: 1px solid var(--line); }
+      .step:last-child { border-bottom: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .btn:active { transform: none; }
+    }
+  </style>
+</head>
+<body data-lang="zh">
+  <header class="top">
+    <div class="wrap nav">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true"><img src="img/lock.svg" alt="" /></span>
+        Salesforce Quick Login
+      </a>
+      <nav class="nav-links" aria-label="site">
+        <a class="zh" href="#login">登录能力</a>
+        <a class="en" href="#login">Login</a>
+        <a class="zh" href="#tools">页面工具</a>
+        <a class="en" href="#tools">Page tools</a>
+        <a class="zh" href="#start">开始使用</a>
+        <a class="en" href="#start">Get started</a>
+      </nav>
+      <div class="lang" role="group" aria-label="language">
+        <button type="button" id="lang-zh" aria-pressed="true">中文</button>
+        <button type="button" id="lang-en" aria-pressed="false">EN</button>
+      </div>
+      <a class="btn btn-primary btn-nav zh" href="#start">安装扩展</a>
+      <a class="btn btn-primary btn-nav en" href="#start">Install</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="wrap hero">
+      <div>
+        <p class="hero-brand">Salesforce Quick Login</p>
+        <h1 class="zh">把多个 Org 收进侧栏，一键登录</h1>
+        <h1 class="en">Every org in the side panel. One-click sign-in.</h1>
+        <p class="lede zh">保存正式环境、沙盒和自定义地址。需要时再打开页面上的查询、日志和对象工具。</p>
+        <p class="lede en">Save production, sandbox, and custom login URLs. Open query, logs, and object tools on the page when you need them.</p>
+        <div class="actions">
+          <a class="btn btn-primary zh" href="#start">开始使用</a>
+          <a class="btn btn-primary en" href="#start">Get started</a>
+          <a class="btn btn-ghost zh" href="#login">了解登录</a>
+          <a class="btn btn-ghost en" href="#login">See login</a>
+        </div>
+        <div class="tags">
+          <span class="tag zh">多环境</span>
+          <span class="tag en">Many orgs</span>
+          <span class="tag zh">一键登录</span>
+          <span class="tag en">One-click login</span>
+          <span class="tag zh">验证码</span>
+          <span class="tag en">Authenticator</span>
+          <span class="tag zh">同步</span>
+          <span class="tag en">Sync</span>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <img src="img/framed/login-hero.png" width="720" height="780" alt="Salesforce Quick Login side panel" />
+      </div>
+    </div>
+
+    <section id="login">
+      <div class="wrap">
+        <h2 class="sec-title zh">侧栏帮你管好登录</h2>
+        <h2 class="sec-title en">The side panel keeps your logins ready</h2>
+        <p class="sec-sub zh">面向日常在多个 Org 之间切换的顾问、管理员和开发者。</p>
+        <p class="sec-sub en">Built for consultants, admins, and builders who move between orgs every day.</p>
+        <div class="caps">
+          <article class="cap">
+            <h3 class="zh">多环境</h3>
+            <h3 class="en">Many orgs</h3>
+            <p class="zh">正式环境、沙盒、自定义登录地址，按分组整理，顺序可拖动。</p>
+            <p class="en">Production, sandbox, and custom URLs. Group them and drag to reorder.</p>
+          </article>
+          <article class="cap">
+            <h3 class="zh">一键登录</h3>
+            <h3 class="en">One-click login</h3>
+            <p class="zh">从侧栏直接进入已保存的 Org，少记一组口令。</p>
+            <p class="en">Open a saved org from the side panel without hunting for passwords.</p>
+          </article>
+          <article class="cap">
+            <h3>Passkey</h3>
+            <p class="zh">页面要求通行密钥时，在侧栏继续完成验证。</p>
+            <p class="en">When a page asks for a passkey, finish the check in the side panel.</p>
+          </article>
+          <article class="cap">
+            <h3 class="zh">验证码</h3>
+            <h3 class="en">Authenticator</h3>
+            <p class="zh">保存双因素验证码。也可框选屏幕上的二维码来识别。</p>
+            <p class="en">Store two-factor codes. Or select an on-screen QR code to read it.</p>
+          </article>
+          <article class="cap">
+            <h3 class="zh">加密同步</h3>
+            <h3 class="en">Encrypted sync</h3>
+            <p class="zh">环境配置加密后再上传。密钥由你的密码派生。</p>
+            <p class="en">Org settings are encrypted before upload. The key comes from your password.</p>
+          </article>
+          <article class="cap">
+            <h3 class="zh">安全分享</h3>
+            <h3 class="en">Safe sharing</h3>
+            <p class="zh">用短码把环境分享给同事。对方得到的是独立副本。</p>
+            <p class="en">Share an org with a short code. The other person gets their own copy.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="tools">
+      <div class="wrap">
+        <div class="tools-band">
+          <div class="tools-intro">
+            <div>
+              <h2 class="zh">登录之后，右侧还有三个小工具</h2>
+              <h2 class="en">After you sign in, three light tools sit on the right</h2>
+            </div>
+            <p class="zh">它们跟着当前已登录的 Org，不要求再登一次扩展账号。</p>
+            <p class="en">They use the org you already opened. No extra extension account needed.</p>
+          </div>
+
+          <article class="tool-stage">
+            <div class="tool-copy">
+              <h3><span class="dot soql" aria-hidden="true"></span>SOQL</h3>
+              <p class="zh">在独立窗口里写查询、看结果，适合日常查数和导出。</p>
+              <p class="en">Write queries and review results in a separate window.</p>
+              <div class="tags">
+                <span class="tag zh">联想输入</span>
+                <span class="tag en">Suggestions</span>
+                <span class="tag zh">多标签</span>
+                <span class="tag en">Tabs</span>
+                <span class="tag">CSV</span>
+              </div>
+            </div>
+            <div class="tool-shot">
+              <img src="img/framed/soql-card.png" width="786" height="407" alt="SOQL window" />
+            </div>
+          </article>
+
+          <article class="tool-stage flip">
+            <div class="tool-copy">
+              <h3 class="zh"><span class="dot apex" aria-hidden="true"></span>调试日志</h3>
+              <h3 class="en"><span class="dot apex" aria-hidden="true"></span>Debug logs</h3>
+              <p class="zh">查看当前 Org 的运行日志，筛选后复制或下载。</p>
+              <p class="en">Browse logs for the current org. Filter, then copy or download.</p>
+              <div class="tags">
+                <span class="tag zh">筛选</span>
+                <span class="tag en">Filter</span>
+                <span class="tag zh">复制</span>
+                <span class="tag en">Copy</span>
+              </div>
+            </div>
+            <div class="tool-shot">
+              <img src="img/framed/apex-card.png" width="784" height="435" alt="Apex log window" />
+            </div>
+          </article>
+
+          <article class="tool-stage">
+            <div class="tool-copy">
+              <h3 class="zh"><span class="dot object" aria-hidden="true"></span>对象搜索</h3>
+              <h3 class="en"><span class="dot object" aria-hidden="true"></span>Object search</h3>
+              <p class="zh">按名称或编号快速找到对象和记录，再打开详情。</p>
+              <p class="en">Find objects and records by name or Id, then open the detail.</p>
+              <div class="tags">
+                <span class="tag zh">名称</span>
+                <span class="tag en">Name</span>
+                <span class="tag">Id</span>
+                <span class="tag zh">字段</span>
+                <span class="tag en">Fields</span>
+              </div>
+            </div>
+            <div class="tool-shot">
+              <img src="img/framed/object-card.png" width="782" height="362" alt="Object detail window" />
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="start">
+      <div class="wrap">
+        <h2 class="sec-title zh">三步开始</h2>
+        <h2 class="sec-title en">Three steps</h2>
+        <div class="start">
+          <article class="step">
+            <span class="num">1</span>
+            <h3 class="zh">安装扩展</h3>
+            <h3 class="en">Install the extension</h3>
+            <p class="zh">安装到 Chrome 后，点击工具栏图标打开侧栏。</p>
+            <p class="en">Install in Chrome, then open the side panel from the toolbar.</p>
+          </article>
+          <article class="step">
+            <span class="num">2</span>
+            <h3 class="zh">保存你的 Org</h3>
+            <h3 class="en">Save your orgs</h3>
+            <p class="zh">在侧栏添加正式环境或沙盒，需要时一键进入。</p>
+            <p class="en">Add production or sandbox accounts, then sign in when you need them.</p>
+          </article>
+          <article class="step">
+            <span class="num">3</span>
+            <h3 class="zh">需要时再用右侧工具</h3>
+            <h3 class="en">Use the right-edge tools when needed</h3>
+            <p class="zh">进入 Org 后，右侧色块可打开查询、日志和对象。</p>
+            <p class="en">On an org page, the colored tabs open query, logs, and objects.</p>
+          </article>
+        </div>
+        <p class="trust zh">工具只会使用你已经登录的会话，不会拿去投放广告或做跨站跟踪。</p>
+        <p class="trust en">Tools only use the session you already signed in with. They are not used for ads or cross-site tracking.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap foot">
+      <span class="brand">
+        <span class="brand-mark" style="width:22px;height:22px;border-radius:7px" aria-hidden="true">
+          <img src="img/lock.svg" alt="" style="width:12px;height:12px" />
+        </span>
+        Salesforce Quick Login
+      </span>
+      <a class="zh" href="#login">登录能力</a>
+      <a class="en" href="#login">Login</a>
+      <a class="zh" href="#tools">页面工具</a>
+      <a class="en" href="#tools">Page tools</a>
+      <a class="zh" href="#start">开始使用</a>
+      <a class="en" href="#start">Get started</a>
+    </div>
+  </footer>
+
+  <script>
+    const zhBtn = document.getElementById("lang-zh");
+    const enBtn = document.getElementById("lang-en");
+
+    function setLang(lang) {
+      const next = lang === "en" ? "en" : "zh";
+      document.body.dataset.lang = next;
+      document.documentElement.lang = next === "en" ? "en" : "zh-CN";
+      zhBtn.setAttribute("aria-pressed", next === "zh" ? "true" : "false");
+      enBtn.setAttribute("aria-pressed", next === "en" ? "true" : "false");
+      try { localStorage.setItem("sfql-site-lang", next); } catch (e) {}
+    }
+
+    zhBtn.addEventListener("click", () => setLang("zh"));
+    enBtn.addEventListener("click", () => setLang("en"));
+
+    try {
+      const saved = localStorage.getItem("sfql-site-lang");
+      if (saved === "en" || saved === "zh") setLang(saved);
+    } catch (e) {}
+  </script>
+</body>
+</html>
