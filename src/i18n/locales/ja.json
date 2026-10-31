@@ -262,6 +262,8 @@
     "envCloned": "環境を複製しました",
     "cloneFailed": "複製に失敗しました: {msg}",
     "loginSuccess": "ログインしました",
+    "loginReusedSession": "既存セッションで開きました",
+    "loginOpenedHome": "ログイン済みのためホームページを開きました",
     "loginFailed": "ログインに失敗しました",
     "noBackupData": "バックアップ対象がありません",
     "exported": "{creds} 件の資格情報と {envs} 件の環境をエクスポートしました",

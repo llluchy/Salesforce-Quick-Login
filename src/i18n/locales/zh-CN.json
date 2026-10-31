@@ -262,6 +262,8 @@
     "envCloned": "环境已克隆",
     "cloneFailed": "克隆失败：{msg}",
     "loginSuccess": "登录成功",
+    "loginReusedSession": "已用现有会话打开",
+    "loginOpenedHome": "已登录，直接打开首页",
     "loginFailed": "登录失败",
     "noBackupData": "没有可备份的数据",
     "exported": "已导出 {creds} 个凭证、{envs} 个环境",

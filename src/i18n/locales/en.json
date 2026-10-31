@@ -262,6 +262,8 @@
     "envCloned": "Environment cloned",
     "cloneFailed": "Clone failed: {msg}",
     "loginSuccess": "Signed in successfully",
+    "loginReusedSession": "Opened with an existing session",
+    "loginOpenedHome": "Already signed in, opened the home page",
     "loginFailed": "Sign-in failed",
     "noBackupData": "Nothing to back up",
     "exported": "Exported {creds} credential(s) and {envs} environment(s)",

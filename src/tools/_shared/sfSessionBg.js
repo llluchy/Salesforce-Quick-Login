@@ -439,3 +439,219 @@ export async function listLoggedInSfEnvironments() {
     hasSession: true
   }))
 }
+
+function normUsername(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function usernamesMatch(a, b) {
+  const x = normUsername(a)
+  const y = normUsername(b)
+  if (!x || !y) return false
+  if (x === y) return true
+  const xLocal = x.split('@')[0]
+  const yLocal = y.split('@')[0]
+  return Boolean(xLocal && yLocal && (x === yLocal || y === xLocal))
+}
+
+function orgIdsMatch(a, b) {
+  const x = String(a || '').trim()
+  const y = String(b || '').trim()
+  return Boolean(x && y && x === y)
+}
+
+function looksLikeSandboxHost(hostname) {
+  const h = String(hostname || '').toLowerCase()
+  return (
+    h.includes('sandbox') ||
+    h.includes('.cs') ||
+    h.includes('--') ||
+    h.includes('scratch') ||
+    h.includes('test.salesforce')
+  )
+}
+
+function hostMatchesEnvType(hostname, envType, customUrl) {
+  const h = normalizeSfHostname(hostname)
+  if (!h) return false
+  if (envType === 'custom' && customUrl) {
+    try {
+      const customHost = normalizeSfHostname(new URL(customUrl).hostname)
+      if (!customHost) return true
+      // My Domain / 自定义登录域：同后缀或相等即可
+      return h === customHost || h.endsWith(customHost) || customHost.endsWith(h)
+    } catch {
+      return true
+    }
+  }
+  if (envType === 'sandbox') return looksLikeSandboxHost(h)
+  if (envType === 'production') return !looksLikeSandboxHost(h)
+  return true
+}
+
+/**
+ * 用 sid 拉当前用户名（官方 Identity / userinfo）。
+ * 失败返回空字符串，不抛错。
+ */
+export async function fetchSessionUsername(hostname, sessionId, { timeoutMs = 6000 } = {}) {
+  const host = normalizeSfHostname(hostname)
+  if (!host || !sessionId?.includes('!')) return ''
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`https://${host}/services/oauth2/userinfo`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${sessionId}`,
+        Accept: 'application/json'
+      },
+      signal: controller.signal
+    })
+    if (!res.ok) return ''
+    const data = await res.json().catch(() => null)
+    return (
+      data?.preferred_username ||
+      data?.username ||
+      data?.email ||
+      ''
+    )
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 官方 UI Bridge：优先 singleaccess（不在地址栏暴露 sid），
+ * 失败则回退到 frontdoor.jsp?sid=…（Help: 000386254）。
+ */
+export async function buildUiBridgeUrl(hostname, sessionId, retURL = '/lightning/page/home') {
+  const host = normalizeSfHostname(hostname)
+  if (!host || !sessionId) throw new Error('missing session')
+
+  try {
+    // 官方 UI Bridge：多数示例 body 为空；成功则返回短时 frontdoor_uri
+    const res = await fetch(`https://${host}/services/oauth2/singleaccess`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sessionId}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: ''
+    })
+    if (res.ok) {
+      const data = await res.json().catch(() => null)
+      if (data?.frontdoor_uri) {
+        return { url: data.frontdoor_uri, method: 'singleaccess', hostname: host }
+      }
+    }
+  } catch {
+    // fall through
+  }
+
+  // Help 000386254：https://instance/secur/frontdoor.jsp?sid=…&retURL=…
+  const encodedRet = encodeURIComponent(retURL || '/lightning/page/home')
+  const url = `https://${host}/secur/frontdoor.jsp?sid=${encodeURIComponent(sessionId)}&retURL=${encodedRet}`
+  return { url, method: 'frontdoor', hostname: host }
+}
+
+function packReusable(session) {
+  const sessionId = session.sessionId || session.key
+  const hostname = normalizeSfHostname(session.hostname)
+  const orgId = session.orgId || (sessionId ? sessionId.split('!')[0] : '')
+  return { hostname, orgId, sessionId }
+}
+
+/** Cookie 已证明会话有效时，直接打开 Lightning 首页（同一浏览器会话会带上 sid） */
+export function buildLoggedInHomeUrl(hostname) {
+  const host = normalizeSfHostname(hostname)
+  if (!host) return ''
+  return `https://${host}/lightning/page/home`
+}
+
+function sessionLooksReusable(session, { username, hintOrgId, type, customUrl }) {
+  if (!session?.sessionId && !session?.key) return false
+  if (!session?.hostname) return false
+  const sessionId = session.sessionId || session.key
+  const orgId = session.orgId || sessionId.split('!')[0]
+  if (hintOrgId && orgIdsMatch(orgId, hintOrgId)) return true
+  if (!hostMatchesEnvType(session.hostname, type, customUrl)) return false
+  return Boolean(username)
+}
+
+/**
+ * 若浏览器里已有该账号的有效 sid，则复用会话进 UI，跳过账密 / MFA。
+ * @returns {Promise<null | { url, method, hostname, orgId, sessionId, tabId }>}
+ */
+export async function findReusableSessionForEnv(env) {
+  const username = normUsername(env?.username)
+  if (!username) return null
+
+  const type = env?.type || 'production'
+  const customUrl = env?.customUrl || ''
+  const hintHost = normalizeSfHostname(env?.lastSfHostname || '')
+  const hintOrgId = String(env?.lastSfOrgId || '').trim()
+  const matchOpts = { username, hintOrgId, type, customUrl }
+
+  const toBridge = async (candidate) => {
+    if (!candidate?.sessionId || !candidate?.hostname) return null
+    const alive = await isSessionAlive(candidate.hostname, candidate.sessionId)
+    if (!alive) return null
+    const currentUser = await fetchSessionUsername(candidate.hostname, candidate.sessionId)
+    if (currentUser && !usernamesMatch(currentUser, username)) return null
+    if (!currentUser && hintOrgId && !orgIdsMatch(candidate.orgId, hintOrgId)) return null
+    const homeUrl = buildLoggedInHomeUrl(candidate.hostname)
+    if (homeUrl) {
+      return {
+        url: homeUrl,
+        method: 'direct-home',
+        hostname: candidate.hostname,
+        orgId: candidate.orgId,
+        sessionId: candidate.sessionId
+      }
+    }
+    const bridge = await buildUiBridgeUrl(candidate.hostname, candidate.sessionId)
+    return { ...bridge, orgId: candidate.orgId, sessionId: candidate.sessionId }
+  }
+
+  // 1) 已打开的 Org 标签：会话有效则新开首页，不关闭、不切换旧标签
+  const fromTabs = await discoverFromTabs()
+  const tabHit = fromTabs.find((s) => sessionLooksReusable(s, matchOpts))
+  if (tabHit) {
+    const reused = await toBridge(packReusable(tabHit))
+    if (reused) return reused
+  }
+
+  // 2) 快路径：上次登录记下的 host
+  if (hintHost) {
+    const session = await getSession(hintHost)
+    if (session?.key) {
+      const reused = await toBridge(packReusable({
+        ...session,
+        orgId: session.key.split('!')[0]
+      }))
+      if (reused) return reused
+    }
+  }
+
+  // 3) 扫描浏览器里仍有效的 sid
+  const sessions = await discoverSfSessions({ validate: true })
+  const ranked = sessions
+    .filter((s) => sessionLooksReusable(s, matchOpts))
+    .map((s) => {
+      let score = hostPreferenceScore(s.hostname)
+      if (hintOrgId && orgIdsMatch(s.orgId, hintOrgId)) score += 100
+      return { s, score }
+    })
+    .sort((a, b) => b.score - a.score)
+
+  for (const { s } of ranked) {
+    const reused = await toBridge(packReusable(s))
+    if (reused) return reused
+  }
+
+  return null
+}

@@ -6,7 +6,8 @@ import { TOOL_WINDOW_DEFS, buildToolWindowUrl, openObjectDetailTab } from './src
 import {
   listLoggedInSfEnvironments,
   getSession,
-  normalizeSfHostname
+  normalizeSfHostname,
+  findReusableSessionForEnv
 } from './src/tools/_shared/sfSessionBg.js'
 import { handleApexLogMessage, initApexLogBackground } from './src/tools/apex-log/apexLogBackground.js'
 
@@ -344,6 +345,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'reuseSfSessionLogin') {
+    handleReuseSfSessionLogin(request, sendResponse);
+    return true;
+  }
+
   if (request.action === 'formPostLogin') {
     handleFormPostLogin(request, sendResponse);
     return true;
@@ -496,6 +502,31 @@ async function handleLoginAction(request, sendResponse) {
     sendResponse({ success: true });
   } catch (error) {
     sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * 已登录 Org：复用浏览器 sid，经官方 frontdoor / singleaccess 直开页面。
+ * @see https://help.salesforce.com/s/articleView?id=000386254
+ */
+async function handleReuseSfSessionLogin(request, sendResponse) {
+  try {
+    const env = request.env || {}
+    const found = await findReusableSessionForEnv(env)
+    if (!found?.url) {
+      sendResponse({ success: false, reused: false })
+      return
+    }
+    await chrome.tabs.create({ url: found.url })
+    sendResponse({
+      success: true,
+      reused: true,
+      method: found.method,
+      hostname: found.hostname,
+      orgId: found.orgId || ''
+    })
+  } catch (error) {
+    sendResponse({ success: false, reused: false, error: error.message || String(error) })
   }
 }
 

@@ -531,7 +531,6 @@ const handleLogin = async (env) => {
       } else if (env.passkeys && typeof env.passkeys === 'object') {
         passkeysToStore = Object.values(env.passkeys);
       }
-      const hasPrivateKey = passkeysToStore.length > 0 && passkeysToStore.every(pk => !!pk.privateKeyJwk);
       await chrome.storage.session.set({
         pendingLoginEnv: {
           id: env.id,
@@ -542,6 +541,8 @@ const handleLogin = async (env) => {
           customUrl: env.customUrl,
           totpSecret: env.totpSecret,
           passkeys: passkeysToStore,
+          lastSfHostname: env.lastSfHostname || '',
+          lastSfOrgId: env.lastSfOrgId || '',
           createdAt: Date.now()
         }
       })
@@ -549,8 +550,33 @@ const handleLogin = async (env) => {
       console.warn('暂存 loginEnv 失败', e)
     }
 
-    await login(env)
-    showToast(t('toast.loginSuccess'))
+    const result = await login(env)
+
+    // 记下 Org 主机与 Id，下次可优先走 frontdoor 复用会话
+    if (result?.hostname || result?.orgId) {
+      const index = environments.value.findIndex((e) => e.id === env.id)
+      if (index >= 0) {
+        const next = {
+          ...environments.value[index],
+          ...(result.hostname ? { lastSfHostname: result.hostname } : {}),
+          ...(result.orgId ? { lastSfOrgId: result.orgId } : {})
+        }
+        environments.value[index] = next
+        try {
+          await saveEnvironments(environments.value)
+        } catch (e) {
+          console.warn('保存 lastSfHostname 失败', e)
+        }
+      }
+    }
+
+    if (result?.method === 'direct-home') {
+      showToast(t('toast.loginOpenedHome'))
+    } else if (result?.reused) {
+      showToast(t('toast.loginReusedSession'))
+    } else {
+      showToast(t('toast.loginSuccess'))
+    }
   } catch (error) {
     showToast(error.message || t('toast.loginFailed'), 'error')
   }
