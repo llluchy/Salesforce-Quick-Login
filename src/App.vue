@@ -1,6 +1,6 @@
 <template>
   <div class="shell">
-    <!-- 工具入口已迁至 Salesforce 页面浮动栏；Side Panel 仅保留登录与环境管理 -->
+    <!-- 工具入口在 Salesforce 页面浮动栏；显示与否由侧边栏开关控制 -->
     <div class="main-panel">
       <AuthScreen v-if="!isAuthed" @authed="onAuthed" />
       <div v-else class="app-container">
@@ -12,6 +12,7 @@
           @add-group="openGroupModal"
           @share="shareDialogVisible = true"
           @account="accountDialogVisible = true"
+          @settings="settingsDialogVisible = true"
         />
 
         <div class="env-list" ref="envListRef">
@@ -62,6 +63,11 @@
           :visible="accountDialogVisible"
           @close="accountDialogVisible = false"
           @signed-out="onSignedOut"
+        />
+
+        <SettingsDialog
+          :visible="settingsDialogVisible"
+          @close="settingsDialogVisible = false"
         />
 
         <ShareDialog
@@ -181,7 +187,9 @@ import DeleteModal from './components/DeleteModal.vue'
 import Toast from './components/Toast.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import AccountDialog from './components/AccountDialog.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
+import { preferenceErrorText, useUserPreferences } from './composables/useUserPreferences'
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
@@ -216,7 +224,9 @@ const groupModalVisible = ref(false)
 const deleteModalVisible = ref(false)
 const manualBindVisible = ref(false)
 const accountDialogVisible = ref(false)
+const settingsDialogVisible = ref(false)
 const shareDialogVisible = ref(false)
+const { loadShowToolFloat } = useUserPreferences()
 
 const editingEnv = ref(null)
 const editingGroup = ref(null)
@@ -911,6 +921,7 @@ const onAuthed = async () => {
   _dataLoadDone = false
   syncLog.info('App.onAuthed 登录成功，开始加载数据')
   accountDialogVisible.value = false
+  settingsDialogVisible.value = false
   showBoot(t('boot.loginSuccess'), t('boot.syncing'))
 
   // 首次登录时尝试迁移本地旧数据到 Supabase（云端有数据则自动跳过）
@@ -938,6 +949,13 @@ const onAuthed = async () => {
   } catch (e) {
     syncLog.error('加载数据失败', e)
     console.error('[App] onAuthed loadData 异常', e)
+  }
+
+  try {
+    await loadShowToolFloat()
+  } catch (e) {
+    syncLog.error('加载个人配置失败', e)
+    showToast(t('settings.floatRailLoadFailed', { msg: preferenceErrorText(e) }), 'error')
   } finally {
     _dataLoadDone = true
     hideBoot()
@@ -964,6 +982,7 @@ const onSignedOut = () => {
   syncLog.info('App.onSignedOut 退出登录，清空本地视图')
   destroyPasskeyBridge()
   accountDialogVisible.value = false
+  settingsDialogVisible.value = false
   environments.value = []
   groups.value = []
   _dataLoadDone = false

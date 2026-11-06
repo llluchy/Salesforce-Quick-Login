@@ -83,7 +83,15 @@
     "addGroup": "グループ作成",
     "share": "共有",
     "shareTitle": "環境を共有",
-    "accountTitle": "アカウント"
+    "accountTitle": "アカウント",
+    "settingsTitle": "設定"
+  },
+  "settings": {
+    "title": "設定",
+    "floatRail": "フローティングバー",
+    "floatRailHint": "Salesforce ページにツール入口を表示",
+    "floatRailLoadFailed": "フローティングバー設定の読み込みに失敗しました：{msg}",
+    "tableMissing": "Supabase に user_metadata テーブルがまだありません。作成用 SQL を実行してから、設定を開き直してください。"
   },
   "env": {
     "editTitle": "環境を編集",

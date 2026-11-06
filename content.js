@@ -570,6 +570,9 @@ function cropImage(dataUrl, x, y, width, height) {
 
   // 跟随 Side Panel「语言」偏好（chrome.storage.local ui_locale），而非仅浏览器 chrome.i18n
   const LOCALE_STORAGE_KEY = 'ui_locale';
+  // 与 src/utils/constants.js 的 STORAGE_KEY_SHOW_TOOL_FLOAT 保持一致
+  const SHOW_TOOL_FLOAT_KEY = 'sf_show_tool_float';
+  let toolFloatEnabled = true;
   const LOCALE_PREF_SYSTEM = 'system';
   const SUPPORTED_LOCALES = ['zh-CN', 'en', 'ja'];
   const DEFAULT_LOCALE = 'zh-CN';
@@ -1590,6 +1593,35 @@ function cropImage(dataUrl, x, y, width, height) {
     else document.addEventListener('DOMContentLoaded', mount, { once: true });
   }
 
+  function readToolFloatEnabled() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get([SHOW_TOOL_FLOAT_KEY], (result) => {
+          if (!result || !Object.prototype.hasOwnProperty.call(result, SHOW_TOOL_FLOAT_KEY)) {
+            resolve(true);
+            return;
+          }
+          resolve(result[SHOW_TOOL_FLOAT_KEY] !== false);
+        });
+      } catch {
+        resolve(true);
+      }
+    });
+  }
+
+  function removeRail() {
+    const existing = document.getElementById(HOST_ID);
+    if (existing) existing.remove();
+    railShadow = null;
+    if (document.getElementById(MODAL_HOST_ID)) closeObjectSearchModal();
+  }
+
+  function applyToolFloatVisibility(enabled) {
+    toolFloatEnabled = enabled !== false;
+    if (toolFloatEnabled) ensureRail();
+    else removeRail();
+  }
+
   function onLocalePreferenceChanged() {
     resolveEffectiveLocale().then(() => {
       applyRailLocale();
@@ -1599,21 +1631,28 @@ function cropImage(dataUrl, x, y, width, height) {
 
   try {
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'local' || !changes[LOCALE_STORAGE_KEY]) return;
-      onLocalePreferenceChanged();
+      if (area !== 'local') return;
+      if (changes[LOCALE_STORAGE_KEY]) onLocalePreferenceChanged();
+      if (changes[SHOW_TOOL_FLOAT_KEY]) {
+        const next = changes[SHOW_TOOL_FLOAT_KEY].newValue;
+        applyToolFloatVisibility(next !== false);
+      }
     });
   } catch {
     /* ignore */
   }
 
-  resolveEffectiveLocale().then(() => {
-    ensureRail();
-  });
+  resolveEffectiveLocale()
+    .then(() => readToolFloatEnabled())
+    .then((enabled) => {
+      applyToolFloatVisibility(enabled);
+    });
 
-  // Lightning SPA 可能重建 DOM，定期确认入口仍在；弹层被清掉则丢弃状态
+  // Lightning SPA 可能重建 DOM，定期确认入口仍在；关闭时不要再挂回去
   const recheck = () => {
     try {
-      ensureRail();
+      if (toolFloatEnabled) ensureRail();
+      else if (document.getElementById(HOST_ID)) removeRail();
       if (modalState && !document.getElementById(MODAL_HOST_ID)) {
         modalState = null;
       }
