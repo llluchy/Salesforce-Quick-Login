@@ -1,6 +1,6 @@
 <template>
   <div class="shell">
-    <!-- 工具入口已迁至 Salesforce 页面浮动栏；Side Panel 仅保留登录与环境管理 -->
+    <!-- 工具入口在 Salesforce 页面浮动栏；显示与否由侧边栏开关控制 -->
     <div class="main-panel">
       <AuthScreen v-if="!isAuthed" @authed="onAuthed" />
       <div v-else class="app-container">

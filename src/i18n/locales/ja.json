@@ -83,7 +83,11 @@
     "addGroup": "グループ作成",
     "share": "共有",
     "shareTitle": "環境を共有",
-    "accountTitle": "アカウント"
+    "accountTitle": "アカウント",
+    "floatRail": "フローティングバー",
+    "floatRailHint": "Salesforce ページにツール入口を表示",
+    "floatRailLoadFailed": "フローティングバー設定の読み込みに失敗しました：{msg}",
+    "floatRailSaveFailed": "フローティングバー設定の保存に失敗しました：{msg}"
   },
   "env": {
     "editTitle": "環境を編集",

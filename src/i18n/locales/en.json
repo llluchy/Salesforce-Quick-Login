@@ -83,7 +83,11 @@
     "addGroup": "Create group",
     "share": "Share",
     "shareTitle": "Share environments",
-    "accountTitle": "Account"
+    "accountTitle": "Account",
+    "floatRail": "Floating toolbar",
+    "floatRailHint": "Show tool shortcuts on Salesforce pages",
+    "floatRailLoadFailed": "Couldn't load the toolbar setting: {msg}",
+    "floatRailSaveFailed": "Couldn't save the toolbar setting: {msg}"
   },
   "env": {
     "editTitle": "Edit environment",

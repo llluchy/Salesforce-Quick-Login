@@ -25,13 +25,56 @@
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="7" r="3"/><path d="M3 17a7 7 0 0114 0"/></svg>
     </button>
   </div>
+  <div class="toolbar-pref">
+    <div class="pref-copy">
+      <span class="pref-label">{{ t('toolbar.floatRail') }}</span>
+      <span class="pref-hint">{{ t('toolbar.floatRailHint') }}</span>
+      <span v-if="prefError" class="pref-error">{{ prefError }}</span>
+    </div>
+    <button
+      type="button"
+      class="pref-switch"
+      role="switch"
+      :aria-checked="showToolFloat ? 'true' : 'false'"
+      :aria-label="t('toolbar.floatRail')"
+      :disabled="prefSaving || !prefReady"
+      @click="onToggleFloatRail"
+    >
+      <span class="pref-knob"></span>
+    </button>
+  </div>
 </template>
 
 <script setup>
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from './LocaleSwitcher.vue'
+import { useUserPreferences } from '../composables/useUserPreferences'
 
 const { t } = useI18n()
+const { showToolFloat, saving: prefSaving, loadShowToolFloat, setShowToolFloat } = useUserPreferences()
+const prefError = ref('')
+const prefReady = ref(false)
+
+onMounted(async () => {
+  try {
+    await loadShowToolFloat()
+  } catch (e) {
+    prefError.value = t('toolbar.floatRailLoadFailed', { msg: e?.message || String(e) })
+  } finally {
+    prefReady.value = true
+  }
+})
+
+async function onToggleFloatRail() {
+  if (prefSaving.value || !prefReady.value) return
+  prefError.value = ''
+  try {
+    await setShowToolFloat(!showToolFloat.value)
+  } catch (e) {
+    prefError.value = t('toolbar.floatRailSaveFailed', { msg: e?.message || String(e) })
+  }
+}
 
 defineProps({
   envCount: {
@@ -148,6 +191,78 @@ defineEmits(['add-env', 'add-group', 'share', 'account'])
 .btn-share:hover {
   background: #a5d6a7;
   border-color: #1b5e20;
+}
+
+.toolbar-pref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f7fbff;
+  border-bottom: 1px solid #bbdefb;
+}
+
+.pref-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pref-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0d47a1;
+  line-height: 1.3;
+}
+
+.pref-hint {
+  font-size: 11px;
+  color: #5c6b7a;
+  line-height: 1.35;
+}
+
+.pref-error {
+  font-size: 11px;
+  color: #c62828;
+  line-height: 1.35;
+}
+
+.pref-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: #b0bec5;
+  cursor: pointer;
+}
+
+.pref-switch[aria-checked='true'] {
+  background: #1976d2;
+}
+
+.pref-switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pref-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.pref-switch[aria-checked='true'] .pref-knob {
+  transform: translateX(16px);
 }
 
 .btn-manual {
