@@ -84,10 +84,14 @@
     "share": "分享",
     "shareTitle": "环境分享",
     "accountTitle": "账户管理",
+    "settingsTitle": "设置"
+  },
+  "settings": {
+    "title": "设置",
     "floatRail": "页面浮动栏",
     "floatRailHint": "在 Salesforce 页面显示工具入口",
     "floatRailLoadFailed": "读取浮动栏设置失败：{msg}",
-    "floatRailSaveFailed": "保存浮动栏设置失败：{msg}"
+    "tableMissing": "云端还没有 user_metadata 表。请先在 Supabase SQL Editor 执行建表脚本，再打开设置。"
   },
   "env": {
     "editTitle": "编辑环境",

@@ -84,10 +84,14 @@
     "share": "Share",
     "shareTitle": "Share environments",
     "accountTitle": "Account",
+    "settingsTitle": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
     "floatRail": "Floating toolbar",
     "floatRailHint": "Show tool shortcuts on Salesforce pages",
     "floatRailLoadFailed": "Couldn't load the toolbar setting: {msg}",
-    "floatRailSaveFailed": "Couldn't save the toolbar setting: {msg}"
+    "tableMissing": "The user_metadata table is not in Supabase yet. Run the setup SQL, then open Settings again."
   },
   "env": {
     "editTitle": "Edit environment",
