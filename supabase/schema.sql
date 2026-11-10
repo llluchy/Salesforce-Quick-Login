@@ -84,6 +84,22 @@ create table public.user_secrets (
   constraint user_secrets_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE
 ) TABLESPACE pg_default;
 
+-- ---------- 表：user_metadata 用户设置 ----------
+-- 说明：账户级偏好。show_tool_float 默认显示 Salesforce 页面浮动栏。
+-- 与线上表结构对齐，本文件只备份结构，不改线上数据。
+create table public.user_metadata (
+  user_id uuid not null,
+  show_tool_float boolean not null default true,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint user_metadata_pkey primary key (user_id),
+  constraint user_metadata_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create trigger trg_user_metadata_touch BEFORE
+update on user_metadata for EACH row
+execute FUNCTION touch_updated_at ();
+
 -- ---------- 函数：accept_share_lookup 接受分享查询 ----------
 -- 说明：根据分享码+验证码查询有效分享记录，SECURITY DEFINER 绕过 RLS 读取
 CREATE OR REPLACE FUNCTION public.accept_share_lookup(p_share_code text, p_verify_code text)
@@ -139,7 +155,7 @@ END;
 $function$
 
 -- ---------- 函数：touch_updated_at 自动更新 updated_at ----------
--- 说明：environments、groups 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
+-- 说明：environments、groups、user_metadata 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
 CREATE OR REPLACE FUNCTION public.touch_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -199,3 +215,16 @@ create policy "secret_select" on public.user_secrets
 create policy "用户可更新自己的 user_secrets" on public.user_secrets
   as PERMISSIVE for UPDATE to authenticated
   using (auth.uid() = user_id);
+
+-- user_metadata：仅本人可读写自己的偏好
+alter table public.user_metadata enable row level security;
+create policy "user_metadata_insert" on public.user_metadata
+  as PERMISSIVE for INSERT to authenticated
+  with check (auth.uid() = user_id);
+create policy "user_metadata_select" on public.user_metadata
+  as PERMISSIVE for SELECT to authenticated
+  using (auth.uid() = user_id);
+create policy "user_metadata_update" on public.user_metadata
+  as PERMISSIVE for UPDATE to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

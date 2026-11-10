@@ -85,6 +85,12 @@
     "shareTitle": "環境を共有",
     "accountTitle": "アカウント"
   },
+  "toolFloat": {
+    "title": "ページのフローティングバー",
+    "hint": "Salesforce ページの右端にツール入口を表示します",
+    "switchLabel": "ページのフローティングバーを表示または非表示にします",
+    "syncFailed": "フローティングバーの設定を保存できませんでした。通信状況を確認して再試行してください。"
+  },
   "env": {
     "editTitle": "環境を編集",
     "addTitle": "環境を追加",

@@ -85,6 +85,12 @@
     "shareTitle": "Share environments",
     "accountTitle": "Account"
   },
+  "toolFloat": {
+    "title": "Page float bar",
+    "hint": "Show the tool rail on the right edge of Salesforce pages",
+    "switchLabel": "Show or hide the page float bar",
+    "syncFailed": "Couldn't save the float bar setting. Check your connection and try again."
+  },
   "env": {
     "editTitle": "Edit environment",
     "addTitle": "Add environment",

@@ -85,6 +85,12 @@
     "shareTitle": "环境分享",
     "accountTitle": "账户管理"
   },
+  "toolFloat": {
+    "title": "页面浮动栏",
+    "hint": "在 Salesforce 页面右侧显示工具入口",
+    "switchLabel": "显示或隐藏页面浮动栏",
+    "syncFailed": "浮动栏设置未能保存，请检查网络后重试"
+  },
   "env": {
     "editTitle": "编辑环境",
     "addTitle": "添加环境",
