@@ -664,6 +664,10 @@ function cropImage(dataUrl, x, y, width, height) {
   let effectiveLocale = DEFAULT_LOCALE;
   /** @type {ShadowRoot | null} */
   let railShadow = null;
+  /** @type {boolean | null} null 表示还没问到后台 */
+  let railVisible = null;
+  let railQuery = null;
+  let railEpoch = 0;
   /** @type {null | { host: HTMLElement, shadow: ShadowRoot, pageHostname: string, apiHostname: string, sobjects: Array, matches: Array, selected: any, recordId: string, describeCache: Map, searchGen: number, _rerunSearch: null | Function }} */
   let modalState = null;
 
@@ -1590,6 +1594,35 @@ function cropImage(dataUrl, x, y, width, height) {
     else document.addEventListener('DOMContentLoaded', mount, { once: true });
   }
 
+  function removeRail() {
+    const existing = document.getElementById(HOST_ID);
+    if (existing) existing.remove();
+    railShadow = null;
+  }
+
+  function applyRailVisibility() {
+    if (railVisible === false) {
+      removeRail();
+      return;
+    }
+    if (railVisible === true) ensureRail();
+  }
+
+  function syncRailFromBackground() {
+    if (railQuery) return railQuery;
+    const epoch = ++railEpoch;
+    railQuery = sendMsg({ action: 'getToolFloatVisible' }).then((res) => {
+      if (epoch !== railEpoch) return;
+      if (res && res.success === true && typeof res.visible === 'boolean') {
+        railVisible = res.visible;
+        applyRailVisibility();
+      }
+    }).finally(() => {
+      railQuery = null;
+    });
+    return railQuery;
+  }
+
   function onLocalePreferenceChanged() {
     resolveEffectiveLocale().then(() => {
       applyRailLocale();
@@ -1606,14 +1639,30 @@ function cropImage(dataUrl, x, y, width, height) {
     /* ignore */
   }
 
+  try {
+    chrome.runtime.onMessage.addListener((request) => {
+      if (request?.action !== 'toolFloatVisibility') return;
+      if (typeof request.visible !== 'boolean') return;
+      railEpoch += 1;
+      railVisible = request.visible;
+      applyRailVisibility();
+    });
+  } catch {
+    /* ignore */
+  }
+
   resolveEffectiveLocale().then(() => {
-    ensureRail();
+    syncRailFromBackground();
   });
 
-  // Lightning SPA 可能重建 DOM，定期确认入口仍在；弹层被清掉则丢弃状态
+  // Lightning SPA 可能重建 DOM，定期确认入口仍在；隐藏时不注入
   const recheck = () => {
     try {
-      ensureRail();
+      if (railVisible == null) {
+        syncRailFromBackground();
+      } else {
+        applyRailVisibility();
+      }
       if (modalState && !document.getElementById(MODAL_HOST_ID)) {
         modalState = null;
       }

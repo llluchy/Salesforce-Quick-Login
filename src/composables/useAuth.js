@@ -12,6 +12,7 @@ import { ref, readonly } from 'vue'
 import { getSupabase } from './useSupabase'
 import { deriveKey, generateSalt, bytesToBase64, exportKeyToJwk, importKeyFromJwk, getDeviceCode } from '../utils/crypto'
 import { STORAGE_KEY_SESSION } from '../utils/constants'
+import { signOutToolFloat } from '../utils/toolFloatPref.js'
 import { WELCOME_PAGE_URL, RECOVERY_PAGE_URL } from '../utils/supabaseConfig'
 import { t } from '../i18n'
 
@@ -663,9 +664,32 @@ async function signIn({ email, password }) {
 /**
  * 登出
  */
+async function resetToolFloatAfterLogout() {
+  if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    const res = await new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ action: 'toolFloatSignedOut' }, (response) => {
+          void chrome.runtime.lastError
+          resolve(response || null)
+        })
+      } catch {
+        resolve(null)
+      }
+    })
+    if (res?.success) return
+  }
+  if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+    await signOutToolFloat(chrome.storage.session)
+  }
+}
+
 async function signOut() {
   isLoading.value = true
   try {
+    // 先丢掉后台手里的登录副本和浮动栏会话覆盖，再结束 Supabase session。
+    // 这样退出后的读取不会把云端 show_tool_float 抄进 session。
+    await clearSessionFromBg()
+    await resetToolFloatAfterLogout()
     const supabase = getSupabase()
     if (supabase) {
       await supabase.auth.signOut()
@@ -673,6 +697,7 @@ async function signOut() {
   } catch (e) {
     logError('登出失败', e)
   } finally {
+    await resetToolFloatAfterLogout()
     currentUser.value = null
     cryptoKey.value = null
     _saltBytes = null

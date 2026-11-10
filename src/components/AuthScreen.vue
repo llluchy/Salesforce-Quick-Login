@@ -15,6 +15,8 @@
       <p class="auth-subtitle">{{ subtitleText }}</p>
     </div>
 
+    <ToolFloatToggle variant="auth" />
+
     <!-- 已登录账户提示（仅在 session 存在但需解锁时显示） -->
     <div class="auth-user-info" v-if="hasSession">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M10 2a4 4 0 100 8 4 4 0 000-8zM3 18a7 7 0 0114 0v-1a1 1 0 00-1-1H4a1 1 0 00-1 1v1z"/></svg>
@@ -150,6 +152,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '../composables/useAuth'
 import LocaleSwitcher from './LocaleSwitcher.vue'
+import ToolFloatToggle from './ToolFloatToggle.vue'
 
 const emit = defineEmits(['authed'])
 
