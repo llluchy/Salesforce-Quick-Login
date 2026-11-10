@@ -660,6 +660,15 @@
     "deleteFailed": "Delete failed",
     "deleteRejected": "Delete was refused: the object name or record Id is not valid. No delete request was sent.",
     "invalidObjectName": "Object name is not valid, so nothing was loaded.",
-    "invalidRecordQuery": "Record Id is not valid, so no query by Id was sent."
+    "invalidRecordQuery": "Record Id is not valid, so no query by Id was sent.",
+    "fieldCreatedBy": "Field created by",
+    "fieldLastUpdatedBy": "Field last updated by",
+    "fieldAuditUnknown": "—",
+    "fieldAuditFailed": "Could not load who created or last updated each field. Field definitions are still available.",
+    "openObjectManager": "Object Manager",
+    "openObjectManagerTitle": "Open this object in Salesforce Object Manager",
+    "openRecord": "Open record",
+    "openRecordTitle": "Open this record in Salesforce",
+    "openRecordDisabled": "No record Id on this page"
   }
 }
