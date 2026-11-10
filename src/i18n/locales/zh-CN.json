@@ -16,7 +16,8 @@
     "system": "跟随系统",
     "zhCN": "中文",
     "en": "English",
-    "ja": "日本語"
+    "ja": "日本語",
+    "saveFailed": "语言没有保存，仍使用上次保存的语言"
   },
   "type": {
     "production": "Production",

@@ -568,8 +568,7 @@ function cropImage(dataUrl, x, y, width, height) {
   /** @type {Map<string, { hostname: string, sobjects: Array, fetchedAt: number }>} */
   const sobjectsCache = new Map();
 
-  // 跟随 Side Panel「语言」偏好（chrome.storage.local ui_locale），而非仅浏览器 chrome.i18n
-  const LOCALE_STORAGE_KEY = 'ui_locale';
+  // 跟随扩展里选的语言：已登录用账号，未登录用本次浏览器会话。不读 local。
   const LOCALE_PREF_SYSTEM = 'system';
   const SUPPORTED_LOCALES = ['zh-CN', 'en', 'ja'];
   const DEFAULT_LOCALE = 'zh-CN';
@@ -694,27 +693,25 @@ function cropImage(dataUrl, x, y, width, height) {
     return DEFAULT_LOCALE;
   }
 
+  let localeKnown = false;
+
+  function finishLocale(pref) {
+    const locale =
+      pref === LOCALE_PREF_SYSTEM || !SUPPORTED_LOCALES.includes(pref)
+        ? detectBrowserLocale()
+        : pref;
+    effectiveLocale = locale;
+    localeKnown = true;
+    return locale;
+  }
+
   function resolveEffectiveLocale() {
-    return new Promise((resolve) => {
-      const finish = (pref) => {
-        const locale =
-          pref === LOCALE_PREF_SYSTEM || !SUPPORTED_LOCALES.includes(pref)
-            ? detectBrowserLocale()
-            : pref;
-        effectiveLocale = locale;
-        resolve(locale);
-      };
-      try {
-        chrome.storage.local.get([LOCALE_STORAGE_KEY], (data) => {
-          if (chrome.runtime.lastError) {
-            finish(LOCALE_PREF_SYSTEM);
-            return;
-          }
-          finish(data?.[LOCALE_STORAGE_KEY] || LOCALE_PREF_SYSTEM);
-        });
-      } catch {
-        finish(LOCALE_PREF_SYSTEM);
+    return sendMsg({ action: 'getUiLocale' }).then((res) => {
+      if (res?.success && (res.preference === LOCALE_PREF_SYSTEM || SUPPORTED_LOCALES.includes(res.preference))) {
+        return finishLocale(res.preference);
       }
+      if (!localeKnown) return finishLocale(LOCALE_PREF_SYSTEM);
+      return effectiveLocale;
     });
   }
 
@@ -1623,17 +1620,17 @@ function cropImage(dataUrl, x, y, width, height) {
     return railQuery;
   }
 
-  function onLocalePreferenceChanged() {
-    resolveEffectiveLocale().then(() => {
-      applyRailLocale();
-      applyModalLocale();
-    });
+  function onLocalePreferenceChanged(pref) {
+    finishLocale(pref);
+    applyRailLocale();
+    applyModalLocale();
   }
 
   try {
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'local' || !changes[LOCALE_STORAGE_KEY]) return;
-      onLocalePreferenceChanged();
+    chrome.runtime.onMessage.addListener((request) => {
+      if (request?.action !== 'uiLocaleChanged') return;
+      if (request.preference !== LOCALE_PREF_SYSTEM && !SUPPORTED_LOCALES.includes(request.preference)) return;
+      onLocalePreferenceChanged(request.preference);
     });
   } catch {
     /* ignore */
