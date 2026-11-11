@@ -85,6 +85,12 @@
     "shareTitle": "Share environments",
     "accountTitle": "Account"
   },
+  "envSearch": {
+    "label": "Search environments",
+    "placeholder": "Search by alias or username",
+    "clear": "Clear",
+    "noMatch": "No alias or username matches"
+  },
   "settings": {
     "open": "Open settings",
     "title": "Settings"
