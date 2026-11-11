@@ -141,8 +141,6 @@
                   <th>{{ t('objectDetail.type') }}</th>
                   <th>{{ t('objectDetail.tableRequired') }}</th>
                   <th>{{ t('objectDetail.custom') }}</th>
-                  <th>{{ t('objectDetail.fieldCreatedBy') }}</th>
-                  <th>{{ t('objectDetail.fieldLastUpdatedBy') }}</th>
                   <th>{{ t('objectDetail.tableValue') }}</th>
                 </tr>
               </thead>
@@ -165,8 +163,6 @@
                     <td :title="typeWithSize(field)">{{ typeWithSize(field) }}</td>
                     <td>{{ field.nillable ? '' : '✓' }}</td>
                     <td>{{ field.custom ? '✓' : '' }}</td>
-                    <td class="col-audit" :title="fieldAuditText(field).createdBy">{{ fieldAuditText(field).createdBy }}</td>
-                    <td class="col-audit" :title="fieldAuditText(field).updatedBy">{{ fieldAuditText(field).updatedBy }}</td>
                     <td class="col-value">
                       <button
                         v-if="fieldValueText(field.name)"
@@ -178,7 +174,7 @@
                     </td>
                   </tr>
                   <tr v-if="expandedField === field.name" class="expand-row">
-                    <td colspan="9">
+                    <td colspan="7">
                       <div class="expand-body">
                         <div class="expand-kv field-audit">
                           <span>{{ t('objectDetail.fieldCreatedBy') }}：{{ fieldAuditText(field).createdBy }}</span>
@@ -1326,10 +1322,6 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.fields-table .col-audit {
-  max-width: 140px;
 }
 
 .fields-table .col-value {

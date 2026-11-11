@@ -318,11 +318,23 @@ describe('object detail i18n and wiring', () => {
     assert.doesNotMatch(vue, /recordValues[^\n]{0,80}CreatedBy/)
 
     const template = vue.slice(vue.indexOf('<template>'), vue.indexOf('</template>'))
-    for (const key of ['fieldCreatedBy', 'fieldLastUpdatedBy', 'openObjectManager', 'openRecord', 'openRecordDisabled']) {
+    const thead = template.slice(template.indexOf('<thead>'), template.indexOf('</thead>'))
+    const auditAt = template.indexOf('class="expand-kv field-audit"')
+    const expand = template.slice(auditAt, auditAt + 500)
+    const listRow = template.slice(template.indexOf("field-row"), template.indexOf('class="expand-row"'))
+    for (const key of ['openObjectManager', 'openRecord', 'openRecordDisabled']) {
       assert.match(template, new RegExp(`t\\('objectDetail\\.${key}'\\)`))
     }
-    assert.match(template, /fieldAuditText\(field\)\.createdBy/)
-    assert.match(template, /fieldAuditText\(field\)\.updatedBy/)
+    for (const key of ['fieldCreatedBy', 'fieldLastUpdatedBy']) {
+      assert.match(expand, new RegExp(`t\\('objectDetail\\.${key}'\\)`))
+      assert.doesNotMatch(thead, new RegExp(`objectDetail\\.${key}`))
+    }
+    assert.match(expand, /fieldAuditText\(field\)\.createdBy/)
+    assert.match(expand, /fieldAuditText\(field\)\.updatedBy/)
+    assert.doesNotMatch(thead, /fieldAuditText/)
+    assert.doesNotMatch(listRow, /fieldAuditText|fieldCreatedBy|fieldLastUpdatedBy/)
+    assert.match(template, /colspan="7"/)
+    assert.doesNotMatch(template, /col-audit/)
 
     const recordAt = template.indexOf('data-od-action="record"')
     const recordEnd = template.indexOf('</button>', recordAt)
