@@ -72,13 +72,14 @@ function installListener() {
   if (listenerInstalled) return
   listenerInstalled = true
   if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) return
-  chrome.runtime.onMessage.addListener((request) => {
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (request?.action !== 'uiLocaleChanged') return
     const pref = normalizeLocalePreference(request.preference)
     if (!pref) return
     preference.value = pref
     failed.value = false
     applyPreference(pref)
+    if (typeof sendResponse === 'function') sendResponse({ ok: true })
   })
 }
 

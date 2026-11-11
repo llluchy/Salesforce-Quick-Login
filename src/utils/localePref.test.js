@@ -4,7 +4,7 @@ import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { STORAGE_KEY_SESSION } from './constants.js'
-import { createLocaleMessageHandler } from './localeController.js'
+import { broadcastUiLocale, createLocaleMessageHandler } from './localeController.js'
 import {
   LEGACY_LOCALE_LOCAL_KEY,
   SESSION_LOCALE_KEY,
@@ -561,6 +561,66 @@ describe('schema', () => {
     )
     assert.equal(still.rows[0].ui_locale, 'ja')
     await db.close()
+  })
+})
+
+describe('background notify', () => {
+  it('does not throw when the other page does not answer', async () => {
+    const reads = []
+    const previous = globalThis.chrome
+    globalThis.chrome = {
+      runtime: {
+        get lastError() {
+          reads.push('read')
+          return { message: 'The message port closed before a response was received.' }
+        },
+        sendMessage(_message, callback) {
+          callback()
+        }
+      },
+      tabs: {
+        async query() {
+          return [{ id: 7 }, {}]
+        },
+        sendMessage(_tabId, _message, callback) {
+          callback()
+        }
+      }
+    }
+    try {
+      await broadcastUiLocale('zh-CN')
+      await broadcastUiLocale('en')
+      await broadcastUiLocale('ja')
+      assert.ok(reads.length >= 3)
+    } finally {
+      if (previous === undefined) delete globalThis.chrome
+      else globalThis.chrome = previous
+    }
+  })
+
+  it('keeps the previous language when the account has no language column', async () => {
+    let sessionWrites = 0
+    let broadcasts = 0
+    const result = await commitLocaleChange({
+      loggedIn: true,
+      previous: 'system',
+      next: 'en',
+      write: async () => {
+        const error = new Error('column user_metadata.ui_locale does not exist')
+        error.code = '42703'
+        throw error
+      },
+      setSession: async () => {
+        sessionWrites += 1
+        return { success: true, preference: 'en' }
+      },
+      applyCloud: async () => {
+        broadcasts += 1
+      }
+    })
+    assert.deepEqual(result, { ok: false, preference: 'system' })
+    assert.equal(sessionWrites, 0)
+    assert.equal(broadcasts, 0)
   })
 })
 

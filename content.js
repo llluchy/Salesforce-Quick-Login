@@ -1627,10 +1627,11 @@ function cropImage(dataUrl, x, y, width, height) {
   }
 
   try {
-    chrome.runtime.onMessage.addListener((request) => {
+    chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       if (request?.action !== 'uiLocaleChanged') return;
       if (request.preference !== LOCALE_PREF_SYSTEM && !SUPPORTED_LOCALES.includes(request.preference)) return;
       onLocalePreferenceChanged(request.preference);
+      if (typeof sendResponse === 'function') sendResponse({ ok: true });
     });
   } catch {
     /* ignore */

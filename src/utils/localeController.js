@@ -27,33 +27,37 @@ const LOCALE_TAB_URLS = [
   'https://*.cloudforce.com/*'
 ]
 
+function acknowledge(send, args) {
+  try {
+    const maybe = send(...args, () => {
+      void chrome.runtime.lastError
+    })
+    if (maybe && typeof maybe.then === 'function') {
+      maybe.then(() => {}, () => {})
+    }
+  } catch {
+    /* 没有接收页面时不要抛到后台控制台 */
+  }
+}
+
 export async function broadcastUiLocale(preference) {
   const pref = normalizeLocalePreference(preference) || 'system'
   if (typeof chrome === 'undefined') return
   const message = { action: 'uiLocaleChanged', preference: pref }
-  try {
-    const sent = chrome.runtime?.sendMessage?.(message)
-    if (sent && typeof sent.catch === 'function') sent.catch(() => {})
-  } catch {
-    /* 没有其它扩展页面在听 */
+  if (chrome.runtime?.sendMessage) {
+    acknowledge(chrome.runtime.sendMessage.bind(chrome.runtime), [message])
   }
-  if (!chrome.tabs?.query) return
+  if (!chrome.tabs?.query || !chrome.tabs?.sendMessage) return
   let tabs = []
   try {
     tabs = await chrome.tabs.query({ url: LOCALE_TAB_URLS })
   } catch {
     return
   }
-  await Promise.all(tabs.map((tab) => {
-    if (tab?.id == null) return Promise.resolve()
-    try {
-      const sent = chrome.tabs.sendMessage(tab.id, message)
-      if (sent && typeof sent.catch === 'function') return sent.catch(() => {})
-    } catch {
-      /* 标签没有 content script */
-    }
-    return Promise.resolve()
-  }))
+  for (const tab of tabs) {
+    if (tab?.id == null) continue
+    acknowledge(chrome.tabs.sendMessage.bind(chrome.tabs), [tab.id, message])
+  }
 }
 
 function isUnauthorized(error) {
@@ -129,24 +133,34 @@ export function createLocaleMessageHandler(options = {}) {
 
     const run = async () => {
       if (action === 'getUiLocale') return getPreference()
-      if (action === 'setUiLocaleSession') {
-        const result = await setSession(request.preference)
-        if (result.success) await broadcast(result.preference)
-        return result
+      if (action === 'setUiLocaleSession') return setSession(request.preference)
+      if (action === 'applyUiLocaleCloud') return applyCloud(request.preference)
+      return signedOut()
+    }
+
+    const reply = (payload) => {
+      try {
+        sendResponse(payload)
+      } catch {
+        /* 页面已经关掉时，回复失败不能再抛到后台 */
       }
-      if (action === 'applyUiLocaleCloud') {
-        const result = await applyCloud(request.preference)
-        if (result.success) await broadcast(result.preference)
-        return result
-      }
-      const result = await signedOut()
-      if (result.success) await broadcast(result.preference)
-      return result
+      void globalThis.chrome?.runtime?.lastError
     }
 
     run()
-      .then((result) => sendResponse(result))
-      .catch((error) => sendResponse({ success: false, error: error?.message || String(error) }))
+      .then(async (result) => {
+        reply(result)
+        if (result?.success && action !== 'getUiLocale') {
+          try {
+            await broadcast(result.preference)
+          } catch {
+            /* 通知其它页面失败时，这次选择仍然算数 */
+          }
+        }
+      })
+      .catch((error) => {
+        reply({ success: false, error: error?.message || String(error) })
+      })
     return true
   }
 
