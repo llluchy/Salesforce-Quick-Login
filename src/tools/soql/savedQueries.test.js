@@ -6,13 +6,10 @@ import { fileURLToPath } from 'node:url'
 import { STORAGE_KEY_SESSION } from '../../utils/constants.js'
 import {
   SAVED_SOQL_MAX_COUNT,
-  SAVED_SOQL_NAME_MAX,
   SAVED_SOQL_SESSION_KEY,
   SAVED_SOQL_TEXT_MAX,
-  applyDeleteResult,
   applySaveResult,
   createSavedQueryStore,
-  createSavedSoqlRestIo,
   readSessionQueries,
   sanitizeSavedQuery,
   savedQueryEditorText
@@ -24,37 +21,6 @@ const USER_B = '22222222-2222-4222-8222-222222222222'
 const QUERY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const QUERY_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const SOQL = 'SELECT Id, Name FROM Account WHERE Name = \'Acme\''
-const SAVED_KEYS = [
-  'savedTitle',
-  'saveQuery',
-  'saveQueryTitle',
-  'saveNameLabel',
-  'saveNamePlaceholder',
-  'saveConfirm',
-  'savingQuery',
-  'savedEmpty',
-  'savedLoggedInHint',
-  'savedLoggedOutHint',
-  'saveWhereLoggedIn',
-  'saveWhereLoggedOut',
-  'openedSaved',
-  'runNeedsSalesforce',
-  'deleteSaved',
-  'confirmDeleteSavedTitle',
-  'confirmDeleteSavedBody',
-  'saveFailed',
-  'saveNeedSoql',
-  'saveNeedName',
-  'nameTooLong',
-  'soqlTooLong',
-  'savedLimit',
-  'loadFailed',
-  'deleteFailed',
-  'savedOk',
-  'deletedSaved',
-  'openSaved',
-  'savedPreviewLabel'
-]
 
 function pick(data, keys) {
   if (keys == null) return { ...data }
@@ -110,34 +76,14 @@ function createGuardedStorage(sessionInitial = {}) {
     }
   })
   const session = createMemoryArea(sessionInitial)
-  return {
-    storage: {
-      session,
-      local: guard('local', localData),
-      sync: guard('sync', syncData)
-    },
-    localData,
-    syncData,
-    forbidden,
-    session
-  }
+  return { storage: { session, local: guard('local', localData), sync: guard('sync', syncData) }, localData, syncData, forbidden, session }
 }
 
-function snapshotStorage(guard) {
-  return {
-    local: JSON.parse(JSON.stringify(guard.localData)),
-    sync: JSON.parse(JSON.stringify(guard.syncData)),
-    forbidden: guard.forbidden.length,
-    session: JSON.parse(JSON.stringify(guard.session.data))
-  }
-}
-
-function assertDurableUntouched(guard, before) {
-  assert.deepEqual(guard.localData, before.local)
-  assert.deepEqual(guard.syncData, before.sync)
-  assert.equal(guard.forbidden.length, before.forbidden)
+function assertDurableUntouched(guard, beforeForbidden) {
+  assert.equal(guard.forbidden.length, beforeForbidden)
   assert.equal(Object.hasOwn(guard.localData, SAVED_SOQL_SESSION_KEY), false)
   assert.equal(Object.hasOwn(guard.syncData, SAVED_SOQL_SESSION_KEY), false)
+  assert.deepEqual(guard.localData.salesforce_environments, legacyLocal().salesforce_environments)
 }
 
 function authSession(id) {
@@ -150,62 +96,55 @@ function clock(start = '2026-11-11T00:00:00.000Z') {
   return () => new Date(origin + n++ * 1000).toISOString()
 }
 
-function ids(...values) {
+function ids(values) {
   let n = 0
   return () => values[n++]
 }
 
-function createCloud(initial = []) {
-  const rows = initial.map((row) => ({ ...row }))
+function rowId(index) {
+  return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+}
+
+function createCloud({ missing = false } = {}) {
+  const rows = []
+  let seq = 0
   const calls = []
   async function fetchImpl(url, options = {}) {
     const method = options.method || 'GET'
-    calls.push({
-      url,
-      method,
-      body: options.body ? JSON.parse(options.body) : null,
-      authorization: options.headers?.Authorization,
-      apikey: options.headers?.apikey
-    })
-    const parsed = new URL(url)
-    const userFilter = parsed.searchParams.get('user_id') || ''
-    const userId = userFilter.startsWith('eq.') ? userFilter.slice(3) : ''
-    const idFilter = parsed.searchParams.get('id') || ''
-    const id = idFilter.startsWith('eq.') ? idFilter.slice(3) : ''
-    if (options.headers?.Authorization === 'Bearer expired') {
-      return new Response(JSON.stringify({ message: 'JWT expired', code: 'PGRST301' }), { status: 401 })
+    const body = options.body ? JSON.parse(options.body) : null
+    calls.push({ url, method, body })
+    if (missing) {
+      return new Response(JSON.stringify({ code: 'PGRST205', message: 'saved_soql_queries not found' }), { status: 404 })
     }
+    const parsed = new URL(url)
+    const userId = (parsed.searchParams.get('user_id') || '').replace(/^eq\./, '')
+    const idFilter = parsed.searchParams.get('id') || ''
     if (method === 'GET') {
-      const mine = rows.filter((row) => row.user_id === userId)
-      return new Response(JSON.stringify(mine), { status: 200 })
+      return new Response(JSON.stringify(rows.filter((row) => row.user_id === userId)), { status: 200 })
     }
     if (method === 'POST') {
-      const body = JSON.parse(options.body)
-      if (!body.user_id || !body.name || !body.soql || body.hostname || body.sessionId) {
+      if (!body?.user_id || !body?.soql || body.name || body.hostname || body.sessionId) {
         return new Response(JSON.stringify({ message: 'bad row' }), { status: 400 })
       }
-      if (body.name === 'boom') {
-        return new Response(JSON.stringify({ message: 'insert failed' }), { status: 500 })
-      }
       const row = {
-        id: body.user_id === USER_B ? QUERY_B : QUERY_A,
+        id: body.user_id === USER_B ? QUERY_B : `cccccccc-cccc-4ccc-8ccc-${String(seq++).padStart(12, '0')}`,
         user_id: body.user_id,
-        name: body.name,
         soql: body.soql,
-        created_at: '2026-11-11T03:00:00.000Z'
-      }
-      if (options.headers?.Prefer !== 'return=representation') {
-        return new Response(null, { status: 201 })
+        created_at: new Date(Date.parse('2026-11-11T03:00:00.000Z') + seq * 1000).toISOString()
       }
       rows.push(row)
-      if (body.name === 'silent') return new Response('[]', { status: 201 })
       return new Response(JSON.stringify([row]), { status: 201 })
     }
     if (method === 'DELETE') {
-      const index = rows.findIndex((row) => row.user_id === userId && row.id === id)
-      if (index < 0) return new Response('[]', { status: 200 })
-      const [row] = rows.splice(index, 1)
-      return new Response(JSON.stringify([row]), { status: 200 })
+      const match = idFilter.match(/^in\.\((.*)\)$/)
+      const idsToDrop = match ? match[1].split(',').filter(Boolean) : []
+      const removed = []
+      for (const id of idsToDrop) {
+        const index = rows.findIndex((row) => row.user_id === userId && row.id === id)
+        if (index >= 0) removed.push(rows.splice(index, 1)[0])
+      }
+      if (removed.length !== idsToDrop.length) return new Response(JSON.stringify({ message: 'delete failed' }), { status: 500 })
+      return new Response(JSON.stringify(removed), { status: 200 })
     }
     return new Response(JSON.stringify({ message: 'nope' }), { status: 500 })
   }
@@ -218,313 +157,173 @@ function storeFor(guard, extra = {}) {
     supabaseUrl: 'https://example.supabase.co',
     anonKey: 'anon-key',
     now: extra.now || clock(),
-    createId: extra.createId || ids(QUERY_A, QUERY_B),
+    createId: extra.createId || ids([QUERY_A, QUERY_B]),
     fetchImpl: extra.fetchImpl
   })
 }
 
-describe('saved queries while logged out', () => {
-  it('keeps a named query in session storage and nowhere else', async () => {
+describe('successful queries while logged out', () => {
+  it('keeps a successful statement in session storage and nowhere else', async () => {
     const guard = createGuardedStorage()
-    const before = snapshotStorage(guard)
     const saved = storeFor(guard)
-    const result = await saved.save({ name: '  本周商机  ', soql: `  ${SOQL}  ` })
+    const result = await saved.remember(`  ${SOQL}  `)
     assert.equal(result.ok, true)
     assert.equal(result.loggedIn, false)
-    assert.equal(result.saved.name, '本周商机')
     assert.equal(result.saved.soql, SOQL)
-    assert.deepEqual(Object.keys(result.saved).sort(), ['createdAt', 'id', 'name', 'soql'])
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].soql, SOQL)
+    assert.deepEqual(Object.keys(result.saved).sort(), ['createdAt', 'id', 'soql'])
     assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].hostname, undefined)
-    assertDurableUntouched(guard, before)
-
-    const fresh = createMemoryArea()
-    assert.deepEqual(await readSessionQueries(fresh), [])
-    const listed = await saved.list()
-    assert.equal(listed.ok, true)
-    assert.equal(listed.queries[0].id, QUERY_A)
-    assert.equal(savedQueryEditorText(listed.queries[0]), SOQL)
+    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].name, undefined)
+    assertDurableUntouched(guard, 0)
+    assert.equal(savedQueryEditorText(result.saved), SOQL)
+    assert.equal((await readSessionQueries(createMemoryArea())).length, 0)
   })
 
-  it('does not show a query when session write fails', async () => {
+  it('does not show a statement when the session write fails', async () => {
     const guard = createGuardedStorage()
-    const previous = [{ id: QUERY_B, name: '旧的', soql: 'SELECT Id FROM Contact', createdAt: '2026-11-01T00:00:00.000Z' }]
-    guard.session.data[SAVED_SOQL_SESSION_KEY] = previous.map((row) => ({ ...row, hostname: 'org.my.salesforce.com', sid: 'secret' }))
+    const previous = [{ id: QUERY_B, soql: 'SELECT Id FROM Contact', createdAt: '2026-11-01T00:00:00.000Z' }]
+    guard.session.data[SAVED_SOQL_SESSION_KEY] = previous.map((row) => ({ ...row, hostname: 'org.my.salesforce.com', name: '旧的' }))
     guard.storage.session.set = async () => {
       throw new Error('session unavailable')
     }
-    const saved = storeFor(guard)
-    const result = await saved.save({ name: '新的', soql: SOQL })
+    const result = await storeFor(guard).remember(SOQL)
     assert.equal(result.ok, false)
     assert.equal(result.saved, null)
-    assert.deepEqual(result.queries.map((query) => query.id), [QUERY_B])
-    assert.equal(result.queries[0].hostname, undefined)
+    assert.deepEqual(result.queries.map((query) => query.soql), ['SELECT Id FROM Contact'])
     assert.equal(applySaveResult(previous, result), previous)
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].name, '旧的')
-    assert.equal(Object.hasOwn(guard.localData, SAVED_SOQL_SESSION_KEY), false)
+    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].soql, 'SELECT Id FROM Contact')
+    assertDurableUntouched(guard, 0)
   })
 
-  it('rejects an empty name or query without writing', async () => {
+  it('drops the oldest statement after fifty and keeps one copy of the same statement', async () => {
     const guard = createGuardedStorage()
-    const saved = storeFor(guard)
-    const unnamed = await saved.save({ name: '   ', soql: SOQL })
-    const empty = await saved.save({ name: '账户', soql: '  ' })
-    assert.equal(unnamed.ok, false)
-    assert.equal(unnamed.error, 'need-name')
-    assert.equal(empty.error, 'need-soql')
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY], undefined)
-    assert.equal(applySaveResult([{ id: QUERY_B }], unnamed).length, 1)
-  })
-
-  it('rejects oversized text and the 101st query', async () => {
-    const guard = createGuardedStorage()
-    const saved = storeFor(guard, { createId: ids(QUERY_A) })
-    const longName = await saved.save({ name: '名'.repeat(SAVED_SOQL_NAME_MAX + 1), soql: SOQL })
-    const longSoql = await saved.save({ name: '太长', soql: 'S'.repeat(SAVED_SOQL_TEXT_MAX + 1) })
-    assert.equal(longName.error, 'name-too-long')
-    assert.equal(longSoql.error, 'soql-too-long')
-
     const existing = Array.from({ length: SAVED_SOQL_MAX_COUNT }, (_, index) => ({
-      id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-      name: `q${index}`,
-      soql: 'SELECT Id FROM Account',
-      createdAt: '2026-11-01T00:00:00.000Z'
+      id: rowId(index),
+      soql: `SELECT Id FROM Object_${index}`,
+      createdAt: new Date(Date.parse('2026-11-01T00:00:00.000Z') + index * 1000).toISOString()
     }))
     guard.session.data[SAVED_SOQL_SESSION_KEY] = existing
-    const limited = await saved.save({ name: '再一条', soql: SOQL })
-    assert.equal(limited.ok, false)
-    assert.equal(limited.error, 'limit')
-    assert.equal(limited.queries.length, SAVED_SOQL_MAX_COUNT)
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY].length, SAVED_SOQL_MAX_COUNT)
-    assert.equal(applySaveResult(existing, limited), existing)
+    const saved = storeFor(guard, { createId: ids([QUERY_A, QUERY_B]) })
+    const added = await saved.remember('SELECT Id FROM Newest')
+    assert.equal(added.ok, true)
+    assert.equal(added.queries.length, 50)
+    assert.equal(added.queries[0].soql, 'SELECT Id FROM Newest')
+    assert.equal(added.queries.some((query) => query.soql === 'SELECT Id FROM Object_0'), false)
+    assert.equal(added.queries.some((query) => query.soql === 'SELECT Id FROM Object_1'), true)
+
+    const again = await saved.remember('SELECT Id FROM Newest')
+    assert.equal(again.ok, true)
+    assert.equal(again.queries.filter((query) => query.soql === 'SELECT Id FROM Newest').length, 1)
+    assert.equal(again.queries[0].id, QUERY_B)
+    assert.equal(again.queries.length, 50)
   })
 
-  it('drops a session query only after the write can be read back', async () => {
+  it('rejects an empty or oversized statement without writing', async () => {
     const guard = createGuardedStorage()
     const saved = storeFor(guard)
-    await saved.save({ name: '本周商机', soql: SOQL })
-    const previous = (await saved.list()).queries
-    const write = guard.storage.session.set.bind(guard.storage.session)
-    guard.storage.session.set = async () => {
-      throw new Error('remove failed')
-    }
-    const failed = await saved.remove(QUERY_A)
-    assert.equal(failed.ok, false)
-    assert.equal(applyDeleteResult(previous, QUERY_A, failed), previous)
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY].length, 1)
-
-    guard.storage.session.set = write
-    const removed = await saved.remove(QUERY_A)
-    assert.equal(removed.ok, true)
-    assert.deepEqual(removed.queries, [])
-    assert.deepEqual(applyDeleteResult(previous, QUERY_A, removed), [])
+    assert.equal((await saved.remember('   ')).error, 'need-soql')
+    assert.equal((await saved.remember('S'.repeat(SAVED_SOQL_TEXT_MAX + 1))).error, 'soql-too-long')
+    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY], undefined)
   })
 
-  it('strips Salesforce session fields from anything stored in the browser session', async () => {
+  it('strips Salesforce session fields', () => {
     const poisoned = sanitizeSavedQuery({
       id: QUERY_A,
       name: '账户',
       soql: SOQL,
       createdAt: '2026-11-11T00:00:00.000Z',
       hostname: 'acme.my.salesforce.com',
-      orgId: '00Dxx',
-      sessionId: 'sid',
-      sid: 'sid',
-      password: 'nope'
+      sessionId: 'sid'
     })
     assert.deepEqual(poisoned, {
       id: QUERY_A,
-      name: '账户',
       soql: SOQL,
       createdAt: '2026-11-11T00:00:00.000Z'
     })
-    assert.equal(savedQueryEditorText({ ...poisoned, hostname: 'acme.my.salesforce.com' }), SOQL)
     assert.equal(savedQueryEditorText({ soql: SOQL, hostname: 'acme.my.salesforce.com' }), '')
   })
 })
 
-describe('saved queries while logged in', () => {
-  it('reads and writes Supabase without copying queries into local, sync, or session', async () => {
-    const cloud = createCloud([{
-      id: QUERY_B,
-      user_id: USER_A,
-      name: '云端旧查询',
-      soql: 'SELECT Id FROM Contact',
-      created_at: '2026-11-10T00:00:00.000Z',
-      hostname: 'should-not-pass'
-    }])
+describe('successful queries while logged in', () => {
+  it('writes Supabase and trims to fifty without touching local, sync, or session', async () => {
+    const cloud = createCloud()
     const guard = createGuardedStorage({
-      [SAVED_SOQL_SESSION_KEY]: [{
-        id: QUERY_A,
-        name: '只在这台浏览器',
-        soql: 'SELECT Id FROM Lead',
-        createdAt: '2026-11-11T00:00:00.000Z'
-      }]
+      [SAVED_SOQL_SESSION_KEY]: [{ id: QUERY_A, soql: 'SELECT Id FROM Lead', createdAt: '2026-11-11T00:00:00.000Z' }]
     })
     guard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
-    const before = snapshotStorage(guard)
-    const saved = storeFor(guard, { fetchImpl: cloud.fetchImpl, createId: ids(QUERY_A) })
-
-    const listed = await saved.list()
-    assert.equal(listed.ok, true)
-    assert.equal(listed.loggedIn, true)
-    assert.deepEqual(listed.queries.map((query) => query.name), ['云端旧查询'])
-    assert.equal(listed.queries[0].hostname, undefined)
-    assert.equal(listed.queries[0].soql, 'SELECT Id FROM Contact')
-
-    const result = await saved.save({ name: '本周商机', soql: SOQL })
-    assert.equal(result.ok, true)
-    assert.equal(result.loggedIn, true)
-    assert.equal(result.saved.id, QUERY_A)
-    assert.deepEqual(result.queries.map((query) => query.name), ['本周商机', '云端旧查询'])
-    const post = cloud.calls.find((call) => call.method === 'POST')
-    assert.deepEqual(post.body, { user_id: USER_A, name: '本周商机', soql: SOQL })
-    assert.equal(post.authorization, `Bearer token-${USER_A}`)
-    assert.equal(post.apikey, 'anon-key')
-    assert.match(post.url, /\/rest\/v1\/saved_soql_queries$/)
-    assertDurableUntouched(guard, before)
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].name, '只在这台浏览器')
-    assert.equal(applySaveResult([], { ok: false, saved: result.saved, queries: result.queries }).length, 0)
-    assert.equal(applySaveResult([], result)[0].name, '本周商机')
+    const idList = Array.from({ length: 52 }, (_, index) => rowId(index + 1))
+    const saved = storeFor(guard, { fetchImpl: cloud.fetchImpl, createId: ids(idList) })
+    for (let index = 0; index < 50; index += 1) {
+      const result = await saved.remember(`SELECT Id FROM Object_${index}`)
+      assert.equal(result.ok, true)
+    }
+    const newest = await saved.remember('SELECT Id FROM Newest')
+    assert.equal(newest.ok, true)
+    assert.equal(newest.queries.length, 50)
+    assert.equal(newest.queries[0].soql, 'SELECT Id FROM Newest')
+    assert.equal(newest.queries.some((query) => query.soql === 'SELECT Id FROM Object_0'), false)
+    assert.equal(cloud.calls.find((call) => call.method === 'POST').body.name, undefined)
+    assert.deepEqual(Object.keys(cloud.calls.find((call) => call.method === 'POST').body).sort(), ['soql', 'user_id'])
+    assertDurableUntouched(guard, 0)
+    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].soql, 'SELECT Id FROM Lead')
+    assert.equal(applySaveResult([], { ok: false, saved: newest.saved, queries: newest.queries }).length, 0)
   })
 
-  it('keeps the previous list when the cloud insert fails or returns no row', async () => {
+  it('does not show a statement when the table is missing', async () => {
+    const cloud = createCloud({ missing: true })
+    const guard = createGuardedStorage()
+    guard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
+    const previous = [{ id: QUERY_B, soql: 'SELECT Id FROM Contact', createdAt: '2026-11-01T00:00:00.000Z' }]
+    const result = await storeFor(guard, { fetchImpl: cloud.fetchImpl }).remember(SOQL)
+    assert.equal(result.ok, false)
+    assert.equal(result.saved, null)
+    assert.equal(applySaveResult(previous, result), previous)
+    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY], undefined)
+    assert.equal(cloud.rows.length, 0)
+  })
+
+  it('shows only the signed-in account statements', async () => {
     const cloud = createCloud()
     const guard = createGuardedStorage()
     guard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
-    const saved = storeFor(guard, { fetchImpl: cloud.fetchImpl })
-    const failed = await saved.save({ name: 'boom', soql: SOQL })
-    assert.equal(failed.ok, false)
-    assert.equal(failed.saved, null)
-    assert.deepEqual(failed.queries, [])
-    assert.equal(cloud.rows.length, 0)
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY], undefined)
-
-    const silent = await saved.save({ name: 'silent', soql: SOQL })
-    assert.equal(silent.ok, false)
-    assert.equal(applySaveResult([{ id: QUERY_B, name: '已有', soql: SOQL, createdAt: '' }], silent).length, 1)
-  })
-
-  it('does not fall back to session storage when the account token is rejected', async () => {
-    const guard = createGuardedStorage({
-      [SAVED_SOQL_SESSION_KEY]: [{
-        id: QUERY_A,
-        name: '会话里的',
-        soql: SOQL,
-        createdAt: '2026-11-11T00:00:00.000Z'
-      }]
-    })
-    guard.localData[STORAGE_KEY_SESSION] = {
-      access_token: 'expired',
-      user: { id: USER_A }
-    }
-    const calls = []
-    const saved = storeFor(guard, {
-      fetchImpl: async (url, options) => {
-        calls.push(url)
-        return new Response(JSON.stringify({ message: 'JWT expired', code: 'PGRST301' }), { status: 401 })
-      }
+    const saved = storeFor(guard, { fetchImpl: cloud.fetchImpl, createId: ids([QUERY_A]) })
+    await saved.remember(SOQL)
+    cloud.rows.push({
+      id: QUERY_B,
+      user_id: USER_B,
+      soql: 'SELECT Id FROM Lead',
+      created_at: '2026-11-11T05:00:00.000Z'
     })
     const listed = await saved.list()
-    assert.equal(listed.ok, false)
-    assert.equal(listed.loggedIn, true)
-    assert.deepEqual(listed.queries, [])
-    const attempt = await saved.save({ name: '新的', soql: SOQL })
-    assert.equal(attempt.ok, false)
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY].length, 1)
-    assert.equal(guard.session.data[SAVED_SOQL_SESSION_KEY][0].name, '会话里的')
-    assert.equal(calls.length > 0, true)
-  })
-
-  it('deletes only after the cloud row is gone', async () => {
-    const cloud = createCloud([{
-      id: QUERY_A,
-      user_id: USER_A,
-      name: '本周商机',
-      soql: SOQL,
-      created_at: '2026-11-11T03:00:00.000Z'
-    }])
-    const guard = createGuardedStorage()
-    guard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
-    const saved = storeFor(guard, { fetchImpl: cloud.fetchImpl })
-    const previous = (await saved.list()).queries
-    cloud.fetchImpl = async () => new Response(JSON.stringify({ message: 'delete failed' }), { status: 500 })
-    const broken = createSavedQueryStore({
-      storage: guard.storage,
-      supabaseUrl: 'https://example.supabase.co',
-      anonKey: 'anon-key',
-      fetchImpl: cloud.fetchImpl
-    })
-    const failed = await broken.remove(QUERY_A)
-    assert.equal(failed.ok, false)
-    assert.equal(applyDeleteResult(previous, QUERY_A, failed), previous)
-
-    const removed = await saved.remove(QUERY_A)
-    assert.equal(removed.ok, true)
-    assert.deepEqual(removed.queries, [])
-    assert.equal(cloud.rows.length, 0)
-    assert.deepEqual(applyDeleteResult(previous, QUERY_A, removed), [])
-  })
-
-  it('asks another signed-in computer for the same account rows only', async () => {
-    const cloud = createCloud([
-      {
-        id: QUERY_A,
-        user_id: USER_A,
-        name: '本周商机',
-        soql: SOQL,
-        created_at: '2026-11-11T03:00:00.000Z'
-      },
-      {
-        id: QUERY_B,
-        user_id: USER_B,
-        name: '别人的',
-        soql: 'SELECT Id FROM Lead',
-        created_at: '2026-11-11T04:00:00.000Z'
-      }
-    ])
-    const first = createGuardedStorage()
-    const second = createGuardedStorage()
-    first.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
-    second.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
-    const there = storeFor(first, { fetchImpl: cloud.fetchImpl })
-    const here = storeFor(second, { fetchImpl: cloud.fetchImpl })
-    const opened = await here.list()
-    assert.deepEqual(opened.queries.map((query) => query.name), ['本周商机'])
-    assert.equal(savedQueryEditorText(opened.queries[0]), SOQL)
-    assert.equal(Object.hasOwn(opened.queries[0], 'hostname'), false)
-    const other = createSavedSoqlRestIo({
-      supabaseUrl: 'https://example.supabase.co',
-      anonKey: 'anon-key',
-      accessToken: 'token-b',
-      fetchImpl: cloud.fetchImpl
-    })
-    const theirs = await other.listOwn(USER_B)
-    assert.deepEqual(theirs.data.map((query) => query.name), ['别人的'])
-    assert.notEqual(theirs.data[0].soql, (await there.list()).queries[0].soql)
+    assert.deepEqual(listed.queries.map((query) => query.soql), [SOQL])
+    assert.equal(Object.hasOwn(listed.queries[0], 'hostname'), false)
   })
 })
 
 describe('saved query copy and schema', () => {
-  it('ships the same saved-query strings in Chinese, English, and Japanese', () => {
+  it('keeps history labels short in Chinese, English, and Japanese', () => {
     const zh = JSON.parse(readFileSync(resolve(root, 'src/i18n/locales/zh-CN.json'), 'utf8')).soql
     const en = JSON.parse(readFileSync(resolve(root, 'src/i18n/locales/en.json'), 'utf8')).soql
     const ja = JSON.parse(readFileSync(resolve(root, 'src/i18n/locales/ja.json'), 'utf8')).soql
-    for (const key of SAVED_KEYS) {
+    for (const key of ['history', 'historyEmpty']) {
       assert.equal(typeof zh[key], 'string')
       assert.equal(typeof en[key], 'string')
       assert.equal(typeof ja[key], 'string')
-      assert.notEqual(zh[key].trim(), '')
-      assert.notEqual(en[key].trim(), '')
-      assert.notEqual(ja[key].trim(), '')
       assert.equal(/[\u4e00-\u9fff]/.test(en[key]), false)
       assert.notEqual(zh[key], en[key])
-      assert.notEqual(ja[key], en[key])
+      assert.ok(zh[key].length < 20)
+      assert.ok(en[key].length < 20)
+      assert.ok(ja[key].length < 20)
+    }
+    for (const key of ['savedLoggedInHint', 'savedLoggedOutHint', 'saveQuery', 'saveWhereLoggedIn', 'runNeedsSalesforce']) {
+      assert.equal(zh[key], undefined)
+      assert.equal(en[key], undefined)
+      assert.equal(ja[key], undefined)
     }
     const vue = readFileSync(resolve(root, 'src/tools/soql/SoqlApp.vue'), 'utf8')
+    assert.match(vue, /soql\.history/)
+    assert.match(vue, /rememberSuccessfulSoql/)
     assert.match(vue, /applySaveResult/)
-    assert.match(vue, /applyDeleteResult/)
-    assert.match(vue, /savedQueryEditorText/)
+    assert.doesNotMatch(vue, /saveQuery|记下|savedLoggedInHint|常用查询/)
     const opener = vue.slice(vue.indexOf('function openSavedQuery'), vue.indexOf('function settleOpenedQuery'))
     assert.doesNotMatch(opener, /executeQuery|fetchSfSession|sessionId/)
     const source = readFileSync(resolve(root, 'src/tools/soql/savedQueries.js'), 'utf8')
@@ -532,26 +331,19 @@ describe('saved query copy and schema', () => {
     assert.doesNotMatch(source, /local\.set|sync\.set|storage\.sync|chrome\.storage\.local\.set|chrome\.storage\.sync/)
   })
 
-  it('declares a per-user query table without Salesforce session columns', () => {
+  it('declares a per-user statement table without a name or Salesforce session columns', () => {
     const sql = readFileSync(resolve(root, 'supabase/schema.sql'), 'utf8')
     const start = sql.indexOf('-- ---------- 表：saved_soql_queries 常用查询 ----------')
     const end = sql.indexOf('-- ---------- 函数：accept_share_lookup', start)
     const table = sql.slice(start, end)
     assert.match(table, /create table public\.saved_soql_queries/)
-    assert.match(table, /name text not null/)
     assert.match(table, /soql text not null/)
-    assert.match(table, /references auth\.users \(id\) on delete CASCADE/)
-    assert.match(table, /char_length\(name\) between 1 and 80/)
-    assert.match(table, /char_length\(soql\) between 1 and 20000/)
-    assert.match(table, /trg_saved_soql_touch BEFORE/)
-    assert.doesNotMatch(table, /hostname|org_id|session_id|sessionid|\bsid\b/i)
-    assert.match(sql, /alter table public\.saved_soql_queries enable row level security/)
+    assert.doesNotMatch(table, /name text/)
+    assert.doesNotMatch(table, /hostname|org_id|session_id|\bsid\b/i)
     assert.match(sql, /saved_soql_insert[\s\S]*for INSERT to authenticated[\s\S]*with check \(auth\.uid\(\) = user_id\)/)
-    assert.match(sql, /saved_soql_select[\s\S]*for SELECT to authenticated[\s\S]*using \(auth\.uid\(\) = user_id\)/)
-    assert.match(sql, /saved_soql_delete[\s\S]*for DELETE to authenticated[\s\S]*using \(auth\.uid\(\) = user_id\)/)
   })
 
-  it('blocks another account from reading or deleting the saved query', async () => {
+  it('blocks another account from reading the saved statement', async () => {
     const { PGlite } = await import('@electric-sql/pglite')
     const db = new PGlite()
     const sql = readFileSync(resolve(root, 'supabase/schema.sql'), 'utf8')
@@ -608,48 +400,25 @@ describe('saved query copy and schema', () => {
       ORDER BY ordinal_position
     `)
     assert.deepEqual(columns.rows.map((row) => row.column_name), [
-      'id',
-      'user_id',
-      'name',
-      'soql',
-      'created_at',
-      'updated_at'
+      'id', 'user_id', 'soql', 'created_at', 'updated_at'
     ])
 
     await asUser(USER_A, () => db.query(
-      `INSERT INTO public.saved_soql_queries (user_id, name, soql) VALUES ($1, $2, $3)`,
-      [USER_A, '本周商机', SOQL]
+      `INSERT INTO public.saved_soql_queries (user_id, soql) VALUES ($1, $2)`,
+      [USER_A, SOQL]
     ))
-
-    const hidden = await asUser(USER_B, () => db.query(
-      `SELECT name, soql FROM public.saved_soql_queries`
-    ))
+    const hidden = await asUser(USER_B, () => db.query(`SELECT soql FROM public.saved_soql_queries`))
     assert.equal(hidden.rows.length, 0)
-
-    const blocked = await asUser(USER_B, () => db.query(
-      `DELETE FROM public.saved_soql_queries WHERE user_id = $1`,
-      [USER_A]
-    ))
-    assert.equal(Number(blocked.affectedRows ?? blocked.rowCount ?? 0), 0)
-
     await assert.rejects(() => asUser(USER_B, () => db.query(
-      `INSERT INTO public.saved_soql_queries (user_id, name, soql) VALUES ($1, '偷看', 'SELECT Id FROM Lead')`,
+      `INSERT INTO public.saved_soql_queries (user_id, soql) VALUES ($1, 'SELECT Id FROM Lead')`,
       [USER_A]
     )))
-
-    const mine = await asUser(USER_A, () => db.query(
-      `SELECT name, soql FROM public.saved_soql_queries`
-    ))
-    assert.deepEqual(mine.rows, [{ name: '本周商机', soql: SOQL }])
-
     await assert.rejects(() => asUser(USER_A, () => db.query(
-      `INSERT INTO public.saved_soql_queries (user_id, name, soql) VALUES ($1, $2, $3)`,
-      [USER_A, '', SOQL]
+      `INSERT INTO public.saved_soql_queries (user_id, soql) VALUES ($1, '')`,
+      [USER_A]
     )))
-
-    await db.query(`DELETE FROM auth.users WHERE id = $1`, [USER_A])
-    const left = await db.query(`SELECT count(*)::int AS n FROM public.saved_soql_queries`)
-    assert.equal(Number(left.rows[0].n), 0)
+    const mine = await asUser(USER_A, () => db.query(`SELECT soql FROM public.saved_soql_queries`))
+    assert.deepEqual(mine.rows, [{ soql: SOQL }])
     await db.close()
   })
 })

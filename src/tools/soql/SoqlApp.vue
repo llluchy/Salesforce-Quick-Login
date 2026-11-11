@@ -23,49 +23,6 @@
       </div>
     </header>
 
-    <section class="saved-soql" :aria-label="t('soql.savedTitle')">
-      <div class="saved-soql-bar">
-        <span class="saved-soql-title">{{ t('soql.savedTitle') }}</span>
-        <button
-          type="button"
-          class="btn btn-sm"
-          :disabled="!canSaveQuery || savingQuery"
-          @click="openSaveDialog"
-        >{{ savingQuery ? t('soql.savingQuery') : t('soql.saveQuery') }}</button>
-        <p v-if="savedAuthKnown" class="saved-soql-hint">
-          {{ loggedIntoExtension ? t('soql.savedLoggedInHint') : t('soql.savedLoggedOutHint') }}
-        </p>
-      </div>
-      <p v-if="savedLoadError && !savedQueries.length" class="error-text saved-soql-error">{{ t('soql.loadFailed') }}</p>
-      <p v-else-if="!savedQueries.length" class="saved-soql-empty">{{ t('soql.savedEmpty') }}</p>
-      <ul v-else class="saved-soql-list">
-        <li
-          v-for="item in savedQueries"
-          :key="item.id"
-          :class="['saved-soql-item', { active: savedQueryIsOpen(item) }]"
-        >
-          <button
-            type="button"
-            class="saved-soql-open"
-            :title="t('soql.openSaved', { name: item.name })"
-            @click="openSavedQuery(item)"
-          >{{ item.name }}</button>
-          <button
-            type="button"
-            class="saved-soql-delete"
-            :aria-label="t('soql.deleteSaved', { name: item.name })"
-            :disabled="deletingSaved"
-            @click="savedDeleteTarget = item"
-          >×</button>
-        </li>
-      </ul>
-      <div v-if="pendingSavedSoql && !selectedEnv" class="saved-soql-opened">
-        <span class="saved-soql-preview-label">{{ t('soql.savedPreviewLabel') }}</span>
-        <pre class="saved-soql-preview">{{ pendingSavedSoql }}</pre>
-        <p class="saved-soql-hint">{{ t('soql.runNeedsSalesforce') }}</p>
-      </div>
-    </section>
-
     <div v-if="!selectedEnv" class="soql-empty">
       <div class="empty-card">
         <h2>{{ t('soql.emptyTitle') }}</h2>
@@ -125,18 +82,13 @@
             <button type="button" class="btn btn-sm" :disabled="!soqlText.trim()" @click="copySoql">{{ t('soql.copy') }}</button>
             <button
               type="button"
-              class="btn btn-sm"
-              :disabled="!canSaveQuery || savingQuery"
-              @click="openSaveDialog"
-            >{{ savingQuery ? t('soql.savingQuery') : t('soql.saveQuery') }}</button>
-            <button
-              type="button"
               class="btn btn-primary btn-sm"
               :disabled="!canExecute || executing"
               @click="executeQuery"
             >
               {{ executing ? t('soql.executing') : t('soql.execute') }}
             </button>
+            <button type="button" class="btn btn-sm" @click="historyOpen = true">{{ t('soql.history') }}</button>
             <button
               v-if="executing"
               type="button"
@@ -477,45 +429,15 @@
       </div>
     </Teleport>
     <Teleport to="body">
-      <div v-if="saveDialogOpen" class="confirm-overlay" @click.self="closeSaveDialog">
-        <div class="confirm-dialog" role="dialog" aria-modal="true" :aria-label="t('soql.saveQueryTitle')">
-          <h3>{{ t('soql.saveQueryTitle') }}</h3>
-          <p class="confirm-note">
-            {{ loggedIntoExtension ? t('soql.saveWhereLoggedIn') : t('soql.saveWhereLoggedOut') }}
-          </p>
-          <label class="confirm-label" :for="saveNameInputId">{{ t('soql.saveNameLabel') }}</label>
-          <input
-            :id="saveNameInputId"
-            ref="saveNameInput"
-            v-model="saveNameDraft"
-            class="confirm-input"
-            type="text"
-            maxlength="80"
-            :placeholder="t('soql.saveNamePlaceholder')"
-            :disabled="savingQuery"
-            @keydown.enter.prevent="confirmSaveQuery"
-          />
-          <div class="confirm-actions">
-            <button type="button" class="btn btn-sm" :disabled="savingQuery" @click="closeSaveDialog">{{ t('common.cancel') }}</button>
-            <button type="button" class="btn btn-primary btn-sm" :disabled="savingQuery" @click="confirmSaveQuery">
-              {{ savingQuery ? t('soql.savingQuery') : t('soql.saveConfirm') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <Teleport to="body">
-      <div v-if="savedDeleteTarget" class="confirm-overlay" @click.self="closeSavedDelete">
-        <div class="confirm-dialog" role="dialog" aria-modal="true">
-          <h3>{{ t('soql.confirmDeleteSavedTitle') }}</h3>
-          <p>{{ t('soql.confirmDeleteSavedBody', { name: savedDeleteTarget.name }) }}</p>
-          <div class="confirm-actions">
-            <button type="button" class="btn btn-sm" :disabled="deletingSaved" @click="closeSavedDelete">{{ t('common.cancel') }}</button>
-            <button type="button" class="btn btn-sm btn-stop" :disabled="deletingSaved" @click="confirmRemoveSavedQuery">
-              {{ deletingSaved ? t('soql.deleting') : t('soql.confirmDelete') }}
-            </button>
-          </div>
+      <div v-if="historyOpen" class="confirm-overlay" @click.self="historyOpen = false">
+        <div class="confirm-dialog history-dialog" role="dialog" aria-modal="true" :aria-label="t('soql.history')">
+          <h3>{{ t('soql.history') }}</h3>
+          <p v-if="!savedQueries.length" class="history-empty">{{ t('soql.historyEmpty') }}</p>
+          <ul v-else class="history-list">
+            <li v-for="item in savedQueries" :key="item.id">
+              <button type="button" class="history-item" @click="openSavedQuery(item)">{{ item.soql }}</button>
+            </li>
+          </ul>
         </div>
       </div>
     </Teleport>
@@ -544,7 +466,6 @@ import { parseManualSoql } from './parseManualSoql.js'
 import { STORAGE_KEY_SESSION } from '../../utils/constants.js'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../../utils/supabaseConfig.js'
 import {
-  applyDeleteResult,
   applySaveResult,
   createSavedQueryStore,
   savedQueryEditorText
@@ -562,30 +483,10 @@ const savedQueryStore = createSavedQueryStore({
   anonKey: SUPABASE_ANON_KEY
 })
 const savedQueries = ref([])
-const savedLoadError = ref(false)
 const savedAuthKnown = ref(false)
 const loggedIntoExtension = ref(false)
-const savingQuery = ref(false)
-const saveDialogOpen = ref(false)
-const saveNameDraft = ref('')
-const saveSoqlSnapshot = ref('')
-const saveNameInput = ref(null)
-const saveNameInputId = 'saved-soql-name'
+const historyOpen = ref(false)
 const pendingSavedSoql = ref('')
-const pendingSavedName = ref('')
-const savedDeleteTarget = ref(null)
-const deletingSaved = ref(false)
-
-const SAVED_ERROR_KEYS = {
-  'need-name': 'soql.saveNeedName',
-  'need-soql': 'soql.saveNeedSoql',
-  'name-too-long': 'soql.nameTooLong',
-  'soql-too-long': 'soql.soqlTooLong',
-  limit: 'soql.savedLimit',
-  'save-failed': 'soql.saveFailed',
-  'delete-failed': 'soql.deleteFailed',
-  'load-failed': 'soql.loadFailed'
-}
 
 const envs = ref([])
 const selectedEnvId = ref('')
@@ -699,7 +600,6 @@ let client = null
 const selectedEnv = computed(() => envs.value.find((e) => e.id === selectedEnvId.value) || null)
 
 const canExecute = computed(() => !!selectedEnv.value && !!soqlText.value.trim())
-const canSaveQuery = computed(() => savedAuthKnown.value && !!soqlText.value.trim())
 const canCountObject = computed(() => !!selectedEnv.value && !!parseManualSoql(soqlText.value, {}).objectName)
 /** 软上限只约束自动续拉；手动「继续加载」只要还有下一页就可用 */
 const canLoadMore = computed(
@@ -1912,21 +1812,26 @@ async function executeQuery() {
       await continueQueryPages(signal, runId, { maxRows: RESULT_SOFT_CAP, state })
     }
 
-    if (signal.aborted) {
-      toastOnTab(state, t('soql.queryCancelled', {
-        loaded: state.resultRows.length,
-        total: state.resultTotalSize ?? state.resultRows.length
-      }))
-    } else if (!state.resultDone && state.resultNextUrl) {
-      toastOnTab(state, t('soql.loadMoreCapped', {
-        loaded: state.resultRows.length,
-        total: state.resultTotalSize ?? state.resultRows.length
-      }))
+    if (signal.aborted || runId !== state.queryRunId) {
+      if (runId === state.queryRunId) {
+        toastOnTab(state, t('soql.queryCancelled', {
+          loaded: state.resultRows.length,
+          total: state.resultTotalSize ?? state.resultRows.length
+        }))
+      }
     } else {
-      toastOnTab(state, t('soql.rowsLoadedOfTotal', {
-        loaded: state.resultRows.length,
-        total: state.resultTotalSize ?? state.resultRows.length
-      }))
+      await rememberSuccessfulSoql(soql)
+      if (!state.resultDone && state.resultNextUrl) {
+        toastOnTab(state, t('soql.loadMoreCapped', {
+          loaded: state.resultRows.length,
+          total: state.resultTotalSize ?? state.resultRows.length
+        }))
+      } else {
+        toastOnTab(state, t('soql.rowsLoadedOfTotal', {
+          loaded: state.resultRows.length,
+          total: state.resultTotalSize ?? state.resultRows.length
+        }))
+      }
     }
   } catch (e) {
     if (runId !== state.queryRunId) return
@@ -1961,29 +1866,12 @@ watch(currentObject, () => {
   objectCountHint.value = ''
 })
 
-function savedErrorText(code) {
-  return t(SAVED_ERROR_KEYS[code] || 'soql.saveFailed')
-}
-
-function savedQueryIsOpen(item) {
-  const text = savedQueryEditorText(item)
-  if (!text) return false
-  if (pendingSavedSoql.value && pendingSavedSoql.value === text) return true
-  return soqlText.value.trim() === text
-}
-
 function openSavedQuery(item) {
   const soql = savedQueryEditorText(item)
   if (!soql) return
+  historyOpen.value = false
   pendingSavedSoql.value = soql
-  pendingSavedName.value = typeof item?.name === 'string' ? item.name : ''
-  if (selectedEnv.value) {
-    const name = pendingSavedName.value
-    settleOpenedQuery()
-    showToast(t('soql.openedSaved', { name }))
-    return
-  }
-  showToast(t('soql.runNeedsSalesforce'), 'info')
+  if (selectedEnv.value) settleOpenedQuery()
 }
 
 function settleOpenedQuery() {
@@ -1996,10 +1884,7 @@ function settleOpenedQuery() {
   state.countingTotal = false
   state.soqlText = pendingSavedSoql.value
   state.soqlEditorOpen = true
-  if (pendingSavedName.value) {
-    state.title = pendingSavedName.value
-    state.titled = true
-  }
+  nameTabFromQuery(state)
   state.resultColumns = []
   state.resultRows = []
   state.resultDone = true
@@ -2011,7 +1896,6 @@ function settleOpenedQuery() {
   state.errorMessage = ''
   state.objectCountHint = ''
   pendingSavedSoql.value = ''
-  pendingSavedName.value = ''
 }
 
 async function refreshSavedQueries() {
@@ -2022,94 +1906,32 @@ async function refreshSavedQueries() {
     result = { ok: false, loggedIn: loggedIntoExtension.value }
   }
   if (!result?.ok) {
-    savedLoadError.value = true
     if (!savedAuthKnown.value || !!result?.loggedIn !== loggedIntoExtension.value) {
       savedQueries.value = []
-      loggedIntoExtension.value = !!result?.loggedIn
     }
+    loggedIntoExtension.value = !!result?.loggedIn
     savedAuthKnown.value = true
     return
   }
-  savedLoadError.value = false
   loggedIntoExtension.value = !!result.loggedIn
   savedAuthKnown.value = true
   savedQueries.value = result.queries
 }
 
+async function rememberSuccessfulSoql(soql) {
+  const previous = savedQueries.value.slice()
+  let result
+  try {
+    result = await savedQueryStore.remember(soql)
+  } catch {
+    result = { ok: false }
+  }
+  savedQueries.value = applySaveResult(previous, result)
+}
+
 function onSavedQueryAuthChanged(changes, area) {
   if (area !== 'local' || !changes?.[STORAGE_KEY_SESSION]) return
   refreshSavedQueries()
-}
-
-function openSaveDialog() {
-  const soql = soqlText.value.trim()
-  if (!soql || savingQuery.value) return
-  saveSoqlSnapshot.value = soql
-  const objectName = parseManualSoql(soql, {}).objectName || ''
-  saveNameDraft.value = objectName.slice(0, 80)
-  saveDialogOpen.value = true
-  nextTick(() => saveNameInput.value?.focus())
-}
-
-function closeSaveDialog() {
-  if (savingQuery.value) return
-  saveDialogOpen.value = false
-}
-
-async function confirmSaveQuery() {
-  if (savingQuery.value) return
-  const previous = savedQueries.value.slice()
-  savingQuery.value = true
-  let result
-  try {
-    result = await savedQueryStore.save({
-      name: saveNameDraft.value,
-      soql: saveSoqlSnapshot.value
-    })
-  } catch {
-    result = { ok: false, error: 'save-failed' }
-  }
-  const next = applySaveResult(previous, result)
-  savedQueries.value = next
-  savingQuery.value = false
-  if (next === previous) {
-    showToast(savedErrorText(result?.error), 'error')
-    return
-  }
-  loggedIntoExtension.value = !!result.loggedIn
-  savedAuthKnown.value = true
-  savedLoadError.value = false
-  saveDialogOpen.value = false
-  saveNameDraft.value = ''
-  showToast(t('soql.savedOk', { name: result.saved.name }))
-}
-
-function closeSavedDelete() {
-  if (deletingSaved.value) return
-  savedDeleteTarget.value = null
-}
-
-async function confirmRemoveSavedQuery() {
-  const target = savedDeleteTarget.value
-  if (!target || deletingSaved.value) return
-  const previous = savedQueries.value.slice()
-  deletingSaved.value = true
-  let result
-  try {
-    result = await savedQueryStore.remove(target.id)
-  } catch {
-    result = { ok: false, error: 'delete-failed' }
-  }
-  const next = applyDeleteResult(previous, target.id, result)
-  savedQueries.value = next
-  deletingSaved.value = false
-  if (next === previous) {
-    showToast(savedErrorText(result?.error || 'delete-failed'), 'error')
-    return
-  }
-  savedDeleteTarget.value = null
-  loggedIntoExtension.value = !!result.loggedIn
-  showToast(t('soql.deletedSaved', { name: target.name }))
 }
 
 function onPreferEnvironmentMessage(message) {
@@ -3559,142 +3381,42 @@ select.cell-editor {
   color: #fff;
 }
 
-.saved-soql {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+.history-dialog {
+  width: min(640px, 100%);
 }
 
-.saved-soql-bar,
-.saved-soql-opened {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.saved-soql-title,
-.saved-soql-preview-label {
+.history-empty {
+  margin: 8px 0 0;
   font-size: 12px;
-  font-weight: 700;
-  color: var(--accent-deep);
-}
-
-.saved-soql-hint,
-.saved-soql-empty {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.45;
   color: var(--muted);
 }
 
-.saved-soql-hint {
-  flex: 1 1 220px;
-}
-
-.saved-soql-error {
-  margin: 0;
-}
-
-.saved-soql-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 76px;
-  margin: 0;
+.history-list {
+  margin: 8px 0 0;
   padding: 0;
-  overflow: auto;
   list-style: none;
 }
 
-.saved-soql-item {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  background: var(--soft);
+.history-item {
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
-}
-
-.saved-soql-item.active {
-  border-color: var(--accent);
-  background: #fff;
-}
-
-.saved-soql-open {
-  max-width: 220px;
-  padding: 4px 2px 4px 10px;
-  overflow: hidden;
-  border: 0;
-  background: transparent;
-  color: var(--accent-deep);
-  font-size: 12px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.saved-soql-delete {
-  padding: 4px 8px 4px 2px;
-  border: 0;
-  background: transparent;
-  color: #90a4ae;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.saved-soql-delete:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.saved-soql-preview {
-  flex: 1 1 240px;
-  max-height: 72px;
-  margin: 0;
-  padding: 6px 8px;
-  overflow: auto;
-  border: 1px dashed var(--border);
   border-radius: 6px;
   background: #fff;
   color: var(--text);
   font-family: Consolas, 'Courier New', monospace;
-  font-size: 11px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.confirm-note,
-.confirm-label {
-  margin: 0;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--muted);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: pointer;
 }
 
-.confirm-label {
-  display: block;
-  margin-top: 8px;
-  color: var(--accent-deep);
-  font-weight: 600;
-}
-
-.confirm-input {
-  box-sizing: border-box;
-  width: 100%;
-  margin: 6px 0 0;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
+.history-item:hover {
+  border-color: var(--accent);
+  background: var(--soft);
 }
 
 @media (max-width: 960px) {

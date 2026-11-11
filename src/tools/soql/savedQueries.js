@@ -1,12 +1,11 @@
-// 常用查询。已登录以 public.saved_soql_queries 为真相源；未登录只放 chrome.storage.session。
-// 不写入扩展的 local 或 sync。记录里只有名称和 SOQL，不含 Salesforce 会话。
+// 执行成功的查询。已登录以 public.saved_soql_queries 为真相源；未登录只放 chrome.storage.session。
+// 不写入扩展的 local 或 sync。记录里只有语句，不含名称、Salesforce 主机名或会话。
 
 import { STORAGE_KEY_SESSION } from '../../utils/constants.js'
 
 export const SAVED_SOQL_SESSION_KEY = 'sfql_saved_soql_session'
-export const SAVED_SOQL_NAME_MAX = 80
 export const SAVED_SOQL_TEXT_MAX = 20000
-export const SAVED_SOQL_MAX_COUNT = 100
+export const SAVED_SOQL_MAX_COUNT = 50
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -22,27 +21,22 @@ function toError(error) {
   return err
 }
 
-export function validateSavedQueryDraft({ name, soql }) {
-  const nextName = typeof name === 'string' ? name.trim() : ''
+export function validateSavedQueryDraft(soql) {
   const nextSoql = typeof soql === 'string' ? soql.trim() : ''
-  if (!nextName) return { ok: false, error: 'need-name' }
   if (!nextSoql) return { ok: false, error: 'need-soql' }
-  if (nextName.length > SAVED_SOQL_NAME_MAX) return { ok: false, error: 'name-too-long' }
   if (nextSoql.length > SAVED_SOQL_TEXT_MAX) return { ok: false, error: 'soql-too-long' }
-  return { ok: true, name: nextName, soql: nextSoql }
+  return { ok: true, soql: nextSoql }
 }
 
-/** 只保留能再次打开的字段。主机名、会话、Org 一律丢掉。 */
+/** 只保留能再次填回编辑区的字段。名称、主机名、会话、Org 一律丢掉。 */
 export function sanitizeSavedQuery(row) {
   if (!row || typeof row !== 'object') return null
   const id = typeof row.id === 'string' ? row.id.trim() : ''
-  const name = typeof row.name === 'string' ? row.name.trim() : ''
   const soql = typeof row.soql === 'string' ? row.soql.trim() : ''
   const createdRaw = row.createdAt ?? row.created_at
   const createdAt = typeof createdRaw === 'string' ? createdRaw : ''
-  if (!isUuid(id) || !name || !soql) return null
-  if (name.length > SAVED_SOQL_NAME_MAX || soql.length > SAVED_SOQL_TEXT_MAX) return null
-  return { id, name, soql, createdAt }
+  if (!isUuid(id) || !soql || soql.length > SAVED_SOQL_TEXT_MAX) return null
+  return { id, soql, createdAt }
 }
 
 export function savedQueryEditorText(item) {
@@ -55,6 +49,11 @@ function sortNewest(queries) {
     if (a.createdAt === b.createdAt) return a.id < b.id ? 1 : -1
     return a.createdAt < b.createdAt ? 1 : -1
   })
+}
+
+export function nextSavedQueries(current, saved) {
+  const rest = (Array.isArray(current) ? current : []).filter((query) => query.soql !== saved.soql && query.id !== saved.id)
+  return [saved, ...rest].slice(0, SAVED_SOQL_MAX_COUNT)
 }
 
 export async function readSessionQueries(sessionArea) {
@@ -73,14 +72,10 @@ export function applySaveResult(previous, result) {
   const prior = Array.isArray(previous) ? previous : []
   if (!result?.ok || !result.saved?.id) return prior
   const queries = Array.isArray(result.queries) ? result.queries : prior
-  return queries.some((query) => query.id === result.saved.id) ? queries : prior
-}
-
-export function applyDeleteResult(previous, id, result) {
-  const prior = Array.isArray(previous) ? previous : []
-  if (!result?.ok || !id) return prior
-  const queries = Array.isArray(result.queries) ? result.queries : prior
-  return queries.some((query) => query.id === id) ? prior : queries
+  const visible = queries.some((query) => query.id === result.saved.id && query.soql === result.saved.soql)
+  if (!visible || queries.length > SAVED_SOQL_MAX_COUNT) return prior
+  if (queries.filter((query) => query.soql === result.saved.soql).length !== 1) return prior
+  return queries
 }
 
 async function parseRest(res) {
@@ -93,7 +88,7 @@ async function parseRest(res) {
   }
   if (!res.ok) {
     throw toError({
-      message: body?.message || body?.error || `HTTP ${res.status}`,
+      message: body?.message || body?.error || body?.code || `HTTP ${res.status}`,
       code: body?.code,
       status: res.status
     })
@@ -118,7 +113,7 @@ export function createSavedSoqlRestIo({ supabaseUrl, anonKey, accessToken, fetch
   function listUrl(userId) {
     const params = new URLSearchParams()
     params.set('user_id', `eq.${userId}`)
-    params.set('select', 'id,name,soql,created_at')
+    params.set('select', 'id,soql,created_at')
     params.set('order', 'created_at.desc')
     return `${base}?${params.toString()}`
   }
@@ -141,7 +136,6 @@ export function createSavedSoqlRestIo({ supabaseUrl, anonKey, accessToken, fetch
           headers: { ...headers, Prefer: 'return=representation' },
           body: JSON.stringify({
             user_id: userId,
-            name: draft.name,
             soql: draft.soql
           })
         })
@@ -152,21 +146,23 @@ export function createSavedSoqlRestIo({ supabaseUrl, anonKey, accessToken, fetch
         return { data: null, error: toError(error) }
       }
     },
-    async deleteOwn(userId, id) {
+    async deleteOwn(userId, ids) {
+      const list = [...new Set((Array.isArray(ids) ? ids : [ids]).filter(isUuid))]
+      if (!list.length) return { data: [], error: null }
       try {
         const params = new URLSearchParams()
-        params.set('id', `eq.${id}`)
+        params.set('id', `in.(${list.join(',')})`)
         params.set('user_id', `eq.${userId}`)
         const res = await fetchFn(`${base}?${params.toString()}`, {
           method: 'DELETE',
           headers: { ...headers, Prefer: 'return=representation' }
         })
         const body = await parseRest(res)
-        const row = cloudRow(Array.isArray(body) ? body[0] : body)
-        if (!row || row.id !== id) {
+        const rows = (Array.isArray(body) ? body : []).map(cloudRow).filter(Boolean)
+        if (rows.length !== list.length || list.some((id) => !rows.some((row) => row.id === id))) {
           return { data: null, error: toError({ message: 'saved query not deleted' }) }
         }
-        return { data: row, error: null }
+        return { data: rows, error: null }
       } catch (error) {
         return { data: null, error: toError(error) }
       }
@@ -176,6 +172,10 @@ export function createSavedSoqlRestIo({ supabaseUrl, anonKey, accessToken, fetch
 
 function failed(error, queries, loggedIn) {
   return { ok: false, error, queries: queries || [], loggedIn: !!loggedIn, saved: null }
+}
+
+function keptIds(current, saved) {
+  return new Set(nextSavedQueries(current, saved).map((query) => query.id))
 }
 
 export function createSavedQueryStore(options = {}) {
@@ -215,11 +215,11 @@ export function createSavedQueryStore(options = {}) {
     }
     const listed = await ioForSession(auth).listOwn(auth.userId)
     if (listed.error) return failed('load-failed', [], true)
-    return { ok: true, queries: listed.data, loggedIn: true, saved: null }
+    return { ok: true, queries: listed.data.slice(0, SAVED_SOQL_MAX_COUNT), loggedIn: true, saved: null }
   }
 
-  async function save(input) {
-    const draft = validateSavedQueryDraft(input || {})
+  async function remember(soql) {
+    const draft = validateSavedQueryDraft(soql)
     let auth = null
     try {
       auth = await resolveAuth()
@@ -243,18 +243,20 @@ export function createSavedQueryStore(options = {}) {
       } catch {
         return failed('save-failed', [], false)
       }
-      if (current.length >= SAVED_SOQL_MAX_COUNT) return failed('limit', current, false)
       const saved = sanitizeSavedQuery({
         id: createId(),
-        name: draft.name,
         soql: draft.soql,
         createdAt: now()
       })
       if (!saved) return failed('save-failed', current, false)
+      const next = nextSavedQueries(current, saved)
+      const keep = keptIds(current, saved)
       try {
-        await storage.session.set({ [SAVED_SOQL_SESSION_KEY]: [saved, ...current] })
+        await storage.session.set({ [SAVED_SOQL_SESSION_KEY]: next })
         const verified = await readSessionQueries(storage.session)
-        if (!verified.some((query) => query.id === saved.id && query.soql === saved.soql && query.name === saved.name)) {
+        const same = verified.filter((query) => query.soql === saved.soql)
+        const dropped = current.some((query) => !keep.has(query.id) && verified.some((item) => item.id === query.id))
+        if (same.length !== 1 || same[0].id !== saved.id || verified.length > SAVED_SOQL_MAX_COUNT || dropped) {
           return failed('save-failed', current, false)
         }
         return { ok: true, queries: verified, loggedIn: false, saved }
@@ -266,58 +268,26 @@ export function createSavedQueryStore(options = {}) {
     const io = ioForSession(auth)
     const listed = await io.listOwn(auth.userId)
     if (listed.error) return failed('save-failed', [], true)
-    if (listed.data.length >= SAVED_SOQL_MAX_COUNT) return failed('limit', listed.data, true)
     const inserted = await io.insertOwn(auth.userId, draft)
     if (inserted.error || !inserted.data) return failed('save-failed', listed.data, true)
+    const next = nextSavedQueries(listed.data, inserted.data)
+    const dropIds = listed.data
+      .filter((query) => !next.some((item) => item.id === query.id))
+      .map((query) => query.id)
+    if (dropIds.length) {
+      const removed = await io.deleteOwn(auth.userId, dropIds)
+      if (removed.error) return failed('save-failed', listed.data, true)
+    }
     const again = await io.listOwn(auth.userId)
-    const queries = !again.error && again.data.some((query) => query.id === inserted.data.id)
-      ? again.data
-      : [inserted.data, ...listed.data.filter((query) => query.id !== inserted.data.id)]
-    if (!queries.some((query) => query.id === inserted.data.id)) {
+    if (again.error) return failed('save-failed', listed.data, true)
+    const queries = again.data.filter((query) => next.some((item) => item.id === query.id))
+    const same = queries.filter((query) => query.soql === inserted.data.soql)
+    const dropped = dropIds.some((id) => again.data.some((query) => query.id === id))
+    if (same.length !== 1 || same[0].id !== inserted.data.id || queries.length > SAVED_SOQL_MAX_COUNT || dropped) {
       return failed('save-failed', listed.data, true)
     }
     return { ok: true, queries, loggedIn: true, saved: inserted.data }
   }
 
-  async function remove(id) {
-    if (!isUuid(id)) return failed('delete-failed', [], false)
-    let auth = null
-    try {
-      auth = await resolveAuth()
-    } catch {
-      return failed('delete-failed', [], false)
-    }
-    if (!auth) {
-      if (!storage?.session?.get || !storage?.session?.set) return failed('delete-failed', [], false)
-      let current = []
-      try {
-        current = await readSessionQueries(storage.session)
-      } catch {
-        return failed('delete-failed', [], false)
-      }
-      if (!current.some((query) => query.id === id)) return failed('delete-failed', current, false)
-      const next = current.filter((query) => query.id !== id)
-      try {
-        await storage.session.set({ [SAVED_SOQL_SESSION_KEY]: next })
-        const verified = await readSessionQueries(storage.session)
-        if (verified.some((query) => query.id === id)) return failed('delete-failed', current, false)
-        return { ok: true, queries: verified, loggedIn: false, saved: null }
-      } catch {
-        return failed('delete-failed', current, false)
-      }
-    }
-    const io = ioForSession(auth)
-    const listed = await io.listOwn(auth.userId)
-    const current = listed.error ? [] : listed.data
-    const removed = await io.deleteOwn(auth.userId, id)
-    if (removed.error || !removed.data) return failed('delete-failed', current, true)
-    const again = await io.listOwn(auth.userId)
-    const queries = !again.error
-      ? again.data
-      : current.filter((query) => query.id !== id)
-    if (queries.some((query) => query.id === id)) return failed('delete-failed', current, true)
-    return { ok: true, queries, loggedIn: true, saved: null }
-  }
-
-  return { list, save, remove }
+  return { list, remember }
 }

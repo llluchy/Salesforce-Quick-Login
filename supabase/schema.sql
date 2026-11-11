@@ -101,19 +101,17 @@ update on user_metadata for EACH row
 execute FUNCTION touch_updated_at ();
 
 -- ---------- 表：saved_soql_queries 常用查询 ----------
--- 说明：扩展账户记下的查询名称和 SOQL。不含 Salesforce 主机名、Org 或会话。
+-- 说明：执行成功后留下的 SOQL。不含名称、Salesforce 主机名、Org 或会话。
 -- 换电脑后仍须在该电脑重新登录 Salesforce 才能执行。
 -- 本文件只备份结构，不改线上数据。
 create table public.saved_soql_queries (
   id uuid not null default gen_random_uuid (),
   user_id uuid not null,
-  name text not null,
   soql text not null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint saved_soql_queries_pkey primary key (id),
   constraint saved_soql_queries_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE,
-  constraint saved_soql_queries_name_len check (char_length(name) between 1 and 80),
   constraint saved_soql_queries_soql_len check (char_length(soql) between 1 and 20000)
 ) TABLESPACE pg_default;
 
