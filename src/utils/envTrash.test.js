@@ -322,6 +322,8 @@ describe('env trash copy', () => {
       ['trash', 'empty'],
       ['trash', 'restore'],
       ['trash', 'daysLeft'],
+      ['trash', 'accountLabel'],
+      ['trash', 'groupLabel'],
       ['trash', 'restored'],
       ['trash', 'expiredHint'],
       ['trash', 'shareUnaffected'],

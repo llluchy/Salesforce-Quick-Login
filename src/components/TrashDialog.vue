@@ -17,22 +17,36 @@
 
           <ul v-else class="trash-list">
             <li v-for="item in items" :key="item.id" class="trash-item">
-              <div class="trash-main">
-                <div class="trash-alias">{{ item.alias || t('common.unnamed') }}</div>
-                <div class="trash-meta">{{ item.username || t('env.noUsername') }}</div>
-                <div class="trash-meta">
-                  {{ t('trash.groupLabel') }}{{ groupName(item.groupId) }}
+              <div class="trash-top">
+                <div class="trash-alias" :title="item.alias || t('common.unnamed')">
+                  {{ item.alias || t('common.unnamed') }}
                 </div>
-                <div class="trash-days">{{ t('trash.daysLeft', { days: daysRemaining(item.deletedAt) }) }}</div>
+                <span class="trash-days">{{ t('trash.daysLeft', { days: daysRemaining(item.deletedAt) }) }}</span>
               </div>
-              <button
-                class="btn-restore"
-                type="button"
-                :disabled="restoringId === item.id"
-                @click="$emit('restore', item.id)"
-              >
-                {{ restoringId === item.id ? t('trash.restoring') : t('trash.restore') }}
-              </button>
+              <div class="trash-facts">
+                <div class="trash-fact">
+                  <span class="trash-fact-label">{{ t('trash.accountLabel') }}</span>
+                  <span class="trash-fact-value" :title="item.username || t('env.noUsername')">
+                    {{ item.username || t('env.noUsername') }}
+                  </span>
+                </div>
+                <div class="trash-fact">
+                  <span class="trash-fact-label">{{ t('trash.groupLabel') }}</span>
+                  <span class="trash-fact-value" :title="groupName(item.groupId)">
+                    {{ groupName(item.groupId) }}
+                  </span>
+                </div>
+              </div>
+              <div class="trash-actions">
+                <button
+                  class="btn-restore"
+                  type="button"
+                  :disabled="restoringId === item.id"
+                  @click="$emit('restore', item.id)"
+                >
+                  {{ restoringId === item.id ? t('trash.restoring') : t('trash.restore') }}
+                </button>
+              </div>
             </li>
           </ul>
         </div>
@@ -181,30 +195,83 @@ function groupName(groupId) {
 
 .trash-item {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #bbdefb;
+  border-radius: 8px;
+}
+
+.trash-top {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px;
-  background: #ffffff;
-  border: 1px solid #bbdefb;
-  border-radius: 6px;
+  min-width: 0;
 }
 
 .trash-alias {
-  font-size: 13px;
-  font-weight: 600;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
   color: #0d47a1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.trash-meta,
 .trash-days {
-  font-size: 12px;
-  color: #546e7a;
-  margin-top: 2px;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff3e0;
+  border: 1px solid #ffe0b2;
+  color: #e65100;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.trash-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+}
+
+.trash-fact {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trash-fact-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #78909c;
+}
+
+.trash-fact-value {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
+  color: #263238;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trash-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .btn-restore {
-  flex: 0 0 auto;
   padding: 6px 10px;
   border: 1px solid #1976d2;
   border-radius: 4px;
