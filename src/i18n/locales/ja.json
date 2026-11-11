@@ -85,6 +85,16 @@
     "shareTitle": "環境を共有",
     "accountTitle": "アカウント"
   },
+  "envSearch": {
+    "label": "環境を検索",
+    "placeholder": "エイリアスまたはユーザー名で検索",
+    "clear": "クリア",
+    "noMatch": "エイリアスにもユーザー名にも一致する環境がありません"
+  },
+  "settings": {
+    "open": "設定を開く",
+    "title": "設定"
+  },
   "toolFloat": {
     "title": "ページのフローティングバー",
     "hint": "Salesforce ページの右端にツール入口を表示します",

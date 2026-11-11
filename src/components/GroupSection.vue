@@ -49,6 +49,10 @@ const props = defineProps({
   groups: {
     type: Array,
     default: () => []
+  },
+  dragEnabled: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -70,12 +74,12 @@ const contentRef = ref(null)
 let sortableInstance = null
 
 const initSortable = () => {
-  if (!contentRef.value) return
-
   if (sortableInstance) {
     sortableInstance.destroy()
     sortableInstance = null
   }
+
+  if (!props.dragEnabled || !contentRef.value) return
 
   sortableInstance = new Sortable(contentRef.value, {
     group: {
@@ -141,6 +145,12 @@ onBeforeUnmount(() => {
 })
 
 watch(() => props.environments.length, () => {
+  nextTick(() => {
+    initSortable()
+  })
+})
+
+watch(() => props.dragEnabled, () => {
   nextTick(() => {
     initSortable()
   })

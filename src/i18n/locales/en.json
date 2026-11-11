@@ -85,6 +85,16 @@
     "shareTitle": "Share environments",
     "accountTitle": "Account"
   },
+  "envSearch": {
+    "label": "Search environments",
+    "placeholder": "Search by alias or username",
+    "clear": "Clear",
+    "noMatch": "No alias or username matches"
+  },
+  "settings": {
+    "open": "Open settings",
+    "title": "Settings"
+  },
   "toolFloat": {
     "title": "Page float bar",
     "hint": "Show the tool rail on the right edge of Salesforce pages",

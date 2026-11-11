@@ -85,6 +85,16 @@
     "shareTitle": "环境分享",
     "accountTitle": "账户管理"
   },
+  "envSearch": {
+    "label": "搜索环境",
+    "placeholder": "按别名或账号搜索",
+    "clear": "清空",
+    "noMatch": "没有别名或账号对得上的环境"
+  },
+  "settings": {
+    "open": "打开设置",
+    "title": "设置"
+  },
   "toolFloat": {
     "title": "页面浮动栏",
     "hint": "在 Salesforce 页面右侧显示工具入口",
