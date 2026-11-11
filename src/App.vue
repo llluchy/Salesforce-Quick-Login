@@ -1126,16 +1126,23 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #bbdefb;
 }
 
+.env-search-field,
+.env-search-clear {
+  box-sizing: border-box;
+  height: 28px;
+  margin: 0;
+  border: 1px solid #bbdefb;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
 .env-search-field {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  background: #ffffff;
-  border: 1px solid #bbdefb;
-  border-radius: 4px;
-  padding: 4px 8px;
+  padding: 0 8px;
 }
 
 .env-search-field:focus-within {
@@ -1143,19 +1150,30 @@ onBeforeUnmount(() => {
 }
 
 .env-search-icon {
+  display: block;
   flex: none;
+  width: 14px;
+  height: 14px;
   color: #1976d2;
 }
 
 .env-search-input {
   flex: 1;
+  align-self: center;
   min-width: 0;
+  height: 16px;
+  margin: 0;
+  padding: 0;
   border: none;
   outline: none;
   background: transparent;
   color: #0d47a1;
+  font-family: inherit;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  transform: translateY(-1px);
 }
 
 .env-search-input::placeholder {
@@ -1164,14 +1182,17 @@ onBeforeUnmount(() => {
 
 .env-search-clear {
   flex: none;
-  border: 1px solid #bbdefb;
-  border-radius: 4px;
-  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
   color: #0d47a1;
+  font-family: inherit;
   font-size: 12px;
-  line-height: 1.4;
-  padding: 4px 8px;
+  line-height: 1;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .env-search-clear:hover {
