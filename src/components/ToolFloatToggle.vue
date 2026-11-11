@@ -67,6 +67,15 @@ function onToggle() {
   border: 1px solid #bbdefb;
 }
 
+.float-toggle-modal {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
 .float-toggle-row {
   display: flex;
   align-items: center;

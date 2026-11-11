@@ -21,6 +21,7 @@
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="12" r="2"/><circle cx="14" cy="6" r="2"/><circle cx="14" cy="14" r="2"/><line x1="8" y1="11" x2="12" y2="7"/><line x1="8" y1="13" x2="12" y2="13"/></svg>
       <span>{{ t('toolbar.share') }}</span>
     </button>
+    <SettingsGear variant="action" />
     <button class="btn-action btn-account" @click="$emit('account')" :title="t('toolbar.accountTitle')">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="7" r="3"/><path d="M3 17a7 7 0 0114 0"/></svg>
     </button>
@@ -30,6 +31,7 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from './LocaleSwitcher.vue'
+import SettingsGear from './SettingsGear.vue'
 
 const { t } = useI18n()
 

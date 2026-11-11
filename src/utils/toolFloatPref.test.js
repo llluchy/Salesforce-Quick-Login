@@ -21,6 +21,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const USER_A = '11111111-1111-4111-8111-111111111111'
 const USER_B = '22222222-2222-4222-8222-222222222222'
 const FLOAT_KEYS = ['title', 'hint', 'switchLabel', 'syncFailed']
+const SETTINGS_KEYS = ['open', 'title']
 
 function pick(data, keys) {
   if (keys == null) return { ...data }
@@ -422,12 +423,48 @@ describe('i18n and wiring', () => {
       assert.equal(values.size, 3, key)
     }
 
+    const settingsBundles = locales.map((locale) => locale.messages.settings)
+    for (const bundle of settingsBundles) {
+      assert.deepEqual(Object.keys(bundle).sort(), [...SETTINGS_KEYS].sort())
+      for (const key of SETTINGS_KEYS) {
+        assert.equal(typeof bundle[key], 'string')
+        assert.ok(bundle[key].trim().length > 0)
+      }
+    }
+    for (const key of SETTINGS_KEYS) {
+      const values = new Set(settingsBundles.map((bundle) => bundle[key]))
+      assert.equal(values.size, 3, key)
+    }
+
     const vue = readFileSync(resolve(root, 'src/components/ToolFloatToggle.vue'), 'utf8')
     for (const key of FLOAT_KEYS) {
       assert.match(vue, new RegExp(`t\\('toolFloat\\.${key}'\\)`))
     }
     const template = vue.slice(vue.indexOf('<template>'), vue.indexOf('</template>'))
     assert.doesNotMatch(template, /[\u3400-\u9fff]/)
+    assert.match(vue, /\.float-toggle-modal/)
+
+    const gear = readFileSync(resolve(root, 'src/components/SettingsGear.vue'), 'utf8')
+    assert.match(gear, /t\('settings\.open'\)/)
+    assert.match(gear, /t\('settings\.title'\)/)
+    assert.match(gear, /<ToolFloatToggle variant="modal" \/>/)
+    assert.match(gear, /role="dialog"/)
+    const gearTemplate = gear.slice(gear.indexOf('<template>'), gear.indexOf('</template>'))
+    assert.doesNotMatch(gearTemplate, /[\u3400-\u9fff]/)
+
+    const auth = readFileSync(resolve(root, 'src/components/AuthScreen.vue'), 'utf8')
+    const localeBlock = auth.slice(auth.indexOf('class="auth-locale"'), auth.indexOf('auth-header'))
+    assert.ok(localeBlock.indexOf('<SettingsGear') !== -1)
+    assert.ok(localeBlock.indexOf('<SettingsGear') < localeBlock.indexOf('<LocaleSwitcher'))
+    assert.doesNotMatch(auth, /<ToolFloatToggle/)
+
+    const toolbar = readFileSync(resolve(root, 'src/components/Toolbar.vue'), 'utf8')
+    const gearAt = toolbar.indexOf('<SettingsGear')
+    const accountAt = toolbar.indexOf('btn-account')
+    assert.ok(gearAt !== -1 && accountAt !== -1 && gearAt < accountAt)
+
+    const app = readFileSync(resolve(root, 'src/App.vue'), 'utf8')
+    assert.doesNotMatch(app, /ToolFloatToggle/)
 
     const content = readFileSync(resolve(root, 'content.js'), 'utf8')
     assert.match(content, /action: 'getToolFloatVisible'/)
@@ -440,8 +477,6 @@ describe('i18n and wiring', () => {
     for (const src of [pref, controller, composable]) {
       assert.doesNotMatch(src, /chrome\.storage\.local\.set|chrome\.storage\.sync|storage\.sync/)
     }
-    assert.match(readFileSync(resolve(root, 'src/App.vue'), 'utf8'), /<ToolFloatToggle/)
-    assert.match(readFileSync(resolve(root, 'src/components/AuthScreen.vue'), 'utf8'), /<ToolFloatToggle/)
   })
 })
 
