@@ -2,12 +2,14 @@ import { createI18n } from 'vue-i18n'
 import zhCN from './locales/zh-CN.json'
 import en from './locales/en.json'
 import ja from './locales/ja.json'
+import {
+  DEFAULT_LOCALE,
+  LOCALE_PREF_SYSTEM,
+  SUPPORTED_LOCALES,
+  effectiveLocale
+} from '../utils/localePref.js'
 
-export const LOCALE_STORAGE_KEY = 'ui_locale'
-export const SUPPORTED_LOCALES = ['zh-CN', 'en', 'ja']
-export const DEFAULT_LOCALE = 'zh-CN'
-/** Preference: follow browser, or a fixed locale */
-export const LOCALE_PREF_SYSTEM = 'system'
+export { DEFAULT_LOCALE, LOCALE_PREF_SYSTEM, SUPPORTED_LOCALES }
 
 const UNGROUPED_NAMES = new Set(['未选择分组', 'Ungrouped', '未分類'])
 
@@ -25,18 +27,6 @@ export const i18n = createI18n({
 /** Translate outside setup() (composables, App script). */
 export function t(key, ...args) {
   return i18n.global.t(key, ...args)
-}
-
-export function getLocalePreference() {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.local.get([LOCALE_STORAGE_KEY], (result) => {
-        resolve(result[LOCALE_STORAGE_KEY] || LOCALE_PREF_SYSTEM)
-      })
-    } catch {
-      resolve(LOCALE_PREF_SYSTEM)
-    }
-  })
 }
 
 export function mapBrowserLanguage(lang) {
@@ -71,37 +61,29 @@ export function applyDocumentLang(locale) {
 }
 
 /**
- * Resolve effective locale from preference and apply to vue-i18n.
- * @returns {Promise<{ preference: string, locale: string }>}
+ * 已登录读账号上的语言；未登录只读本次浏览器会话。不读 local / sync。
+ * @returns {Promise<{ ok?: boolean, preference: string, locale: string }>}
  */
 export async function resolveLocale() {
-  const preference = await getLocalePreference()
-  const locale =
-    preference === LOCALE_PREF_SYSTEM || !SUPPORTED_LOCALES.includes(preference)
-      ? detectBrowserLocale()
-      : preference
-  i18n.global.locale.value = locale
-  applyDocumentLang(locale)
-  return { preference, locale }
+  const { refreshLocale } = await import('../composables/useLocale.js')
+  return refreshLocale()
 }
 
-/**
- * Persist preference and apply. preference: 'system' | 'zh-CN' | 'en' | 'ja'
- */
+/** preference: 'system' | 'zh-CN' | 'en' | 'ja'。保存失败时界面停在上次成功的语言。 */
 export async function setLocalePreference(preference) {
-  const pref = preference || LOCALE_PREF_SYSTEM
-  try {
-    await chrome.storage.local.set({ [LOCALE_STORAGE_KEY]: pref })
-  } catch {
-    /* ignore */
+  const { setLocale } = await import('../composables/useLocale.js')
+  const result = await setLocale(preference)
+  const pref = result?.preference || LOCALE_PREF_SYSTEM
+  return {
+    ok: result?.ok === true,
+    preference: pref,
+    locale: effectiveLocale(pref, detectBrowserLocale())
   }
-  const locale =
-    pref === LOCALE_PREF_SYSTEM || !SUPPORTED_LOCALES.includes(pref)
-      ? detectBrowserLocale()
-      : pref
-  i18n.global.locale.value = locale
-  applyDocumentLang(locale)
-  return { preference: pref, locale }
+}
+
+export async function getLocalePreference() {
+  const { getLocale } = await import('../composables/useLocale.js')
+  return getLocale()
 }
 
 /** Display label for group names; maps stored default ungrouped name. */

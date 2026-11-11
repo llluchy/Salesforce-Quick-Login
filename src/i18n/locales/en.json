@@ -16,7 +16,8 @@
     "system": "Follow system",
     "zhCN": "中文",
     "en": "English",
-    "ja": "日本語"
+    "ja": "日本語",
+    "saveFailed": "Language was not saved. Still using the last saved language."
   },
   "type": {
     "production": "Production",

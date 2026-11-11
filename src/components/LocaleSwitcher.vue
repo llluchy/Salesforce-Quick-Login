@@ -3,7 +3,7 @@
     <button
       type="button"
       class="locale-trigger"
-      :title="t('locale.label')"
+      :title="failed ? t('locale.saveFailed') : t('locale.label')"
       :aria-label="t('locale.label')"
       :aria-expanded="open"
       @click.stop="toggle"
@@ -20,13 +20,15 @@
           :key="opt.code"
           type="button"
           class="locale-option"
-          :class="{ active: effectiveLocale === opt.code }"
+          :class="{ active: preference === opt.code }"
+          :disabled="saving"
           @click="select(opt.code)"
         >
           <span class="locale-flag">{{ opt.flag }}</span>
           <span class="locale-text">{{ opt.label }}</span>
-          <span v-if="effectiveLocale === opt.code" class="locale-check" aria-hidden="true">✓</span>
+          <span v-if="preference === opt.code" class="locale-check" aria-hidden="true">✓</span>
         </button>
+        <p v-if="failed" class="locale-error" role="alert">{{ t('locale.saveFailed') }}</p>
       </div>
     </Transition>
   </div>
@@ -35,13 +37,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import {
-  detectBrowserLocale,
-  getLocalePreference,
-  LOCALE_PREF_SYSTEM,
-  SUPPORTED_LOCALES,
-  setLocalePreference
-} from '../i18n'
+import { LOCALE_PREF_SYSTEM, SUPPORTED_LOCALES } from '../i18n'
+import { useLocale } from '../composables/useLocale'
 
 defineProps({
   /** light: 登录页浅色底；dark: 蓝色工具栏 */
@@ -53,11 +50,12 @@ defineProps({
 })
 
 const { t, locale } = useI18n()
+const { preference, failed, saving, refresh, setLocale } = useLocale()
 const open = ref(false)
 const rootRef = ref(null)
-const preference = ref(LOCALE_PREF_SYSTEM)
 
 const options = computed(() => [
+  { code: LOCALE_PREF_SYSTEM, flag: '🌐', abbr: 'A', label: t('locale.system') },
   { code: 'zh-CN', flag: '🇨🇳', abbr: '中', label: t('locale.zhCN') },
   { code: 'en', flag: '🇺🇸', abbr: 'EN', label: t('locale.en') },
   { code: 'ja', flag: '🇯🇵', abbr: '日', label: t('locale.ja') }
@@ -66,7 +64,7 @@ const options = computed(() => [
 const effectiveLocale = computed(() => {
   const pref = preference.value
   if (pref === LOCALE_PREF_SYSTEM || !SUPPORTED_LOCALES.includes(pref)) {
-    return locale.value || detectBrowserLocale()
+    return locale.value
   }
   return pref
 })
@@ -75,18 +73,18 @@ const currentOption = computed(() => {
   return options.value.find((o) => o.code === effectiveLocale.value) || options.value[0]
 })
 
-async function refreshPreference() {
-  preference.value = await getLocalePreference()
-}
-
 function toggle() {
   open.value = !open.value
 }
 
 async function select(code) {
-  preference.value = code
-  await setLocalePreference(code)
-  open.value = false
+  if (saving.value) return
+  if (code === preference.value) {
+    open.value = false
+    return
+  }
+  const result = await setLocale(code)
+  if (result?.ok) open.value = false
 }
 
 function onDocPointerDown(e) {
@@ -96,7 +94,7 @@ function onDocPointerDown(e) {
 }
 
 onMounted(async () => {
-  await refreshPreference()
+  await refresh()
   document.addEventListener('pointerdown', onDocPointerDown)
 })
 
@@ -225,6 +223,18 @@ onBeforeUnmount(() => {
 .locale-check {
   font-size: 12px;
   color: #1976d2;
+}
+
+.locale-option:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.locale-error {
+  margin: 4px 6px 2px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #c62828;
 }
 
 .locale-pop-enter-active,
