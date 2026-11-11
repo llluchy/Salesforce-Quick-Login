@@ -1,6 +1,7 @@
 <template>
   <div class="auth-container">
     <div class="auth-locale">
+      <SettingsGear variant="light" />
       <LocaleSwitcher variant="light" />
     </div>
     <!-- 顶部品牌区 -->
@@ -15,7 +16,7 @@
       <p class="auth-subtitle">{{ subtitleText }}</p>
     </div>
 
-    <ToolFloatToggle variant="auth" />
+    <PanelTools variant="auth" />
 
     <!-- 已登录账户提示（仅在 session 存在但需解锁时显示） -->
     <div class="auth-user-info" v-if="hasSession">
@@ -152,7 +153,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '../composables/useAuth'
 import LocaleSwitcher from './LocaleSwitcher.vue'
-import ToolFloatToggle from './ToolFloatToggle.vue'
+import SettingsGear from './SettingsGear.vue'
+import PanelTools from './PanelTools.vue'
 
 const emit = defineEmits(['authed'])
 
@@ -327,6 +329,9 @@ onMounted(() => {
   position: absolute;
   top: 10px;
   right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .auth-header {

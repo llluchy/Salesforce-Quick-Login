@@ -1638,7 +1638,17 @@ function cropImage(dataUrl, x, y, width, height) {
   }
 
   try {
-    chrome.runtime.onMessage.addListener((request) => {
+    chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+      if (request?.action === 'openObjectSearch') {
+        if (window.top !== window) return;
+        try {
+          openObjectSearchModal();
+          sendResponse({ success: true });
+        } catch (error) {
+          sendResponse({ success: false, error: error?.message || String(error) });
+        }
+        return;
+      }
       if (request?.action !== 'toolFloatVisibility') return;
       if (typeof request.visible !== 'boolean') return;
       railEpoch += 1;
