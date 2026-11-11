@@ -146,14 +146,11 @@ async function openTool(toolId) {
 <style scoped>
 .panel-tools {
   box-sizing: border-box;
-  border: 1px solid #bbdefb;
-  border-radius: 8px;
   background: #ffffff;
-  padding: 8px 10px;
+  padding: 8px;
 }
 
 .panel-tools-app {
-  margin: 8px 12px 0;
 }
 
 .panel-tools-auth {
