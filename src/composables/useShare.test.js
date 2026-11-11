@@ -30,7 +30,7 @@ const SENT_KEYS = [
   'sentHint',
   'sentLoading',
   'sentEmpty',
-  'sentCodeLabel',
+  'envLabel',
   'sentNoAlias',
   'aliasSeparator',
   'remainingExpired',

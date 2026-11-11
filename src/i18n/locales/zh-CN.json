@@ -198,7 +198,7 @@
     "sentHint": "这里是你发出、对方还没有收下的分享，以及还剩多久。作废后，原来的码不能再被收下。已经收下的环境保持原样。",
     "sentLoading": "加载中...",
     "sentEmpty": "没有对方还没收下的分享",
-    "sentCodeLabel": "分享码",
+    "envLabel": "环境",
     "sentNoAlias": "（未记录环境名称）",
     "aliasSeparator": "、",
     "remainingExpired": "已过期，对方不能再收下",

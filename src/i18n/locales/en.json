@@ -198,7 +198,7 @@
     "sentHint": "Shares you sent that have not been accepted yet, and how long they remain. After you void one, that code can no longer be accepted. Environments already accepted stay as they are.",
     "sentLoading": "Loading...",
     "sentEmpty": "No shares are waiting to be accepted",
-    "sentCodeLabel": "Share code",
+    "envLabel": "Environment",
     "sentNoAlias": "(No environment name recorded)",
     "aliasSeparator": ", ",
     "remainingExpired": "Expired. It can no longer be accepted.",

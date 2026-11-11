@@ -80,14 +80,18 @@
             <div v-else-if="pendingView.length === 0 && !errorMessage" class="empty-tip">{{ t('share.sentEmpty') }}</div>
             <div v-else-if="pendingView.length > 0" class="sent-list">
               <div v-for="item in pendingView" :key="item.id" class="sent-item">
-                <div class="sent-code">
-                  <span class="sent-code-label">{{ t('share.sentCodeLabel') }}</span>
-                  <span class="sent-code-digits">{{ item.shareCode }}</span>
+                <div class="sent-head">
+                  <div class="sent-main">
+                    <div class="sent-code-digits">{{ item.shareCode }}</div>
+                    <div class="sent-aliases">
+                      <span class="sent-meta-label">{{ t('share.envLabel') }}</span>
+                      <span class="sent-meta-value">{{ aliasText(item) }}</span>
+                    </div>
+                  </div>
+                  <div :class="['sent-remaining', { expired: item.expired }]">{{ remainingText(item) }}</div>
                 </div>
-                <div class="sent-aliases">{{ aliasText(item) }}</div>
-                <div :class="['sent-remaining', { expired: item.expired }]">{{ remainingText(item) }}</div>
 
-                <div v-if="confirmingId === item.id" class="revoke-confirm">
+                <div v-if="confirmingId === item.id" class="sent-foot">
                   <p class="revoke-hint">{{ t('share.revokeHint') }}</p>
                   <div class="sent-actions">
                     <button
@@ -106,14 +110,16 @@
                     </button>
                   </div>
                 </div>
-                <div v-else class="sent-actions">
-                  <button
-                    class="btn-danger-outline"
-                    @click="confirmingId = item.id"
-                    :disabled="!!revokingId"
-                  >
-                    {{ t('share.revoke') }}
-                  </button>
+                <div v-else class="sent-foot">
+                  <div class="sent-actions">
+                    <button
+                      class="btn-danger-outline"
+                      @click="confirmingId = item.id"
+                      :disabled="!!revokingId"
+                    >
+                      {{ t('share.revoke') }}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -205,7 +211,7 @@ const confirmingId = ref('')
 watch(confirmingId, async (id) => {
   if (!id) return
   await nextTick()
-  document.querySelector('.revoke-confirm')?.scrollIntoView({ block: 'nearest' })
+  document.querySelector('.sent-foot')?.scrollIntoView({ block: 'nearest' })
 })
 const revokingId = ref('')
 const nowTick = ref(Date.now())
@@ -671,57 +677,95 @@ const handleRevoke = async (item) => {
 }
 
 .sent-item {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid #dbe7f5;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
 }
 
-.sent-code {
+.sent-head {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #1f2937;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sent-main {
+  min-width: 0;
+  flex: 1;
 }
 
 .sent-code-digits {
-  font-family: 'Courier New', monospace;
-  letter-spacing: 2px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1d4ed8;
+  font-variant-numeric: tabular-nums;
 }
 
 .sent-aliases {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #4b5563;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.sent-meta-label {
+  color: #94a3b8;
+}
+
+.sent-meta-value {
+  color: #111827;
+  font-weight: 600;
   word-break: break-word;
 }
 
 .sent-remaining {
-  margin-top: 4px;
+  flex: none;
+  max-width: 46%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #fdba74;
+  background: #fff7ed;
+  color: #c2410c;
   font-size: 12px;
-  color: #0369a1;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .sent-remaining.expired {
-  color: #b45309;
+  border-color: #d1d5db;
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
-.revoke-confirm {
-  margin-top: 8px;
+.sent-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .revoke-hint {
-  margin: 0 0 8px;
+  align-self: stretch;
+  margin: 0;
   font-size: 12px;
   line-height: 1.5;
   color: #92400e;
+  text-align: left;
 }
 
 .sent-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .btn-danger,
