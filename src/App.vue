@@ -1,6 +1,6 @@
 <template>
   <div class="shell">
-    <!-- 工具入口已迁至 Salesforce 页面浮动栏；Side Panel 仅保留登录与环境管理 -->
+    <!-- 页面栏关掉后，面板里仍可打开日志和查询；栏开着时页面入口保留 -->
     <div class="main-panel">
       <AuthScreen v-if="!isAuthed" @authed="onAuthed" />
       <div v-else class="app-container">
@@ -13,6 +13,8 @@
           @share="shareDialogVisible = true"
           @account="accountDialogVisible = true"
         />
+
+        <PanelTools variant="app" />
 
         <div class="env-list" ref="envListRef">
           <GroupSection
@@ -182,6 +184,7 @@ import Toast from './components/Toast.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import AccountDialog from './components/AccountDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
+import PanelTools from './components/PanelTools.vue'
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
