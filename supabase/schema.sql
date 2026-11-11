@@ -100,6 +100,29 @@ create trigger trg_user_metadata_touch BEFORE
 update on user_metadata for EACH row
 execute FUNCTION touch_updated_at ();
 
+-- ---------- 表：saved_soql_queries 常用查询 ----------
+-- 说明：扩展账户记下的查询名称和 SOQL。不含 Salesforce 主机名、Org 或会话。
+-- 换电脑后仍须在该电脑重新登录 Salesforce 才能执行。
+-- 本文件只备份结构，不改线上数据。
+create table public.saved_soql_queries (
+  id uuid not null default gen_random_uuid (),
+  user_id uuid not null,
+  name text not null,
+  soql text not null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint saved_soql_queries_pkey primary key (id),
+  constraint saved_soql_queries_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE,
+  constraint saved_soql_queries_name_len check (char_length(name) between 1 and 80),
+  constraint saved_soql_queries_soql_len check (char_length(soql) between 1 and 20000)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_saved_soql_user on public.saved_soql_queries using btree (user_id, created_at desc) TABLESPACE pg_default;
+
+create trigger trg_saved_soql_touch BEFORE
+update on saved_soql_queries for EACH row
+execute FUNCTION touch_updated_at ();
+
 -- ---------- 函数：accept_share_lookup 接受分享查询 ----------
 -- 说明：根据分享码+验证码查询有效分享记录，SECURITY DEFINER 绕过 RLS 读取
 CREATE OR REPLACE FUNCTION public.accept_share_lookup(p_share_code text, p_verify_code text)
@@ -155,7 +178,7 @@ END;
 $function$
 
 -- ---------- 函数：touch_updated_at 自动更新 updated_at ----------
--- 说明：environments、groups、user_metadata 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
+-- 说明：environments、groups、user_metadata、saved_soql_queries 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
 CREATE OR REPLACE FUNCTION public.touch_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -228,3 +251,19 @@ create policy "user_metadata_update" on public.user_metadata
   as PERMISSIVE for UPDATE to authenticated
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- saved_soql_queries：仅本人可读写自己记下的查询
+alter table public.saved_soql_queries enable row level security;
+create policy "saved_soql_select" on public.saved_soql_queries
+  as PERMISSIVE for SELECT to authenticated
+  using (auth.uid() = user_id);
+create policy "saved_soql_insert" on public.saved_soql_queries
+  as PERMISSIVE for INSERT to authenticated
+  with check (auth.uid() = user_id);
+create policy "saved_soql_update" on public.saved_soql_queries
+  as PERMISSIVE for UPDATE to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+create policy "saved_soql_delete" on public.saved_soql_queries
+  as PERMISSIVE for DELETE to authenticated
+  using (auth.uid() = user_id);

@@ -23,6 +23,49 @@
       </div>
     </header>
 
+    <section class="saved-soql" :aria-label="t('soql.savedTitle')">
+      <div class="saved-soql-bar">
+        <span class="saved-soql-title">{{ t('soql.savedTitle') }}</span>
+        <button
+          type="button"
+          class="btn btn-sm"
+          :disabled="!canSaveQuery || savingQuery"
+          @click="openSaveDialog"
+        >{{ savingQuery ? t('soql.savingQuery') : t('soql.saveQuery') }}</button>
+        <p v-if="savedAuthKnown" class="saved-soql-hint">
+          {{ loggedIntoExtension ? t('soql.savedLoggedInHint') : t('soql.savedLoggedOutHint') }}
+        </p>
+      </div>
+      <p v-if="savedLoadError && !savedQueries.length" class="error-text saved-soql-error">{{ t('soql.loadFailed') }}</p>
+      <p v-else-if="!savedQueries.length" class="saved-soql-empty">{{ t('soql.savedEmpty') }}</p>
+      <ul v-else class="saved-soql-list">
+        <li
+          v-for="item in savedQueries"
+          :key="item.id"
+          :class="['saved-soql-item', { active: savedQueryIsOpen(item) }]"
+        >
+          <button
+            type="button"
+            class="saved-soql-open"
+            :title="t('soql.openSaved', { name: item.name })"
+            @click="openSavedQuery(item)"
+          >{{ item.name }}</button>
+          <button
+            type="button"
+            class="saved-soql-delete"
+            :aria-label="t('soql.deleteSaved', { name: item.name })"
+            :disabled="deletingSaved"
+            @click="savedDeleteTarget = item"
+          >×</button>
+        </li>
+      </ul>
+      <div v-if="pendingSavedSoql && !selectedEnv" class="saved-soql-opened">
+        <span class="saved-soql-preview-label">{{ t('soql.savedPreviewLabel') }}</span>
+        <pre class="saved-soql-preview">{{ pendingSavedSoql }}</pre>
+        <p class="saved-soql-hint">{{ t('soql.runNeedsSalesforce') }}</p>
+      </div>
+    </section>
+
     <div v-if="!selectedEnv" class="soql-empty">
       <div class="empty-card">
         <h2>{{ t('soql.emptyTitle') }}</h2>
@@ -80,6 +123,12 @@
               :disabled="!limitEnabled"
             />
             <button type="button" class="btn btn-sm" :disabled="!soqlText.trim()" @click="copySoql">{{ t('soql.copy') }}</button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              :disabled="!canSaveQuery || savingQuery"
+              @click="openSaveDialog"
+            >{{ savingQuery ? t('soql.savingQuery') : t('soql.saveQuery') }}</button>
             <button
               type="button"
               class="btn btn-primary btn-sm"
@@ -427,6 +476,50 @@
         </div>
       </div>
     </Teleport>
+    <Teleport to="body">
+      <div v-if="saveDialogOpen" class="confirm-overlay" @click.self="closeSaveDialog">
+        <div class="confirm-dialog" role="dialog" aria-modal="true" :aria-label="t('soql.saveQueryTitle')">
+          <h3>{{ t('soql.saveQueryTitle') }}</h3>
+          <p class="confirm-note">
+            {{ loggedIntoExtension ? t('soql.saveWhereLoggedIn') : t('soql.saveWhereLoggedOut') }}
+          </p>
+          <label class="confirm-label" :for="saveNameInputId">{{ t('soql.saveNameLabel') }}</label>
+          <input
+            :id="saveNameInputId"
+            ref="saveNameInput"
+            v-model="saveNameDraft"
+            class="confirm-input"
+            type="text"
+            maxlength="80"
+            :placeholder="t('soql.saveNamePlaceholder')"
+            :disabled="savingQuery"
+            @keydown.enter.prevent="confirmSaveQuery"
+          />
+          <div class="confirm-actions">
+            <button type="button" class="btn btn-sm" :disabled="savingQuery" @click="closeSaveDialog">{{ t('common.cancel') }}</button>
+            <button type="button" class="btn btn-primary btn-sm" :disabled="savingQuery" @click="confirmSaveQuery">
+              {{ savingQuery ? t('soql.savingQuery') : t('soql.saveConfirm') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div v-if="savedDeleteTarget" class="confirm-overlay" @click.self="closeSavedDelete">
+        <div class="confirm-dialog" role="dialog" aria-modal="true">
+          <h3>{{ t('soql.confirmDeleteSavedTitle') }}</h3>
+          <p>{{ t('soql.confirmDeleteSavedBody', { name: savedDeleteTarget.name }) }}</p>
+          <div class="confirm-actions">
+            <button type="button" class="btn btn-sm" :disabled="deletingSaved" @click="closeSavedDelete">{{ t('common.cancel') }}</button>
+            <button type="button" class="btn btn-sm btn-stop" :disabled="deletingSaved" @click="confirmRemoveSavedQuery">
+              {{ deletingSaved ? t('soql.deleting') : t('soql.confirmDelete') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <ToolToast
       :visible="toastVisible"
       :message="toastMessage"
@@ -448,12 +541,51 @@ import { openObjectDetailTab } from '../_shared/toolWindows.js'
 import { activePicklistOptions, valueKind } from './soqlWhere.js'
 import { flattenSoqlRecord } from './flattenSoqlRecord.js'
 import { parseManualSoql } from './parseManualSoql.js'
+import { STORAGE_KEY_SESSION } from '../../utils/constants.js'
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../../utils/supabaseConfig.js'
+import {
+  applyDeleteResult,
+  applySaveResult,
+  createSavedQueryStore,
+  savedQueryEditorText
+} from './savedQueries.js'
 import { buildSoqlSuggestions } from './soqlSuggest/index.js'
 import { mapDescribe } from './soqlSuggest/relationships.js'
 import '../_shared/toolThemes.css'
 
 const { t } = useI18n()
 const { toastVisible, toastMessage, toastType, showToast, closeToast } = useToolToast()
+
+const savedQueryStore = createSavedQueryStore({
+  storage: typeof chrome !== 'undefined' ? chrome.storage : undefined,
+  supabaseUrl: SUPABASE_URL,
+  anonKey: SUPABASE_ANON_KEY
+})
+const savedQueries = ref([])
+const savedLoadError = ref(false)
+const savedAuthKnown = ref(false)
+const loggedIntoExtension = ref(false)
+const savingQuery = ref(false)
+const saveDialogOpen = ref(false)
+const saveNameDraft = ref('')
+const saveSoqlSnapshot = ref('')
+const saveNameInput = ref(null)
+const saveNameInputId = 'saved-soql-name'
+const pendingSavedSoql = ref('')
+const pendingSavedName = ref('')
+const savedDeleteTarget = ref(null)
+const deletingSaved = ref(false)
+
+const SAVED_ERROR_KEYS = {
+  'need-name': 'soql.saveNeedName',
+  'need-soql': 'soql.saveNeedSoql',
+  'name-too-long': 'soql.nameTooLong',
+  'soql-too-long': 'soql.soqlTooLong',
+  limit: 'soql.savedLimit',
+  'save-failed': 'soql.saveFailed',
+  'delete-failed': 'soql.deleteFailed',
+  'load-failed': 'soql.loadFailed'
+}
 
 const envs = ref([])
 const selectedEnvId = ref('')
@@ -567,6 +699,7 @@ let client = null
 const selectedEnv = computed(() => envs.value.find((e) => e.id === selectedEnvId.value) || null)
 
 const canExecute = computed(() => !!selectedEnv.value && !!soqlText.value.trim())
+const canSaveQuery = computed(() => savedAuthKnown.value && !!soqlText.value.trim())
 const canCountObject = computed(() => !!selectedEnv.value && !!parseManualSoql(soqlText.value, {}).objectName)
 /** 软上限只约束自动续拉；手动「继续加载」只要还有下一页就可用 */
 const canLoadMore = computed(
@@ -1024,6 +1157,7 @@ async function refreshEnvs() {
     errorMessage.value = e.message || String(e)
   } finally {
     loadingEnvs.value = false
+    settleOpenedQuery()
   }
 }
 
@@ -1146,6 +1280,7 @@ async function onEnvChange() {
   clearFieldSuggestions()
   describeCache.clear()
   describeFailed.clear()
+  settleOpenedQuery()
   await connectSelectedEnv()
 }
 
@@ -1683,10 +1818,12 @@ async function countObjectRows() {
   }
   state.countingTotal = true
   state.errorMessage = ''
+  const epoch = state.openEpoch || 0
   // 不碰 soqlText / 结果区
   try {
     await refreshSessionIfNeeded()
     const total = await client.countQuery(countSoql)
+    if (epoch !== (state.openEpoch || 0)) return
     const label = state.currentObject?.label || state.currentObject?.name
     state.objectCountHint = t('soql.objectCountHint', {
       object: label,
@@ -1694,9 +1831,10 @@ async function countObjectRows() {
     })
     toastOnTab(state, t('soql.countResult', { total }))
   } catch (e) {
+    if (epoch !== (state.openEpoch || 0)) return
     state.errorMessage = e.message || String(e)
   } finally {
-    state.countingTotal = false
+    if (epoch === (state.openEpoch || 0)) state.countingTotal = false
   }
 }
 
@@ -1712,6 +1850,7 @@ async function loadMoreResults() {
   try {
     await refreshSessionIfNeeded()
     await continueQueryPages(signal, runId, { maxRows: batchTarget, state })
+    if (runId !== state.queryRunId) return
     if (signal.aborted) {
       toastOnTab(state, t('soql.queryCancelled', {
         loaded: state.resultRows.length,
@@ -1729,6 +1868,7 @@ async function loadMoreResults() {
       }))
     }
   } catch (e) {
+    if (runId !== state.queryRunId) return
     if (isAbortError(e)) {
       toastOnTab(state, t('soql.queryCancelled', {
         loaded: state.resultRows.length,
@@ -1789,6 +1929,7 @@ async function executeQuery() {
       }))
     }
   } catch (e) {
+    if (runId !== state.queryRunId) return
     if (isAbortError(e)) {
       toastOnTab(state, t('soql.queryCancelled', {
         loaded: state.resultRows.length,
@@ -1820,6 +1961,157 @@ watch(currentObject, () => {
   objectCountHint.value = ''
 })
 
+function savedErrorText(code) {
+  return t(SAVED_ERROR_KEYS[code] || 'soql.saveFailed')
+}
+
+function savedQueryIsOpen(item) {
+  const text = savedQueryEditorText(item)
+  if (!text) return false
+  if (pendingSavedSoql.value && pendingSavedSoql.value === text) return true
+  return soqlText.value.trim() === text
+}
+
+function openSavedQuery(item) {
+  const soql = savedQueryEditorText(item)
+  if (!soql) return
+  pendingSavedSoql.value = soql
+  pendingSavedName.value = typeof item?.name === 'string' ? item.name : ''
+  if (selectedEnv.value) {
+    const name = pendingSavedName.value
+    settleOpenedQuery()
+    showToast(t('soql.openedSaved', { name }))
+    return
+  }
+  showToast(t('soql.runNeedsSalesforce'), 'info')
+}
+
+function settleOpenedQuery() {
+  if (!selectedEnv.value || !pendingSavedSoql.value) return
+  const state = activeState()
+  abortWorkspace(state)
+  state.queryRunId += 1
+  state.openEpoch = (state.openEpoch || 0) + 1
+  state.executing = false
+  state.countingTotal = false
+  state.soqlText = pendingSavedSoql.value
+  state.soqlEditorOpen = true
+  if (pendingSavedName.value) {
+    state.title = pendingSavedName.value
+    state.titled = true
+  }
+  state.resultColumns = []
+  state.resultRows = []
+  state.resultDone = true
+  state.resultTotalSize = null
+  state.resultNextUrl = ''
+  state.cellEdits = {}
+  state.selectedCell = null
+  state.editingCell = null
+  state.errorMessage = ''
+  state.objectCountHint = ''
+  pendingSavedSoql.value = ''
+  pendingSavedName.value = ''
+}
+
+async function refreshSavedQueries() {
+  let result
+  try {
+    result = await savedQueryStore.list()
+  } catch {
+    result = { ok: false, loggedIn: loggedIntoExtension.value }
+  }
+  if (!result?.ok) {
+    savedLoadError.value = true
+    if (!savedAuthKnown.value || !!result?.loggedIn !== loggedIntoExtension.value) {
+      savedQueries.value = []
+      loggedIntoExtension.value = !!result?.loggedIn
+    }
+    savedAuthKnown.value = true
+    return
+  }
+  savedLoadError.value = false
+  loggedIntoExtension.value = !!result.loggedIn
+  savedAuthKnown.value = true
+  savedQueries.value = result.queries
+}
+
+function onSavedQueryAuthChanged(changes, area) {
+  if (area !== 'local' || !changes?.[STORAGE_KEY_SESSION]) return
+  refreshSavedQueries()
+}
+
+function openSaveDialog() {
+  const soql = soqlText.value.trim()
+  if (!soql || savingQuery.value) return
+  saveSoqlSnapshot.value = soql
+  const objectName = parseManualSoql(soql, {}).objectName || ''
+  saveNameDraft.value = objectName.slice(0, 80)
+  saveDialogOpen.value = true
+  nextTick(() => saveNameInput.value?.focus())
+}
+
+function closeSaveDialog() {
+  if (savingQuery.value) return
+  saveDialogOpen.value = false
+}
+
+async function confirmSaveQuery() {
+  if (savingQuery.value) return
+  const previous = savedQueries.value.slice()
+  savingQuery.value = true
+  let result
+  try {
+    result = await savedQueryStore.save({
+      name: saveNameDraft.value,
+      soql: saveSoqlSnapshot.value
+    })
+  } catch {
+    result = { ok: false, error: 'save-failed' }
+  }
+  const next = applySaveResult(previous, result)
+  savedQueries.value = next
+  savingQuery.value = false
+  if (next === previous) {
+    showToast(savedErrorText(result?.error), 'error')
+    return
+  }
+  loggedIntoExtension.value = !!result.loggedIn
+  savedAuthKnown.value = true
+  savedLoadError.value = false
+  saveDialogOpen.value = false
+  saveNameDraft.value = ''
+  showToast(t('soql.savedOk', { name: result.saved.name }))
+}
+
+function closeSavedDelete() {
+  if (deletingSaved.value) return
+  savedDeleteTarget.value = null
+}
+
+async function confirmRemoveSavedQuery() {
+  const target = savedDeleteTarget.value
+  if (!target || deletingSaved.value) return
+  const previous = savedQueries.value.slice()
+  deletingSaved.value = true
+  let result
+  try {
+    result = await savedQueryStore.remove(target.id)
+  } catch {
+    result = { ok: false, error: 'delete-failed' }
+  }
+  const next = applyDeleteResult(previous, target.id, result)
+  savedQueries.value = next
+  deletingSaved.value = false
+  if (next === previous) {
+    showToast(savedErrorText(result?.error || 'delete-failed'), 'error')
+    return
+  }
+  savedDeleteTarget.value = null
+  loggedIntoExtension.value = !!result.loggedIn
+  showToast(t('soql.deletedSaved', { name: target.name }))
+}
+
 function onPreferEnvironmentMessage(message) {
   if (message?.action !== 'toolPreferEnvironment' || message.toolId !== 'soql') return
   pagePrefer.value = {
@@ -1831,10 +2123,12 @@ function onPreferEnvironmentMessage(message) {
 
 onMounted(() => {
   refreshEnvs()
+  refreshSavedQueries()
   window.addEventListener('scroll', closeCtxOnScroll, true)
   document.addEventListener('pointerdown', onDocPointerDown, true)
   try {
     chrome.runtime?.onMessage?.addListener(onPreferEnvironmentMessage)
+    chrome.storage?.onChanged?.addListener(onSavedQueryAuthChanged)
   } catch {
     /* ignore */
   }
@@ -1846,6 +2140,7 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   try {
     chrome.runtime?.onMessage?.removeListener(onPreferEnvironmentMessage)
+    chrome.storage?.onChanged?.removeListener(onSavedQueryAuthChanged)
   } catch {
     /* ignore */
   }
@@ -3262,6 +3557,144 @@ select.cell-editor {
 .btn-light:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.3);
   color: #fff;
+}
+
+.saved-soql {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.saved-soql-bar,
+.saved-soql-opened {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.saved-soql-title,
+.saved-soql-preview-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-deep);
+}
+
+.saved-soql-hint,
+.saved-soql-empty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.saved-soql-hint {
+  flex: 1 1 220px;
+}
+
+.saved-soql-error {
+  margin: 0;
+}
+
+.saved-soql-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 76px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.saved-soql-item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.saved-soql-item.active {
+  border-color: var(--accent);
+  background: #fff;
+}
+
+.saved-soql-open {
+  max-width: 220px;
+  padding: 4px 2px 4px 10px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--accent-deep);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.saved-soql-delete {
+  padding: 4px 8px 4px 2px;
+  border: 0;
+  background: transparent;
+  color: #90a4ae;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.saved-soql-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.saved-soql-preview {
+  flex: 1 1 240px;
+  max-height: 72px;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.confirm-note,
+.confirm-label {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.confirm-label {
+  display: block;
+  margin-top: 8px;
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+.confirm-input {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
 }
 
 @media (max-width: 960px) {
