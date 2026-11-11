@@ -85,6 +85,10 @@
     "shareTitle": "環境を共有",
     "accountTitle": "アカウント"
   },
+  "settings": {
+    "open": "設定を開く",
+    "title": "設定"
+  },
   "toolFloat": {
     "title": "ページのフローティングバー",
     "hint": "Salesforce ページの右端にツール入口を表示します",

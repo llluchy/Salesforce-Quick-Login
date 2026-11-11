@@ -85,6 +85,10 @@
     "shareTitle": "Share environments",
     "accountTitle": "Account"
   },
+  "settings": {
+    "open": "Open settings",
+    "title": "Settings"
+  },
   "toolFloat": {
     "title": "Page float bar",
     "hint": "Show the tool rail on the right edge of Salesforce pages",

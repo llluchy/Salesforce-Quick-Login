@@ -14,8 +14,6 @@
           @account="accountDialogVisible = true"
         />
 
-        <ToolFloatToggle variant="panel" />
-
         <div class="env-list" ref="envListRef">
           <GroupSection
             v-for="group in displayGroups"
@@ -182,7 +180,6 @@ import GroupModal from './components/GroupModal.vue'
 import DeleteModal from './components/DeleteModal.vue'
 import Toast from './components/Toast.vue'
 import AuthScreen from './components/AuthScreen.vue'
-import ToolFloatToggle from './components/ToolFloatToggle.vue'
 import AccountDialog from './components/AccountDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
 
