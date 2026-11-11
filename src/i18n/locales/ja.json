@@ -174,7 +174,7 @@
     "startReencrypt": "再暗号化を開始",
     "signOutTitle": "ログアウトの確認",
     "signOutConfirm": "本当にログアウトしますか？",
-    "signOutHint": "ローカルキャッシュは削除されます。次回は再ログインが必要です。",
+    "signOutHint": "ログアウトすると、このパソコンには各環境のアカウント、パスワード、認証器が残りません。クラウド上の環境はそのままで、再ログインすると一覧が戻ります。すでに開いている Salesforce のサイトはそのままです。",
     "signingOut": "ログアウト中...",
     "oldPasswordRequired": "現在のパスワードを入力してください",
     "newPasswordMin": "新しいパスワードは8文字以上にしてください",

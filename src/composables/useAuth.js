@@ -12,11 +12,12 @@ import { ref, readonly } from 'vue'
 import { getSupabase } from './useSupabase'
 import { deriveKey, generateSalt, bytesToBase64, exportKeyToJwk, importKeyFromJwk, getDeviceCode } from '../utils/crypto'
 import { STORAGE_KEY_SESSION } from '../utils/constants'
+import { CRYPTO_KEY_STORAGE_KEY, SESSION_ACCOUNT_SECRET_KEYS, clearLocalAccountSecrets } from '../utils/localAccountSecrets.js'
 import { signOutToolFloat } from '../utils/toolFloatPref.js'
 import { WELCOME_PAGE_URL, RECOVERY_PAGE_URL } from '../utils/supabaseConfig'
 import { t } from '../i18n'
 
-const CRYPTO_KEY_KEY = '__sf_crypto_key'
+const CRYPTO_KEY_KEY = CRYPTO_KEY_STORAGE_KEY
 const LAST_LOGIN_DATE_KEY = '__sf_last_login_date'
 const LOGIN_COUNT_KEY = '__sf_login_count'
 
@@ -55,6 +56,9 @@ function getStorage() {
       },
       set: async (obj) => {
         await chrome.storage.local.set(obj)
+      },
+      remove: async (keys) => {
+        await chrome.storage.local.remove(keys)
       }
     }
   }
@@ -74,6 +78,12 @@ function getStorage() {
     set: async (obj) => {
       for (const [k, v] of Object.entries(obj)) {
         try { localStorage.setItem(k, JSON.stringify(v)) } catch {}
+      }
+    },
+    remove: async (keys) => {
+      const keyArr = Array.isArray(keys) ? keys : [keys]
+      for (const k of keyArr) {
+        try { localStorage.removeItem(k) } catch {}
       }
     }
   }
@@ -169,6 +179,10 @@ async function loadCryptoKey() {
  */
 async function clearCryptoKey() {
   const s = getStorage()
+  if (typeof s.remove === 'function') {
+    await s.remove(CRYPTO_KEY_KEY)
+    return
+  }
   await s.set({ [CRYPTO_KEY_KEY]: null })
 }
 
@@ -201,12 +215,7 @@ async function exportUserKeyToSession() {
  */
 async function clearSessionKeys() {
   if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-    await chrome.storage.session.remove([
-      SESSION_KEY_USER_KEY_JWK,
-      SESSION_KEY_LOGGED_IN,
-      'sf_environments',
-      'pendingLoginEnv'
-    ])
+    await chrome.storage.session.remove(SESSION_ACCOUNT_SECRET_KEYS)
     log('session storage 已清除')
   }
 }
@@ -493,6 +502,9 @@ function ensureListener() {
       isAuthed.value = false
       clearSessionFromBg()
       clearSessionKeys()
+      // 只在真正退出时清本机环境机密。INITIAL_SESSION 暂时没有 session 时不清，
+      // 避免把还没从云端重新拉下来的离线列表删掉。
+      if (event === 'SIGNED_OUT') void clearLocalAccountSecrets()
       return
     }
 
@@ -703,10 +715,11 @@ async function signOut() {
     _saltBytes = null
     isAuthed.value = false
     isLoading.value = false
-    clearSessionFromBg()
-    clearUnlockRecord()
-    clearCryptoKey()
-    clearSessionKeys()
+    await clearLocalAccountSecrets()
+    await clearSessionFromBg()
+    await clearUnlockRecord()
+    await clearCryptoKey()
+    await clearSessionKeys()
     log('已登出')
   }
 }
@@ -760,9 +773,11 @@ async function getSession() {
       cryptoKey.value = null
       _saltBytes = null
       isAuthed.value = false
-      clearSessionFromBg()
-      clearUnlockRecord()
-      clearCryptoKey()
+      await clearLocalAccountSecrets()
+      await clearSessionFromBg()
+      await clearUnlockRecord()
+      await clearCryptoKey()
+      await clearSessionKeys()
       // 设置错误信息
       const errorMsg = t('auth.deviceMismatch')
       authError.value = errorMsg

@@ -945,10 +945,29 @@ const onAuthed = async () => {
   }
 }
 
+const onSignedOut = () => {
+  syncLog.info('App.onSignedOut 退出登录，清空本地视图')
+  destroyPasskeyBridge()
+  accountDialogVisible.value = false
+  editModalVisible.value = false
+  editingEnv.value = null
+  environments.value = []
+  groups.value = []
+  _dataLoadDone = false
+  hideBoot()
+  if (groupSortable) {
+    groupSortable.destroy()
+    groupSortable = null
+  }
+}
+
 // 监听 isAuthed 变化，当登录状态变为 true 时自动触发数据加载
 // 解决 AuthScreen 在 signIn 后立即销毁导致 emit('authed') 失效的问题
 let _authTriggered = false
 watch(isAuthed, (newVal, oldVal) => {
+  if (newVal === false && oldVal === true) {
+    onSignedOut()
+  }
   if (newVal === true && oldVal === false && !_authTriggered) {
     _authTriggered = true
     showBoot(t('boot.syncConfirmed'), t('boot.syncConfirmedDetail'))
@@ -959,20 +978,6 @@ watch(isAuthed, (newVal, oldVal) => {
     })
   }
 })
-
-const onSignedOut = () => {
-  syncLog.info('App.onSignedOut 退出登录，清空本地视图')
-  destroyPasskeyBridge()
-  accountDialogVisible.value = false
-  environments.value = []
-  groups.value = []
-  _dataLoadDone = false
-  hideBoot()
-  if (groupSortable) {
-    groupSortable.destroy()
-    groupSortable = null
-  }
-}
 
 // 接受分享成功后刷新环境列表
 const handleShareAccepted = async () => {

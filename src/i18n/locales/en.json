@@ -174,7 +174,7 @@
     "startReencrypt": "Start re-encryption",
     "signOutTitle": "Confirm sign out",
     "signOutConfirm": "Are you sure you want to sign out?",
-    "signOutHint": "Local cache will be cleared. You will need to sign in again next time.",
+    "signOutHint": "After sign-out, environment accounts, passwords, and authenticators are removed from this computer. Environments stay in the cloud and the list comes back after you sign in again. Salesforce sites that are already open stay as they are.",
     "signingOut": "Signing out...",
     "oldPasswordRequired": "Please enter your current password",
     "newPasswordMin": "New password must be at least 8 characters",

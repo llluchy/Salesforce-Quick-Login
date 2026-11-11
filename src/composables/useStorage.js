@@ -10,6 +10,7 @@
 // ============================================
 
 import { STORAGE_KEY, STORAGE_KEY_GROUPS } from '../utils/constants'
+import { clearLocalAccountSecrets } from '../utils/localAccountSecrets.js'
 import { getSupabase } from './useSupabase'
 import { useAuth } from './useAuth'
 import {
@@ -551,11 +552,11 @@ export function useStorage() {
   }
 
   /**
-   * 清空本地缓存（登出时调用）
+   * 清空本机环境机密（登出时调用）。
+   * 不删除云端环境，也不碰已经打开的 Salesforce 网站。
    */
   const clearCache = async () => {
-    await cacheRemove(STORAGE_KEY)
-    await cacheRemove(STORAGE_KEY_GROUPS)
+    await clearLocalAccountSecrets()
     log('本地缓存已清空')
   }
 
