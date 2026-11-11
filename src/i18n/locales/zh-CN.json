@@ -85,6 +85,12 @@
     "shareTitle": "环境分享",
     "accountTitle": "账户管理"
   },
+  "envSearch": {
+    "label": "搜索环境",
+    "placeholder": "按别名或账号搜索",
+    "clear": "清空",
+    "noMatch": "没有别名或账号对得上的环境"
+  },
   "settings": {
     "open": "打开设置",
     "title": "设置"
@@ -668,6 +674,15 @@
     "deleteFailed": "删除失败",
     "deleteRejected": "已拒绝删除：对象名或记录 Id 不合法，未发送删除请求。",
     "invalidObjectName": "对象名不合法，未加载。",
-    "invalidRecordQuery": "记录 Id 不合法，未按 Id 查询。"
+    "invalidRecordQuery": "记录 Id 不合法，未按 Id 查询。",
+    "fieldCreatedBy": "字段创建人",
+    "fieldLastUpdatedBy": "字段最后更新人",
+    "fieldAuditUnknown": "—",
+    "fieldAuditFailed": "未能读取字段的创建人与最后更新人，字段定义仍可查看。",
+    "openObjectManager": "对象管理器",
+    "openObjectManagerTitle": "打开当前对象的 Salesforce 对象管理器",
+    "openRecord": "打开记录",
+    "openRecordTitle": "打开这条记录的 Salesforce 页面",
+    "openRecordDisabled": "当前页面没有记录 Id"
   }
 }
