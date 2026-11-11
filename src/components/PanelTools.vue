@@ -1,9 +1,5 @@
 <template>
-  <section class="panel-tools" :class="`panel-tools-${variant}`" :aria-label="t('toolsHub.title')">
-    <div class="panel-tools-copy">
-      <span class="panel-tools-title">{{ t('toolsHub.title') }}</span>
-      <span class="panel-tools-hint">{{ t('toolsHub.panelHint') }}</span>
-    </div>
+  <section class="panel-tools" :class="`panel-tools-${variant}`">
     <div class="panel-tools-row">
       <button
         v-for="tool in tools"
@@ -164,25 +160,6 @@ async function openTool(toolId) {
   width: 100%;
   max-width: 360px;
   margin: 0 0 14px;
-}
-
-.panel-tools-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 8px;
-}
-
-.panel-tools-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #0d47a1;
-}
-
-.panel-tools-hint {
-  font-size: 11px;
-  line-height: 1.4;
-  color: #5c7a9b;
 }
 
 .panel-tools-row {

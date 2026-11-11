@@ -350,7 +350,6 @@
     "tools": "工具"
   },
   "toolsHub": {
-    "title": "工具入口",
     "subtitle": "点击图标将在独立窗口中打开对应工具。无需登录扩展账户。",
     "apexName": "Apex Log Viewer",
     "apexDesc": "实时查看 Apex Debug Log",
@@ -362,7 +361,6 @@
     "logTitle": "打开日志",
     "queryTitle": "打开查询",
     "objectTitle": "打开对象搜索",
-    "panelHint": "页面右边的栏关掉以后，这里仍可打开日志和查询，用的是这台浏览器里已经登录的组织。",
     "openPageFirst": "当前不是 Salesforce 页面。请先打开 Salesforce 页面，再使用对象搜索。",
     "openFailed": "暂时打不开，请重试。"
   },

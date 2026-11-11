@@ -350,7 +350,6 @@
     "tools": "ツール"
   },
   "toolsHub": {
-    "title": "ツール入口",
     "subtitle": "アイコンをクリックすると独立ウィンドウでツールが開きます。拡張アカウントへのログインは不要です。",
     "apexName": "Apex Log Viewer",
     "apexDesc": "Apex Debug Log をリアルタイム表示",
@@ -362,7 +361,6 @@
     "logTitle": "ログを開く",
     "queryTitle": "クエリを開く",
     "objectTitle": "オブジェクト検索を開く",
-    "panelHint": "ページ右側のバーを閉じても、ここからログとクエリを開けます。このブラウザでログイン済みの組織を使います。",
     "openPageFirst": "今のページは Salesforce ではありません。先に Salesforce のページを開いてから、オブジェクト検索を使ってください。",
     "openFailed": "開けませんでした。もう一度お試しください。"
   },

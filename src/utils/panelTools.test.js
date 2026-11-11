@@ -20,9 +20,15 @@ const PANEL_KEYS = [
   'logTitle',
   'queryTitle',
   'objectTitle',
-  'panelHint',
   'openPageFirst',
   'openFailed'
+]
+const REMOVED_COPY = [
+  '工具入口',
+  '页面右边的栏关掉以后，这里仍可打开日志和查询，用的是这台浏览器里已经登录的组织。',
+  'With the page bar turned off, you can still open logs and queries here. They use the org already signed in within this browser.',
+  'ツール入口',
+  'ページ右側のバーを閉じても、ここからログとクエリを開けます。このブラウザでログイン済みの組織を使います。'
 ]
 
 function tab(url, id = 7) {
@@ -122,6 +128,18 @@ describe('panel tool copy and wiring', () => {
     for (const key of PANEL_KEYS) {
       assert.match(vue, new RegExp(`toolsHub\\.${key}`))
     }
+    for (const bundle of bundles) {
+      assert.equal(bundle.title, undefined)
+      assert.equal(bundle.panelHint, undefined)
+    }
+    const hubText = bundles.map((bundle) => JSON.stringify(bundle)).join('\n')
+    for (const sentence of REMOVED_COPY) {
+      assert.equal(hubText.includes(sentence), false, sentence)
+      assert.equal(vue.includes(sentence), false, sentence)
+    }
+    assert.doesNotMatch(vue, /toolsHub\.title|toolsHub\.panelHint|panel-tools-title|panel-tools-hint/)
+    assert.match(vue, /toolsHub\.log/)
+    assert.match(vue, /toolsHub\.query/)
     const template = vue.slice(vue.indexOf('<template>'), vue.indexOf('</template>'))
     assert.doesNotMatch(template, /[\u3400-\u9fff]/)
     assert.doesNotMatch(vue, /useToolFloat|toolFloatPref|chrome\.storage|show_tool_float/)
