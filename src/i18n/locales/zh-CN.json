@@ -356,12 +356,19 @@
     "tools": "工具"
   },
   "toolsHub": {
-    "title": "工具入口",
     "subtitle": "点击图标将在独立窗口中打开对应工具。无需登录扩展账户。",
     "apexName": "Apex Log Viewer",
     "apexDesc": "实时查看 Apex Debug Log",
     "soqlName": "SOQL Creator",
-    "soqlDesc": "生成并执行 SOQL 查询"
+    "soqlDesc": "生成并执行 SOQL 查询",
+    "log": "日志",
+    "query": "查询",
+    "object": "对象",
+    "logTitle": "打开日志",
+    "queryTitle": "打开查询",
+    "objectTitle": "打开对象搜索",
+    "openPageFirst": "当前不是 Salesforce 页面。请先打开 Salesforce 页面，再使用对象搜索。",
+    "openFailed": "暂时打不开，请重试。"
   },
   "toolWindow": {
     "preview": "预览",
