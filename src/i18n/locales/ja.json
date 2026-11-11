@@ -83,6 +83,8 @@
     "addGroup": "グループ作成",
     "share": "共有",
     "shareTitle": "環境を共有",
+    "trash": "ゴミ箱",
+    "trashTitle": "誤って削除した環境を戻す",
     "accountTitle": "アカウント"
   },
   "settings": {
@@ -152,7 +154,24 @@
     "title": "削除の確認",
     "confirmBefore": "削除しますか：",
     "confirmAfter": "？",
-    "groupHint": "このグループ内の環境は「{ungrouped}」に移動します。"
+    "groupHint": "このグループ内の環境は「{ungrouped}」に移動します。",
+    "envHint": "七日以内ならゴミ箱で見つけて、元のグループに戻せます。別名、アカウント、パスワード、認証、グループはそのまま残ります。七日を過ぎると完全になくなります。相手がすでに受け取った分には影響しません。"
+  },
+  "trash": {
+    "title": "ゴミ箱",
+    "hint": "七日以内に削除した環境がここに残ります。戻すと、元のグループに戻ります。",
+    "empty": "ゴミ箱は空です",
+    "loading": "ゴミ箱を読み込んでいます...",
+    "restore": "元のグループに戻す",
+    "restoring": "戻しています...",
+    "daysLeft": "残り {days} 日",
+    "groupLabel": "グループ：",
+    "restored": "元のグループに戻しました",
+    "restoreFailed": "戻せませんでした：{msg}",
+    "loadFailed": "ゴミ箱を読み込めませんでした：{msg}",
+    "expiredHint": "七日を過ぎると完全に削除され、戻せなくなります。",
+    "shareUnaffected": "相手がすでに受け取った分には影響しません。",
+    "gone": "この環境はもうゴミ箱にありません"
   },
   "account": {
     "title": "アカウント",
@@ -265,7 +284,7 @@
     "saveFailed": "保存に失敗しました: {msg}",
     "groupUpdated": "グループを更新しました",
     "groupCreated": "グループを作成しました",
-    "envDeleted": "環境を削除しました",
+    "envDeleted": "ゴミ箱に移しました。七日以内なら元のグループに戻せます",
     "deleteFailed": "削除に失敗しました: {msg}",
     "deleteGroupFailed": "グループの削除に失敗しました: {msg}",
     "groupDeleted": "グループを削除しました",

@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/utils/toolFloatPref.test.js"
+    "test": "node --test src/utils/toolFloatPref.test.js src/utils/envTrash.test.js"
   },
   "dependencies": {
     "@sailingcoder/drag-kit": "git+https://github.com/SailingCoder/drag-kit.git",

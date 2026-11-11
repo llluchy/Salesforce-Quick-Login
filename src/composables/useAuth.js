@@ -15,6 +15,7 @@ import { STORAGE_KEY_SESSION } from '../utils/constants'
 import { signOutToolFloat } from '../utils/toolFloatPref.js'
 import { WELCOME_PAGE_URL, RECOVERY_PAGE_URL } from '../utils/supabaseConfig'
 import { t } from '../i18n'
+import { carryTrashFlags } from '../utils/envTrash'
 
 const CRYPTO_KEY_KEY = '__sf_crypto_key'
 const LAST_LOGIN_DATE_KEY = '__sf_last_login_date'
@@ -874,7 +875,6 @@ async function changePassword({ oldPassword, newPassword }) {
       .from('environments')
       .select('*')
       .eq('user_id', currentUser.value.id)
-      .eq('is_deleted', false)
     if (envErr) throw new Error(t('auth.fetchEnvsFailed', { msg: envErr.message }))
 
     // 3. 验证旧密码是否正确（用旧密钥试解密一条环境记录）
@@ -892,7 +892,7 @@ async function changePassword({ oldPassword, newPassword }) {
     // 4. 重加密所有环境数据
     if (envRows && envRows.length > 0) {
       const { reencryptEnvs } = await import('../utils/crypto')
-      const newEnvRows = await reencryptEnvs(envRows, oldKey, newKey)
+      const newEnvRows = carryTrashFlags(envRows, await reencryptEnvs(envRows, oldKey, newKey))
       const { error: envUpdateErr } = await supabase
         .from('environments').upsert(newEnvRows, { onConflict: 'id' })
       if (envUpdateErr) throw new Error(t('auth.updateEnvsFailed', { msg: envUpdateErr.message }))
@@ -965,7 +965,6 @@ async function reencryptAll(password) {
       .from('environments')
       .select('*')
       .eq('user_id', currentUser.value.id)
-      .eq('is_deleted', false)
     if (envErr) throw new Error(t('auth.fetchEnvsFailed', { msg: envErr.message }))
 
     if (envRows && envRows.length > 0) {
@@ -977,7 +976,7 @@ async function reencryptAll(password) {
       }
 
       const { reencryptEnvs } = await import('../utils/crypto')
-      const newEnvRows = await reencryptEnvs(envRows, key, key)
+      const newEnvRows = carryTrashFlags(envRows, await reencryptEnvs(envRows, key, key))
       const { error: envUpdateErr } = await supabase
         .from('environments').upsert(newEnvRows, { onConflict: 'id' })
       if (envUpdateErr) throw new Error(t('auth.updateEnvsFailed', { msg: envUpdateErr.message }))

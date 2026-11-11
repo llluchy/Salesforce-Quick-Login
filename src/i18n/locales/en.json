@@ -83,6 +83,8 @@
     "addGroup": "Create group",
     "share": "Share",
     "shareTitle": "Share environments",
+    "trash": "Trash",
+    "trashTitle": "Recover a deleted environment",
     "accountTitle": "Account"
   },
   "settings": {
@@ -152,7 +154,24 @@
     "title": "Confirm delete",
     "confirmBefore": "Delete",
     "confirmAfter": "?",
-    "groupHint": "Environments in this group will move to “{ungrouped}”."
+    "groupHint": "Environments in this group will move to “{ungrouped}”.",
+    "envHint": "For seven days you can find it in Trash and put it back in its original group. The alias, username, password, authenticator, and group stay with it. After seven days it is gone. A copy someone already accepted is not affected."
+  },
+  "trash": {
+    "title": "Trash",
+    "hint": "Environments deleted in the last seven days are here. Restoring puts one back in its original group.",
+    "empty": "Trash is empty",
+    "loading": "Loading trash...",
+    "restore": "Restore",
+    "restoring": "Restoring...",
+    "daysLeft": "{days} days left",
+    "groupLabel": "Group: ",
+    "restored": "Restored to its original group",
+    "restoreFailed": "Could not restore: {msg}",
+    "loadFailed": "Could not load trash: {msg}",
+    "expiredHint": "After seven days it is gone for good.",
+    "shareUnaffected": "A copy someone already accepted is not affected.",
+    "gone": "This environment is no longer in Trash"
   },
   "account": {
     "title": "Account",
@@ -265,7 +284,7 @@
     "saveFailed": "Save failed: {msg}",
     "groupUpdated": "Group updated",
     "groupCreated": "Group created",
-    "envDeleted": "Environment deleted",
+    "envDeleted": "Moved to Trash. You can put it back within seven days",
     "deleteFailed": "Delete failed: {msg}",
     "deleteGroupFailed": "Failed to delete group: {msg}",
     "groupDeleted": "Group deleted",

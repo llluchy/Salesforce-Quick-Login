@@ -83,6 +83,8 @@
     "addGroup": "创建分组",
     "share": "分享",
     "shareTitle": "环境分享",
+    "trash": "回收处",
+    "trashTitle": "找回误删的环境",
     "accountTitle": "账户管理"
   },
   "settings": {
@@ -152,7 +154,24 @@
     "title": "确认删除",
     "confirmBefore": "确定要删除",
     "confirmAfter": "吗？",
-    "groupHint": "删除后，该分组下的所有环境将移至「{ungrouped}」。"
+    "groupHint": "删除后，该分组下的所有环境将移至「{ungrouped}」。",
+    "envHint": "七天内可以在回收处看到，并放回原来的分组。别名、账号、密码、验证器和分组都会保留。超过七天就真的没有了。对方已经收下的那份不受影响。"
+  },
+  "trash": {
+    "title": "回收处",
+    "hint": "这里是七天内删掉的环境。放回去之后，还会回到原来的分组。",
+    "empty": "回收处是空的",
+    "loading": "正在读取回收处...",
+    "restore": "放回原分组",
+    "restoring": "正在放回...",
+    "daysLeft": "还剩 {days} 天",
+    "groupLabel": "分组：",
+    "restored": "已放回原来的分组",
+    "restoreFailed": "放回失败：{msg}",
+    "loadFailed": "读取回收处失败：{msg}",
+    "expiredHint": "超过七天会真正删除，无法再找回。",
+    "shareUnaffected": "对方已经收下的那份不受影响。",
+    "gone": "这条环境已经不在回收处"
   },
   "account": {
     "title": "账户管理",
@@ -265,7 +284,7 @@
     "saveFailed": "保存失败：{msg}",
     "groupUpdated": "分组已更新",
     "groupCreated": "分组已创建",
-    "envDeleted": "环境已删除",
+    "envDeleted": "已移到回收处，七天内可以放回原来的分组",
     "deleteFailed": "删除失败：{msg}",
     "deleteGroupFailed": "删除分组失败：{msg}",
     "groupDeleted": "分组已删除",
