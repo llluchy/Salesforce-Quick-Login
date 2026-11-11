@@ -85,6 +85,12 @@
     "shareTitle": "環境を共有",
     "accountTitle": "アカウント"
   },
+  "envSearch": {
+    "label": "環境を検索",
+    "placeholder": "エイリアスまたはユーザー名で検索",
+    "clear": "クリア",
+    "noMatch": "エイリアスにもユーザー名にも一致する環境がありません"
+  },
   "settings": {
     "open": "設定を開く",
     "title": "設定"
@@ -671,6 +677,15 @@
     "deleteFailed": "削除に失敗しました",
     "deleteRejected": "削除を拒否しました。オブジェクト名またはレコード Id が不正なため、削除リクエストは送信していません。",
     "invalidObjectName": "オブジェクト名が不正なため、読み込みませんでした。",
-    "invalidRecordQuery": "レコード Id が不正なため、Id 照会は送信していません。"
+    "invalidRecordQuery": "レコード Id が不正なため、Id 照会は送信していません。",
+    "fieldCreatedBy": "項目の作成者",
+    "fieldLastUpdatedBy": "項目の最終更新者",
+    "fieldAuditUnknown": "—",
+    "fieldAuditFailed": "項目の作成者・最終更新者を読み込めませんでした。項目定義は表示できます。",
+    "openObjectManager": "オブジェクトマネージャ",
+    "openObjectManagerTitle": "このオブジェクトを Salesforce オブジェクトマネージャで開く",
+    "openRecord": "レコードを開く",
+    "openRecordTitle": "このレコードの Salesforce ページを開く",
+    "openRecordDisabled": "このページにはレコード Id がありません"
   }
 }
