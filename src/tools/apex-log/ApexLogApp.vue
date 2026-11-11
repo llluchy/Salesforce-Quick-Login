@@ -101,6 +101,10 @@
               <button class="apex-btn apex-btn-outline apex-btn-sm" :disabled="busy" @click="onRenewTrace">
                 {{ t('apexLog.renewTraceFlag') }}
               </button>
+              <p class="apex-auto-renew" :class="'is-' + renewPhase">
+                <span class="apex-auto-renew-status">{{ autoRenewStatusText }}</span>
+                <span class="apex-auto-renew-hint">{{ t('apexLog.autoRenewHint') }}</span>
+              </p>
             </div>
           </div>
           <div class="apex-poll-bar"><div class="apex-poll-fill" :style="{ width: pollProgress + '%' }"></div></div>
@@ -313,6 +317,7 @@ import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import ToolToast from '../_shared/ToolToast.vue'
 import { useToolToast } from '../_shared/useToolToast.js'
 import { useApexLogApi } from './useApexLogApi'
+import { RENEW_RETRY_MS, TRACE_DURATION_MINUTES } from './traceRenew.js'
 import {
   parseApexLogBody,
   filterParsedLines,
@@ -369,7 +374,10 @@ const userSearch = ref({
 })
 
 let pollUiTimer = null
-let renewTimer = null
+let traceLocalTimer = null
+let traceWatchActive = false
+const traceViewerId = globalThis.crypto?.randomUUID?.() || `viewer-${Date.now()}`
+const renewStatus = ref({ phase: 'pending', renewAt: null })
 
 const appFilters = computed(() => [
   { label: t('apexLog.filterAll'), value: '' },
@@ -382,6 +390,17 @@ const statusFilters = computed(() => [
   { label: t('apexLog.filterSuccess'), value: 'success' },
   { label: t('apexLog.filterError'), value: 'error' }
 ])
+
+const renewPhase = computed(() => renewStatus.value.phase || 'pending')
+const autoRenewStatusText = computed(() => {
+  if (renewPhase.value === 'error') return t('apexLog.autoRenewFailed')
+  if (renewStatus.value.renewAt) {
+    return t('apexLog.autoRenewAt', {
+      time: formatTime(new Date(renewStatus.value.renewAt).toISOString())
+    })
+  }
+  return t('apexLog.autoRenewPending')
+})
 
 const filteredLogs = computed(() => {
   return logs.value.filter((log) => {
@@ -588,10 +607,11 @@ function markAllRead() {
 async function onRenewTrace() {
   busy.value = true
   try {
-    const res = await api.renewTraceFlag(60)
+    const res = await api.renewTraceFlag(TRACE_DURATION_MINUTES)
     if (!res.success) throw new Error(res.error || t('apexLog.toastRenewFailed'))
     const extra = Array.isArray(res.tracked) ? res.tracked.filter((tr) => tr.success !== false).length : 0
     showToast(extra ? t('apexLog.toastRenewWithTracked', { count: extra }) : t('apexLog.toastRenewOk'))
+    await pulseTraceWatch()
   } catch (e) {
     showToast(e.message || t('apexLog.toastRenewFailed'), 'error')
   } finally {
@@ -718,6 +738,74 @@ function downloadBody() {
   URL.revokeObjectURL(url)
 }
 
+function clearTraceLocalTimer() {
+  if (traceLocalTimer != null) {
+    clearTimeout(traceLocalTimer)
+    traceLocalTimer = null
+  }
+}
+
+function armTraceLocalTimer(renewAtMs) {
+  clearTraceLocalTimer()
+  if (!traceWatchActive || !activeEnvId.value || !renewAtMs) return
+  const delay = Math.max(renewAtMs - Date.now(), 0)
+  traceLocalTimer = setTimeout(() => {
+    traceLocalTimer = null
+    if (!traceWatchActive || !activeEnvId.value) return
+    pulseTraceWatch()
+  }, delay)
+}
+
+function applyTraceStatus(res) {
+  if (!traceWatchActive || !res) return
+  if (res.envId && activeEnvId.value && res.envId !== activeEnvId.value) return
+  if (
+    (res.phase === 'stopped' || res.phase === 'stop') &&
+    res.action === 'apexLog:traceStatus'
+  ) {
+    pulseTraceWatch()
+    return
+  }
+  const failed = res.phase === 'error' || res.phase === 'retry' || res.success === false
+  const renewAt = res.renewAt ? Date.parse(res.renewAt) : null
+  renewStatus.value = {
+    phase: failed ? 'error' : 'scheduled',
+    renewAt: Number.isFinite(renewAt) ? renewAt : null
+  }
+  armTraceLocalTimer(renewStatus.value.renewAt || (failed ? Date.now() + RENEW_RETRY_MS : null))
+}
+
+async function pulseTraceWatch() {
+  const envId = activeEnvId.value
+  if (!traceWatchActive || !envId) return
+  try {
+    const res = await api.traceWatch(envId, traceViewerId)
+    if (!traceWatchActive || activeEnvId.value !== envId) return
+    applyTraceStatus(res)
+  } catch {
+    if (!traceWatchActive || activeEnvId.value !== envId) return
+    renewStatus.value = { phase: 'error', renewAt: null }
+    armTraceLocalTimer(Date.now() + RENEW_RETRY_MS)
+  }
+}
+
+function releaseTraceWatch() {
+  clearTraceLocalTimer()
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return
+  chrome.runtime.sendMessage(
+    { action: 'apexLog:traceUnwatch', viewerId: traceViewerId },
+    () => {
+      void chrome.runtime.lastError
+    }
+  )
+}
+
+function onPageHide() {
+  traceWatchActive = false
+  clearTraceLocalTimer()
+  releaseTraceWatch()
+}
+
 function startRuntime() {
   stopRuntimeTimersOnly()
   api.startPolling(3000).catch(() => {})
@@ -726,22 +814,24 @@ function startRuntime() {
     tick = (tick + 1) % 30
     pollProgress.value = (tick / 30) * 100
   }, 100)
-  renewTimer = setInterval(() => {
-    api.renewTraceFlag(60).catch(() => {})
-  }, 25 * 60 * 1000)
+  traceWatchActive = true
+  renewStatus.value = { phase: 'pending', renewAt: null }
+  pulseTraceWatch()
 }
 
 function stopRuntimeTimersOnly() {
   if (pollUiTimer) clearInterval(pollUiTimer)
-  if (renewTimer) clearInterval(renewTimer)
   pollUiTimer = null
-  renewTimer = null
+  traceWatchActive = false
+  clearTraceLocalTimer()
+  renewStatus.value = { phase: 'stopped', renewAt: null }
   pollProgress.value = 0
 }
 
 async function stopRuntime() {
   stopRuntimeTimersOnly()
   await api.stopPolling().catch(() => {})
+  await api.traceUnwatch(traceViewerId).catch(() => {})
 }
 
 function onPollingTick() {
@@ -749,6 +839,7 @@ function onPollingTick() {
 }
 
 function onMessage(message) {
+  if (message?.action === 'apexLog:traceStatus') applyTraceStatus(message)
   if (message?.action === 'apexLog:pollingTick') onPollingTick()
   if (message?.action === 'toolPreferEnvironment' && message.toolId === 'apex-log') {
     pagePrefer.value = {
@@ -767,6 +858,7 @@ function onMessage(message) {
 }
 
 onMounted(async () => {
+  window.addEventListener('pagehide', onPageHide)
   chrome.runtime?.onMessage?.addListener(onMessage)
   busy.value = true
   try {
@@ -797,6 +889,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', onPageHide)
   chrome.runtime?.onMessage?.removeListener(onMessage)
   stopRuntime()
 })
@@ -1101,6 +1194,32 @@ watch([appFilter, statusFilter, userFilter], () => {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
+}
+
+.apex-auto-renew {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0;
+  min-width: 0;
+}
+
+.apex-auto-renew-status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-deep);
+  line-height: 1.4;
+}
+
+.apex-auto-renew-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.apex-auto-renew.is-error .apex-auto-renew-status {
+  color: #c62828;
 }
 
 .apex-poll-bar {
