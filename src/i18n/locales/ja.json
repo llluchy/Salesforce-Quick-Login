@@ -16,7 +16,8 @@
     "system": "システムに従う",
     "zhCN": "中文",
     "en": "English",
-    "ja": "日本語"
+    "ja": "日本語",
+    "saveFailed": "言語を保存できませんでした。前回保存した言語のままです。"
   },
   "type": {
     "production": "Production",
