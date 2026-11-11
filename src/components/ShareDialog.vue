@@ -11,6 +11,7 @@
           <!-- Tab 切换 -->
           <div class="mode-tabs">
             <button :class="['mode-tab', { active: mode === 'share' }]" @click="mode = 'share'">{{ t('share.tabShare') }}</button>
+            <button :class="['mode-tab', { active: mode === 'sent' }]" @click="mode = 'sent'">{{ t('share.tabSent') }}</button>
             <button :class="['mode-tab', { active: mode === 'accept' }]" @click="mode = 'accept'">{{ t('share.tabAccept') }}</button>
           </div>
 
@@ -19,6 +20,7 @@
             <div class="form-hint">
               {{ t('share.shareHint') }}
               <br>{{ t('share.shareHintExpire') }}
+              <br>{{ t('share.shareHintRevoke') }}
             </div>
 
             <div class="env-list" v-if="environments.length > 0">
@@ -70,6 +72,56 @@
             <div class="error-message" v-if="errorMessage">{{ errorMessage }}</div>
           </div>
 
+          <!-- 已发出、对方还没收下 -->
+          <div class="sent-section" v-if="mode === 'sent'">
+            <div class="form-hint">{{ t('share.sentHint') }}</div>
+
+            <div v-if="sentLoading" class="empty-tip">{{ t('share.sentLoading') }}</div>
+            <div v-else-if="pendingView.length === 0 && !errorMessage" class="empty-tip">{{ t('share.sentEmpty') }}</div>
+            <div v-else-if="pendingView.length > 0" class="sent-list">
+              <div v-for="item in pendingView" :key="item.id" class="sent-item">
+                <div class="sent-code">
+                  <span class="sent-code-label">{{ t('share.sentCodeLabel') }}</span>
+                  <span class="sent-code-digits">{{ item.shareCode }}</span>
+                </div>
+                <div class="sent-aliases">{{ aliasText(item) }}</div>
+                <div :class="['sent-remaining', { expired: item.expired }]">{{ remainingText(item) }}</div>
+
+                <div v-if="confirmingId === item.id" class="revoke-confirm">
+                  <p class="revoke-hint">{{ t('share.revokeHint') }}</p>
+                  <div class="sent-actions">
+                    <button
+                      class="btn-danger"
+                      @click="handleRevoke(item)"
+                      :disabled="revokingId === item.id"
+                    >
+                      {{ revokingId === item.id ? t('share.revoking') : t('share.revokeConfirm') }}
+                    </button>
+                    <button
+                      class="btn-ghost"
+                      @click="confirmingId = ''"
+                      :disabled="revokingId === item.id"
+                    >
+                      {{ t('share.revokeCancel') }}
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="sent-actions">
+                  <button
+                    class="btn-danger-outline"
+                    @click="confirmingId = item.id"
+                    :disabled="!!revokingId"
+                  >
+                    {{ t('share.revoke') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="error-message" v-if="errorMessage">{{ errorMessage }}</div>
+            <div class="success-message" v-if="successMessage">{{ successMessage }}</div>
+          </div>
+
           <!-- 接受分享 -->
           <div class="accept-section" v-if="mode === 'accept'">
             <div class="form-hint">
@@ -118,8 +170,9 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { describeShareRemaining, pendingOutgoingShares } from '../composables/shareOutgoing'
 import { useShare } from '../composables/useShare'
 
 const props = defineProps({
@@ -130,7 +183,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'accepted'])
 
 const { t } = useI18n()
-const { createShare, acceptShare } = useShare()
+const { createShare, acceptShare, listUnclaimedShares, revokeOutgoingShare } = useShare()
 
 const mode = ref('share')
 const loading = ref(false)
@@ -145,12 +198,80 @@ const generatedCodes = ref(null)
 const inputShareCode = ref('')
 const inputVerifyCode = ref('')
 
+// 已发出、尚未被收下
+const pendingRows = ref([])
+const sentLoading = ref(false)
+const confirmingId = ref('')
+watch(confirmingId, async (id) => {
+  if (!id) return
+  await nextTick()
+  document.querySelector('.revoke-confirm')?.scrollIntoView({ block: 'nearest' })
+})
+const revokingId = ref('')
+const nowTick = ref(Date.now())
+let remainingTimer = null
+
+const pendingView = computed(() => pendingOutgoingShares(pendingRows.value, nowTick.value))
+
+function stopRemainingTimer() {
+  if (remainingTimer) {
+    clearInterval(remainingTimer)
+    remainingTimer = null
+  }
+}
+
+function startRemainingTimer() {
+  stopRemainingTimer()
+  remainingTimer = setInterval(() => {
+    nowTick.value = Date.now()
+  }, 1000)
+}
+
+function aliasText(item) {
+  if (!item.aliases.length) return t('share.sentNoAlias')
+  return item.aliases.join(t('share.aliasSeparator'))
+}
+
+function remainingText(item) {
+  const described = describeShareRemaining(item.remainingMs)
+  return t(described.key, described.params)
+}
+
+async function loadSent() {
+  sentLoading.value = true
+  try {
+    pendingRows.value = await listUnclaimedShares()
+    nowTick.value = Date.now()
+  } catch (e) {
+    pendingRows.value = []
+    errorMessage.value = e.message || t('share.querySharesFailed', { msg: '' })
+  } finally {
+    sentLoading.value = false
+  }
+}
+
 // 切换 Tab 时重置
-watch(mode, () => {
+watch(mode, (next) => {
   errorMessage.value = ''
   successMessage.value = ''
   generatedCodes.value = null
+  confirmingId.value = ''
+  if (next === 'sent') loadSent()
 })
+
+watch(
+  () => props.visible && mode.value === 'sent',
+  (active) => {
+    if (active) {
+      nowTick.value = Date.now()
+      startRemainingTimer()
+    } else {
+      stopRemainingTimer()
+    }
+  }
+)
+
+onUnmounted(stopRemainingTimer)
 
 // 关闭时重置
 watch(() => props.visible, (v) => {
@@ -161,7 +282,13 @@ watch(() => props.visible, (v) => {
     inputVerifyCode.value = ''
     errorMessage.value = ''
     successMessage.value = ''
+    pendingRows.value = []
+    confirmingId.value = ''
+    revokingId.value = ''
+    sentLoading.value = false
     mode.value = 'share'
+  } else {
+    stopRemainingTimer()
   }
 })
 
@@ -229,6 +356,30 @@ const handleAcceptShare = async () => {
     errorMessage.value = e.message || t('share.acceptFailed')
   } finally {
     loading.value = false
+  }
+}
+
+const handleRevoke = async (item) => {
+  if (!item?.id || revokingId.value) return
+  revokingId.value = item.id
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    await revokeOutgoingShare(item.id)
+    successMessage.value = t('share.revokeSuccess')
+    confirmingId.value = ''
+    pendingRows.value = pendingRows.value.filter((row) => row.id !== item.id)
+  } catch (e) {
+    errorMessage.value = e.message || t('share.revokeFailed', { msg: '' })
+    try {
+      pendingRows.value = await listUnclaimedShares()
+      nowTick.value = Date.now()
+    } catch {
+      // 列表刷新失败时保留原来的错误提示
+    }
+  } finally {
+    revokingId.value = ''
   }
 }
 </script>
@@ -511,6 +662,108 @@ const handleAcceptShare = async () => {
   padding: 8px 10px;
   background: #f0fdf4;
   border-radius: 6px;
+}
+
+.sent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sent-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.sent-code {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.sent-code-digits {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 2px;
+}
+
+.sent-aliases {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #4b5563;
+  word-break: break-word;
+}
+
+.sent-remaining {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #0369a1;
+}
+
+.sent-remaining.expired {
+  color: #b45309;
+}
+
+.revoke-confirm {
+  margin-top: 8px;
+}
+
+.revoke-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #92400e;
+}
+
+.sent-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn-danger,
+.btn-danger-outline,
+.btn-ghost {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-danger {
+  border: none;
+  background: #dc2626;
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btn-danger:disabled,
+.btn-danger-outline:disabled,
+.btn-ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-danger-outline {
+  border: 1px solid #fecaca;
+  background: #fff;
+  color: #dc2626;
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.btn-ghost {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
 }
 
 .modal-enter-active, .modal-leave-active {

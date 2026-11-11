@@ -15,6 +15,7 @@ import {
   decryptEnv
 } from '../utils/crypto'
 import { t } from '../i18n'
+import { listUnclaimedShares, revokeOutgoingShare } from './shareOutgoing'
 
 function getCurrentUser() {
   const { currentUser } = useAuth()
@@ -32,6 +33,14 @@ function generateShareCodes() {
     verifyCode = generate6DigitCode()
   }
   return { shareCode, verifyCode }
+}
+
+function outgoingDeps() {
+  return {
+    supabase: getSupabase(),
+    userId: getCurrentUser().id,
+    t
+  }
 }
 
 /**
@@ -177,28 +186,6 @@ async function acceptShare(shareCode, verifyCode, aliases = []) {
 }
 
 /**
- * 取消分享：删除 env_shares 中的分享记录
- * 注意：已经被别人接受分享（复制走）的数据不受影响
- * @param {string} envId - 环境 ID
- */
-async function revokeShare(envId) {
-  const supabase = getSupabase()
-  if (!supabase) throw new Error(t('share.supabaseNotInit'))
-
-  const userId = getCurrentUser().id
-
-  const { error } = await supabase
-    .from('env_shares')
-    .delete()
-    .eq('owner_user_id', userId)
-    .contains('env_ids', [envId])
-
-  if (error) throw new Error(t('share.cancelFailed', { msg: error.message }))
-
-  return { success: true }
-}
-
-/**
  * 查询当前用户的所有分享记录
  */
 async function getMyShares() {
@@ -219,7 +206,8 @@ export function useShare() {
   return {
     createShare,
     acceptShare,
-    revokeShare,
+    revokeOutgoingShare: (shareId) => revokeOutgoingShare(shareId, outgoingDeps()),
+    listUnclaimedShares: () => listUnclaimedShares(outgoingDeps()),
     getMyShares
   }
 }
