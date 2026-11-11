@@ -221,12 +221,27 @@
                 :class="['apex-log-row', 'kind-' + row.kind]"
               >
                 <span class="apex-ln">{{ row.index + 1 }}</span>
-                <span class="apex-lt" :title="row.time">{{ compactTime(row.time) }}</span>
+                <span class="apex-lt" :title="row.time">
+                  <template v-for="(part, partIndex) in highlightParts(compactTime(row.time), bodyQuery)" :key="'t-' + row.index + '-' + partIndex">
+                    <mark v-if="part.match" class="apex-hit">{{ part.text }}</mark>
+                    <template v-else>{{ part.text }}</template>
+                  </template>
+                </span>
                 <span class="apex-le">
-                  <span v-if="row.type" :class="['apex-event', 'kind-' + row.kind]">{{ shortEvent(row.type) }}</span>
+                  <span v-if="row.type" :class="['apex-event', 'kind-' + row.kind]">
+                    <template v-for="(part, partIndex) in highlightParts(shortEvent(row.type), bodyQuery)" :key="'e-' + row.index + '-' + partIndex">
+                      <mark v-if="part.match" class="apex-hit">{{ part.text }}</mark>
+                      <template v-else>{{ part.text }}</template>
+                    </template>
+                  </span>
                   <span v-else class="apex-event kind-other">—</span>
                 </span>
-                <span class="apex-lc" :title="row.content || row.raw">{{ row.content || row.raw }}</span>
+                <span class="apex-lc" :title="row.content || row.raw">
+                  <template v-for="(part, partIndex) in highlightParts(row.content || row.raw, bodyQuery)" :key="'c-' + row.index + '-' + partIndex">
+                    <mark v-if="part.match" class="apex-hit">{{ part.text }}</mark>
+                    <template v-else>{{ part.text }}</template>
+                  </template>
+                </span>
               </div>
             </div>
           </template>
@@ -337,6 +352,7 @@ import { useApexLogApi } from './useApexLogApi'
 import {
   parseApexLogBody,
   filterLogLines,
+  highlightParts,
   getKindLabel
 } from './parseApexLog.js'
 import {
@@ -1618,6 +1634,14 @@ watch([appFilter, statusFilter, userFilter], () => {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.45;
+}
+
+.apex-hit {
+  background: #ffe082;
+  color: inherit;
+  font: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
 }
 
 .apex-log-row.kind-debug .apex-lc {

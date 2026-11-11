@@ -27,3 +27,30 @@ export function filterLogLines(lines, filter, query) {
   if (!needle) return byCategory
   return byCategory.filter((line) => String(line?.raw ?? '').toLowerCase().includes(needle))
 }
+
+/**
+ * 把一段可见文字按查询拆开，命中片段保持原文大小写。
+ * 查询为空时整段都不标记。特殊字符按字面匹配。
+ * @param {string} text
+ * @param {string} [query]
+ * @returns {{ text: string, match: boolean }[]}
+ */
+export function highlightParts(text, query) {
+  const source = String(text ?? '')
+  const needle = String(query ?? '').trim().toLowerCase()
+  if (!needle || !source) return [{ text: source, match: false }]
+  const lower = source.toLowerCase()
+  const parts = []
+  let cursor = 0
+  while (cursor < source.length) {
+    const index = lower.indexOf(needle, cursor)
+    if (index === -1) {
+      parts.push({ text: source.slice(cursor), match: false })
+      break
+    }
+    if (index > cursor) parts.push({ text: source.slice(cursor, index), match: false })
+    parts.push({ text: source.slice(index, index + needle.length), match: true })
+    cursor = index + needle.length
+  }
+  return parts.length ? parts : [{ text: source, match: false }]
+}

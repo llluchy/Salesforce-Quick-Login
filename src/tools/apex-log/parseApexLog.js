@@ -1,7 +1,7 @@
 import { t } from '../../i18n'
-import { filterLogLines, filterParsedLines } from './logLineFilter.js'
+import { filterLogLines, filterParsedLines, highlightParts } from './logLineFilter.js'
 
-export { filterLogLines, filterParsedLines }
+export { filterLogLines, filterParsedLines, highlightParts }
 
 /**
  * Salesforce Apex Debug Log 解析

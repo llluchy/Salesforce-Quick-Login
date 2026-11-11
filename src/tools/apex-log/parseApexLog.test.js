@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { filterLogLines, filterParsedLines } from './logLineFilter.js'
+import { filterLogLines, filterParsedLines, highlightParts } from './logLineFilter.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 
@@ -73,6 +73,31 @@ describe('filterLogLines', () => {
   })
 })
 
+describe('highlightParts', () => {
+  it('marks each match and keeps the original letters', () => {
+    assert.deepEqual(highlightParts('Customer name is Ada, id ADA-1', 'ada'), [
+      { text: 'Customer name is ', match: false },
+      { text: 'Ada', match: true },
+      { text: ', id ', match: false },
+      { text: 'ADA', match: true },
+      { text: '-1', match: false }
+    ])
+  })
+
+  it('treats punctuation as literal text', () => {
+    assert.deepEqual(highlightParts("Name = 'Ada'", '.'), [
+      { text: "Name = 'Ada'", match: false }
+    ])
+    const dots = highlightParts('a.b.c', '.')
+    assert.deepEqual(dots.filter((part) => part.match).map((part) => part.text), ['.', '.'])
+  })
+
+  it('does not mark anything when the query is blank', () => {
+    assert.deepEqual(highlightParts('Ada', '   '), [{ text: 'Ada', match: false }])
+    assert.deepEqual(highlightParts('', 'Ada'), [{ text: '', match: false }])
+  })
+})
+
 describe('log body search copy', () => {
   const keys = ['bodySearchLabel', 'bodySearchPlaceholder', 'bodySearchClear', 'noBodyMatch']
 
@@ -100,6 +125,7 @@ describe('log body search copy', () => {
     assert.match(source, /v-model="bodyQuery"/)
     assert.match(source, /filterLogLines\(parsedLog\.value\.lines, detailFilter\.value, bodyQuery\.value\)/)
     assert.match(source, /apexLog\.noBodyMatch/)
+    assert.match(source, /class="apex-hit"/)
     assert.match(source, /bodyQuery\.value = ''/)
     assert.doesNotMatch(source, /bodyQuery[\s\S]{0,80}(chrome\.storage|supabase)/)
   })
