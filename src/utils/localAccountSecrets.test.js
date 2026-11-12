@@ -84,7 +84,8 @@ function sampleSession() {
       lastSfHostname: 'org.my.salesforce.com'
     },
     sfql_tool_float_session_visible: false,
-    ui_locale_session: 'ja'
+    ui_locale_session: 'ja',
+    sfql_apex_trace_lease: { hostname: 'org.my.salesforce.com', expiresAt: 1 }
   }
 }
 
@@ -126,7 +127,7 @@ describe('clearLocalAccountSecrets', () => {
     assert.deepEqual(local.data.sfql_apex_environments, sampleLocal().sfql_apex_environments)
 
     for (const key of SESSION_KEYS_KEPT_ON_LOGOUT) {
-      assert.equal(session.data[key], sampleSession()[key], key)
+      assert.deepEqual(session.data[key], sampleSession()[key], key)
     }
 
     assert.equal(JSON.stringify(cookies), cookiesBefore)
