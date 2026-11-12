@@ -107,6 +107,9 @@ onBeforeUnmount(() => {
 .locale-switcher {
   position: relative;
   z-index: 20;
+  display: flex;
+  align-items: center;
+  height: 28px;
 }
 
 .locale-trigger {
