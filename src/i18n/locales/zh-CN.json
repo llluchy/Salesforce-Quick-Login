@@ -201,7 +201,7 @@
     "startReencrypt": "开始重加密",
     "signOutTitle": "确认退出",
     "signOutConfirm": "确定要退出登录吗？",
-    "signOutHint": "本地缓存将被清除，下次打开需重新登录。",
+    "signOutHint": "退出后，这台电脑上不再保留各环境的账号、密码和验证器。云端里的环境还在，重新登录后列表会回来。已经打开的 Salesforce 网站保持原样。",
     "signingOut": "退出中...",
     "oldPasswordRequired": "请输入旧密码",
     "newPasswordMin": "新密码至少 8 位",
