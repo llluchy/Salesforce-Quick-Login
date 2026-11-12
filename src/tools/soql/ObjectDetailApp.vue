@@ -19,14 +19,32 @@
         </div>
       </div>
       <div class="od-header-right">
-        <button
-          v-if="recordId"
-          type="button"
-          class="od-delete"
-          :disabled="!canDeleteRecord"
-          :title="deleteDisabledTitle"
-          @click="openDeleteConfirm"
-        >{{ deletingRecord ? t('objectDetail.deleting') : t('objectDetail.deleteRecord') }}</button>
+        <div class="od-header-actions">
+          <button
+            type="button"
+            class="od-link"
+            data-od-action="object-manager"
+            :disabled="!links.objectManagerEnabled"
+            :title="t('objectDetail.openObjectManagerTitle')"
+            @click="openObjectManager"
+          >{{ t('objectDetail.openObjectManager') }}</button>
+          <button
+            type="button"
+            class="od-link"
+            data-od-action="record"
+            :disabled="!links.recordEnabled"
+            :title="links.recordEnabled ? t('objectDetail.openRecordTitle') : t('objectDetail.openRecordDisabled')"
+            @click="openRecordPage"
+          >{{ t('objectDetail.openRecord') }}</button>
+          <button
+            v-if="recordId"
+            type="button"
+            class="od-delete"
+            :disabled="!canDeleteRecord"
+            :title="deleteDisabledTitle"
+            @click="openDeleteConfirm"
+          >{{ deletingRecord ? t('objectDetail.deleting') : t('objectDetail.deleteRecord') }}</button>
+        </div>
         <LocaleSwitcher variant="dark" />
         <div v-if="capabilityChips.length" class="od-caps">
           <span
@@ -112,6 +130,7 @@
             </div>
             <span class="toolbar-count">{{ filteredFields.length }} / {{ fields.length }}</span>
           </div>
+          <p v-if="fieldAuditWarning" class="audit-hint">{{ fieldAuditWarning }}</p>
           <div class="table-wrap">
             <table class="meta-table fields-table">
               <thead>
@@ -157,6 +176,10 @@
                   <tr v-if="expandedField === field.name" class="expand-row">
                     <td colspan="7">
                       <div class="expand-body">
+                        <div class="expand-kv field-audit">
+                          <span>{{ t('objectDetail.fieldCreatedBy') }}：{{ fieldAuditText(field).createdBy }}</span>
+                          <span>{{ t('objectDetail.fieldLastUpdatedBy') }}：{{ fieldAuditText(field).updatedBy }}</span>
+                        </div>
                         <div v-if="field.inlineHelpText" class="expand-block">
                           <h4>{{ t('objectDetail.helpText') }}</h4>
                           <p>{{ field.inlineHelpText }}</p>
@@ -310,6 +333,7 @@ import LocaleSwitcher from '../../components/LocaleSwitcher.vue'
 import ToolToast from '../_shared/ToolToast.vue'
 import { useToolToast } from '../_shared/useToolToast.js'
 import { SfRestClient, fetchSfSession, isSalesforceId, isSalesforceObjectApi } from '../_shared/sfApi.js'
+import { createObjectDetailLinks, fetchFieldAuditMap, shownFieldAudit } from './objectDetailModel.js'
 import '../_shared/toolThemes.css'
 
 const { t } = useI18n()
@@ -326,6 +350,8 @@ const loading = ref(true)
 const bootError = ref('')
 const recordWarning = ref('')
 const recordValues = ref(null)
+const fieldAudit = ref({})
+const fieldAuditWarning = ref('')
 const recordDeleted = ref(false)
 const deleteConfirmOpen = ref(false)
 const deletingRecord = ref(false)
@@ -343,6 +369,26 @@ const headerTitle = computed(() => {
   if (describe.value?.label) return describe.value.label
   return objectName || t('objectDetail.defaultTitle')
 })
+
+const currentObjectApi = computed(() => describe.value?.name || objectName)
+
+const links = computed(() => createObjectDetailLinks({
+  hostname: hostname.value || hostnameParam,
+  objectApiName: currentObjectApi.value,
+  recordId
+}))
+
+function openObjectManager() {
+  links.value.openObjectManager()
+}
+
+function openRecordPage() {
+  links.value.openRecord()
+}
+
+function fieldAuditText(field) {
+  return shownFieldAudit(field, fieldAudit.value, t('objectDetail.fieldAuditUnknown'))
+}
 
 const objectKindLabel = computed(() => {
   if (!describe.value) return '—'
@@ -642,6 +688,8 @@ async function load() {
   bootError.value = ''
   recordWarning.value = ''
   recordValues.value = null
+  fieldAudit.value = {}
+  fieldAuditWarning.value = ''
   recordDeleted.value = false
   deleteConfirmOpen.value = false
   sfClient = null
@@ -680,12 +728,20 @@ async function load() {
     if (!isSalesforceObjectApi(canonicalObject)) {
       throw new Error(t('objectDetail.invalidObjectName'))
     }
+    const auditTask = fetchFieldAuditMap(client, canonicalObject)
+      .then((map) => ({ map, failed: false }))
+      .catch(() => ({ map: {}, failed: true }))
     if (recordId) {
       if (!isSalesforceId(recordId)) {
         recordWarning.value = t('objectDetail.invalidRecordQuery')
       } else {
         await loadRecordById(client, canonicalObject, recordId, describe.value.fields || [])
       }
+    }
+    const audit = await auditTask
+    fieldAudit.value = audit.map
+    fieldAuditWarning.value = audit.failed ? t('objectDetail.fieldAuditFailed') : ''
+    if (recordId) {
       showToast(
         recordValues.value
           ? t('objectDetail.recordLoaded', { id: recordId })
@@ -739,6 +795,38 @@ onMounted(load)
   align-items: flex-end;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.od-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.od-link {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--accent-deep);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.od-link:hover:not(:disabled) {
+  background: #fff;
+}
+
+.od-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.od-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .od-delete {
@@ -1238,6 +1326,17 @@ onMounted(load)
 
 .fields-table .col-value {
   max-width: 280px;
+}
+
+.audit-hint {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
 }
 
 .fields-table .value-copy {
