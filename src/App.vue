@@ -11,6 +11,7 @@
           @add-env="openEditModal"
           @add-group="openGroupModal"
           @share="shareDialogVisible = true"
+          @trash="openTrash"
           @account="accountDialogVisible = true"
         />
 
@@ -97,6 +98,17 @@
           :environments="environments"
           @close="shareDialogVisible = false"
           @accepted="handleShareAccepted"
+        />
+
+        <TrashDialog
+          :visible="trashVisible"
+          :items="trashItems"
+          :groups="groups"
+          :loading="trashLoading"
+          :error="trashError"
+          :restoring-id="restoringId"
+          @close="trashVisible = false"
+          @restore="handleRestoreEnv"
         />
 
         <!-- Passkey 选择对话框（v4：Side Panel 集中处理） -->
@@ -211,10 +223,11 @@ import Toast from './components/Toast.vue'
 import AuthScreen from './components/AuthScreen.vue'
 import AccountDialog from './components/AccountDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
+import TrashDialog from './components/TrashDialog.vue'
 import PanelTools from './components/PanelTools.vue'
 
 const { t } = useI18n()
-const { loadEnvironments, saveEnvironments, deleteEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
+const { loadEnvironments, saveEnvironments, deleteEnvironment, loadTrashedEnvironments, restoreEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
 const { isAuthed, getCryptoKeyRaw, currentUser, getSession, getUnlockStatus } = useAuth()
 const { login, fillTotpCode } = useLogin()
 const { generateCode, scanQR } = useTotp()
@@ -248,6 +261,11 @@ const deleteModalVisible = ref(false)
 const manualBindVisible = ref(false)
 const accountDialogVisible = ref(false)
 const shareDialogVisible = ref(false)
+const trashVisible = ref(false)
+const trashItems = ref([])
+const trashLoading = ref(false)
+const trashError = ref('')
+const restoringId = ref('')
 
 const editingEnv = ref(null)
 const editingGroup = ref(null)
@@ -509,6 +527,48 @@ const handleSaveGroup = async (group) => {
     showToast(isUpdate ? t('toast.groupUpdated') : t('toast.groupCreated'))
   } else {
     showToast(t('toast.saveFailed', { msg: result?.error || '' }), 'error')
+  }
+}
+
+const refreshTrash = async () => {
+  trashLoading.value = true
+  trashError.value = ''
+  const result = await loadTrashedEnvironments()
+  trashLoading.value = false
+  if (!result?.success) {
+    trashItems.value = []
+    trashError.value = t('trash.loadFailed', { msg: result?.error || '' })
+    return
+  }
+  trashItems.value = result.items || []
+}
+
+const openTrash = () => {
+  trashVisible.value = true
+  refreshTrash()
+}
+
+const handleRestoreEnv = async (id) => {
+  restoringId.value = id
+  try {
+    const result = await restoreEnvironment(id)
+    if (!result?.success) {
+      showToast(t('trash.restoreFailed', { msg: result?.error || '' }), 'error')
+      await refreshTrash()
+      return
+    }
+    const fresh = await loadEnvironments({ detailed: true })
+    if (fresh?.source === 'remote' && Array.isArray(fresh.data)) {
+      environments.value = fresh.data.some((env) => env.id === result.env.id)
+        ? fresh.data
+        : [...fresh.data, result.env]
+    } else if (!environments.value.some((env) => env.id === result.env.id)) {
+      environments.value = [...environments.value, result.env]
+    }
+    showToast(t('trash.restored'))
+    await refreshTrash()
+  } finally {
+    restoringId.value = ''
   }
 }
 

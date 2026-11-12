@@ -17,6 +17,13 @@ import {
   encryptGroup, decryptGroup
 } from '../utils/crypto'
 import { t } from '../i18n'
+import {
+  TrashGoneError,
+  listRecoverableTrash,
+  purgeExpiredTrash,
+  restoreTrashedEnvironment,
+  softDeletePatch
+} from '../utils/envTrash'
 
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
 const isChromeSession = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session
@@ -142,6 +149,12 @@ export function useStorage() {
     }
 
     try {
+      try {
+        await purgeExpiredTrash(supabase)
+      } catch (purgeErr) {
+        logWarn('清理过期回收环境失败', purgeErr.message)
+      }
+
       const { data, error } = await supabase
         .from('environments')
         .select('*')
@@ -258,7 +271,7 @@ export function useStorage() {
 
     const { error } = await supabase
       .from('environments')
-      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+      .update(softDeletePatch())
       .eq('id', id)
     if (error) {
       logError('伪删除失败', error)
@@ -270,6 +283,66 @@ export function useStorage() {
       await cacheSet(STORAGE_KEY, cached.filter(e => e.id !== id))
     }
     return { success: true }
+  }
+
+  /**
+   * 回收处：只读 Supabase。不写入 chrome.storage.local / sync。
+   * 超过七天的行会在这次读取时物理删除。
+   */
+  const loadTrashedEnvironments = async () => {
+    log('loadTrashedEnvironments')
+    const supabase = getSupabase()
+    const key = getCryptoKey()
+    if (!supabase) return { success: false, error: t('storage.supabaseNotInit'), items: [] }
+    if (!key) return { success: false, error: t('storage.keyNotDerived'), items: [] }
+
+    try {
+      try {
+        await purgeExpiredTrash(supabase)
+      } catch (purgeErr) {
+        logWarn('清理过期回收环境失败', purgeErr.message)
+      }
+      const items = await listRecoverableTrash(supabase, {
+        decrypt: async (row) => {
+          try {
+            return await decryptEnv(row, key)
+          } catch (decryptErr) {
+            logError(`回收环境解密失败，跳过: ${row.id}`, decryptErr.message)
+            return null
+          }
+        }
+      })
+      return { success: true, items }
+    } catch (e) {
+      logError('读取回收处失败', e)
+      return { success: false, error: e.message || String(e), items: [] }
+    }
+  }
+
+  /**
+   * 放回原分组。只清除删除标记，别名、账号、密码、验证器、分组仍留在原行。
+   * 不把回收数据写入 chrome.storage.local / sync；活跃列表随后由 loadEnvironments 从 Supabase 刷新。
+   */
+  const restoreEnvironment = async (id) => {
+    log('restoreEnvironment', { id })
+    const supabase = getSupabase()
+    const key = getCryptoKey()
+    if (!supabase) return { success: false, error: t('storage.supabaseNotInit') }
+    if (!key) return { success: false, error: t('storage.keyNotDerivedUnlock') }
+
+    try {
+      const env = await restoreTrashedEnvironment(supabase, {
+        id,
+        decrypt: (row) => decryptEnv(row, key)
+      })
+      return { success: true, env }
+    } catch (e) {
+      if (e instanceof TrashGoneError || e.code === 'NOT_FOUND') {
+        return { success: false, error: t('trash.gone') }
+      }
+      logError('放回环境失败', e)
+      return { success: false, error: e.message || String(e) }
+    }
   }
 
   // ----------------------------------------
@@ -564,6 +637,8 @@ export function useStorage() {
     loadEnvironments,
     saveEnvironments,
     deleteEnvironment,
+    loadTrashedEnvironments,
+    restoreEnvironment,
     // 分组
     loadGroups,
     saveGroups,

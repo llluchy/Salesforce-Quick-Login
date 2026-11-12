@@ -17,6 +17,10 @@
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6h16v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/><path d="M6 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="9" x2="10" y2="14"/><line x1="7.5" y1="11.5" x2="12.5" y2="11.5"/></svg>
       <span>{{ t('toolbar.addGroup') }}</span>
     </button>
+    <button class="btn-action btn-trash" @click="$emit('trash')" :title="t('toolbar.trashTitle')">
+      <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h12l-1 11H5L4 6z"/><path d="M3 6h14"/><path d="M8 6V4h4v2"/><path d="M8 9v5M12 9v5"/></svg>
+      <span>{{ t('toolbar.trash') }}</span>
+    </button>
     <button class="btn-action btn-share" @click="$emit('share')" :title="t('toolbar.shareTitle')">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="12" r="2"/><circle cx="14" cy="6" r="2"/><circle cx="14" cy="14" r="2"/><line x1="8" y1="11" x2="12" y2="7"/><line x1="8" y1="13" x2="12" y2="13"/></svg>
       <span>{{ t('toolbar.share') }}</span>
@@ -50,7 +54,7 @@ defineProps({
   }
 })
 
-defineEmits(['add-env', 'add-group', 'share', 'account'])
+defineEmits(['add-env', 'add-group', 'share', 'trash', 'account'])
 </script>
 
 <style scoped>
@@ -139,6 +143,17 @@ defineEmits(['add-env', 'add-group', 'share', 'account'])
 .btn-account:hover {
   background: #90caf9;
   border-color: #0d47a1;
+}
+
+.btn-trash {
+  border-color: #90a4ae;
+  color: #37474f;
+  background: #eceff1;
+}
+
+.btn-trash:hover {
+  background: #cfd8dc;
+  border-color: #546e7a;
 }
 
 .btn-share {
