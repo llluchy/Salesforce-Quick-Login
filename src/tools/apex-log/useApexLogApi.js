@@ -23,6 +23,10 @@ export function useApexLogApi() {
     fetchLogBody: (logId) => sendApex('apexLog:fetchLogBody', { logId }),
     renewTraceFlag: (durationMinutes = 60) =>
       sendApex('apexLog:renewTraceFlag', { durationMinutes }),
+    traceWatch: (envId, viewerId) =>
+      sendApex('apexLog:traceWatch', { envId, viewerId }),
+    traceUnwatch: (viewerId) =>
+      sendApex('apexLog:traceUnwatch', { viewerId }),
     trackProcessAutomated: (durationMinutes = 60) =>
       sendApex('apexLog:trackProcessAutomated', { durationMinutes }),
     searchUsers: (filters, limit = 40) =>
