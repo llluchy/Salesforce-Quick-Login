@@ -88,6 +88,7 @@
             >
               {{ executing ? t('soql.executing') : t('soql.execute') }}
             </button>
+            <button type="button" class="btn btn-sm" @click="historyOpen = true">{{ t('soql.history') }}</button>
             <button
               v-if="executing"
               type="button"
@@ -427,6 +428,20 @@
         </div>
       </div>
     </Teleport>
+    <Teleport to="body">
+      <div v-if="historyOpen" class="confirm-overlay" @click.self="historyOpen = false">
+        <div class="confirm-dialog history-dialog" role="dialog" aria-modal="true" :aria-label="t('soql.history')">
+          <h3>{{ t('soql.history') }}</h3>
+          <p v-if="!savedQueries.length" class="history-empty">{{ t('soql.historyEmpty') }}</p>
+          <ul v-else class="history-list">
+            <li v-for="item in savedQueries" :key="item.id">
+              <button type="button" class="history-item" @click="openSavedQuery(item)">{{ item.soql }}</button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </Teleport>
+
     <ToolToast
       :visible="toastVisible"
       :message="toastMessage"
@@ -448,12 +463,30 @@ import { openObjectDetailTab } from '../_shared/toolWindows.js'
 import { activePicklistOptions, valueKind } from './soqlWhere.js'
 import { flattenSoqlRecord } from './flattenSoqlRecord.js'
 import { parseManualSoql } from './parseManualSoql.js'
+import { STORAGE_KEY_SESSION } from '../../utils/constants.js'
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../../utils/supabaseConfig.js'
+import {
+  applySaveResult,
+  createSavedQueryStore,
+  savedQueryEditorText
+} from './savedQueries.js'
 import { buildSoqlSuggestions } from './soqlSuggest/index.js'
 import { mapDescribe } from './soqlSuggest/relationships.js'
 import '../_shared/toolThemes.css'
 
 const { t } = useI18n()
 const { toastVisible, toastMessage, toastType, showToast, closeToast } = useToolToast()
+
+const savedQueryStore = createSavedQueryStore({
+  storage: typeof chrome !== 'undefined' ? chrome.storage : undefined,
+  supabaseUrl: SUPABASE_URL,
+  anonKey: SUPABASE_ANON_KEY
+})
+const savedQueries = ref([])
+const savedAuthKnown = ref(false)
+const loggedIntoExtension = ref(false)
+const historyOpen = ref(false)
+const pendingSavedSoql = ref('')
 
 const envs = ref([])
 const selectedEnvId = ref('')
@@ -1024,6 +1057,7 @@ async function refreshEnvs() {
     errorMessage.value = e.message || String(e)
   } finally {
     loadingEnvs.value = false
+    settleOpenedQuery()
   }
 }
 
@@ -1146,6 +1180,7 @@ async function onEnvChange() {
   clearFieldSuggestions()
   describeCache.clear()
   describeFailed.clear()
+  settleOpenedQuery()
   await connectSelectedEnv()
 }
 
@@ -1683,10 +1718,12 @@ async function countObjectRows() {
   }
   state.countingTotal = true
   state.errorMessage = ''
+  const epoch = state.openEpoch || 0
   // 不碰 soqlText / 结果区
   try {
     await refreshSessionIfNeeded()
     const total = await client.countQuery(countSoql)
+    if (epoch !== (state.openEpoch || 0)) return
     const label = state.currentObject?.label || state.currentObject?.name
     state.objectCountHint = t('soql.objectCountHint', {
       object: label,
@@ -1694,9 +1731,10 @@ async function countObjectRows() {
     })
     toastOnTab(state, t('soql.countResult', { total }))
   } catch (e) {
+    if (epoch !== (state.openEpoch || 0)) return
     state.errorMessage = e.message || String(e)
   } finally {
-    state.countingTotal = false
+    if (epoch === (state.openEpoch || 0)) state.countingTotal = false
   }
 }
 
@@ -1712,6 +1750,7 @@ async function loadMoreResults() {
   try {
     await refreshSessionIfNeeded()
     await continueQueryPages(signal, runId, { maxRows: batchTarget, state })
+    if (runId !== state.queryRunId) return
     if (signal.aborted) {
       toastOnTab(state, t('soql.queryCancelled', {
         loaded: state.resultRows.length,
@@ -1729,6 +1768,7 @@ async function loadMoreResults() {
       }))
     }
   } catch (e) {
+    if (runId !== state.queryRunId) return
     if (isAbortError(e)) {
       toastOnTab(state, t('soql.queryCancelled', {
         loaded: state.resultRows.length,
@@ -1772,23 +1812,29 @@ async function executeQuery() {
       await continueQueryPages(signal, runId, { maxRows: RESULT_SOFT_CAP, state })
     }
 
-    if (signal.aborted) {
-      toastOnTab(state, t('soql.queryCancelled', {
-        loaded: state.resultRows.length,
-        total: state.resultTotalSize ?? state.resultRows.length
-      }))
-    } else if (!state.resultDone && state.resultNextUrl) {
-      toastOnTab(state, t('soql.loadMoreCapped', {
-        loaded: state.resultRows.length,
-        total: state.resultTotalSize ?? state.resultRows.length
-      }))
+    if (signal.aborted || runId !== state.queryRunId) {
+      if (runId === state.queryRunId) {
+        toastOnTab(state, t('soql.queryCancelled', {
+          loaded: state.resultRows.length,
+          total: state.resultTotalSize ?? state.resultRows.length
+        }))
+      }
     } else {
-      toastOnTab(state, t('soql.rowsLoadedOfTotal', {
-        loaded: state.resultRows.length,
-        total: state.resultTotalSize ?? state.resultRows.length
-      }))
+      await rememberSuccessfulSoql(soql)
+      if (!state.resultDone && state.resultNextUrl) {
+        toastOnTab(state, t('soql.loadMoreCapped', {
+          loaded: state.resultRows.length,
+          total: state.resultTotalSize ?? state.resultRows.length
+        }))
+      } else {
+        toastOnTab(state, t('soql.rowsLoadedOfTotal', {
+          loaded: state.resultRows.length,
+          total: state.resultTotalSize ?? state.resultRows.length
+        }))
+      }
     }
   } catch (e) {
+    if (runId !== state.queryRunId) return
     if (isAbortError(e)) {
       toastOnTab(state, t('soql.queryCancelled', {
         loaded: state.resultRows.length,
@@ -1820,6 +1866,74 @@ watch(currentObject, () => {
   objectCountHint.value = ''
 })
 
+function openSavedQuery(item) {
+  const soql = savedQueryEditorText(item)
+  if (!soql) return
+  historyOpen.value = false
+  pendingSavedSoql.value = soql
+  if (selectedEnv.value) settleOpenedQuery()
+}
+
+function settleOpenedQuery() {
+  if (!selectedEnv.value || !pendingSavedSoql.value) return
+  const state = activeState()
+  abortWorkspace(state)
+  state.queryRunId += 1
+  state.openEpoch = (state.openEpoch || 0) + 1
+  state.executing = false
+  state.countingTotal = false
+  state.soqlText = pendingSavedSoql.value
+  state.soqlEditorOpen = true
+  nameTabFromQuery(state)
+  state.resultColumns = []
+  state.resultRows = []
+  state.resultDone = true
+  state.resultTotalSize = null
+  state.resultNextUrl = ''
+  state.cellEdits = {}
+  state.selectedCell = null
+  state.editingCell = null
+  state.errorMessage = ''
+  state.objectCountHint = ''
+  pendingSavedSoql.value = ''
+}
+
+async function refreshSavedQueries() {
+  let result
+  try {
+    result = await savedQueryStore.list()
+  } catch {
+    result = { ok: false, loggedIn: loggedIntoExtension.value }
+  }
+  if (!result?.ok) {
+    if (!savedAuthKnown.value || !!result?.loggedIn !== loggedIntoExtension.value) {
+      savedQueries.value = []
+    }
+    loggedIntoExtension.value = !!result?.loggedIn
+    savedAuthKnown.value = true
+    return
+  }
+  loggedIntoExtension.value = !!result.loggedIn
+  savedAuthKnown.value = true
+  savedQueries.value = result.queries
+}
+
+async function rememberSuccessfulSoql(soql) {
+  const previous = savedQueries.value.slice()
+  let result
+  try {
+    result = await savedQueryStore.remember(soql)
+  } catch {
+    result = { ok: false }
+  }
+  savedQueries.value = applySaveResult(previous, result)
+}
+
+function onSavedQueryAuthChanged(changes, area) {
+  if (area !== 'local' || !changes?.[STORAGE_KEY_SESSION]) return
+  refreshSavedQueries()
+}
+
 function onPreferEnvironmentMessage(message) {
   if (message?.action !== 'toolPreferEnvironment' || message.toolId !== 'soql') return
   pagePrefer.value = {
@@ -1831,10 +1945,12 @@ function onPreferEnvironmentMessage(message) {
 
 onMounted(() => {
   refreshEnvs()
+  refreshSavedQueries()
   window.addEventListener('scroll', closeCtxOnScroll, true)
   document.addEventListener('pointerdown', onDocPointerDown, true)
   try {
     chrome.runtime?.onMessage?.addListener(onPreferEnvironmentMessage)
+    chrome.storage?.onChanged?.addListener(onSavedQueryAuthChanged)
   } catch {
     /* ignore */
   }
@@ -1846,6 +1962,7 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   try {
     chrome.runtime?.onMessage?.removeListener(onPreferEnvironmentMessage)
+    chrome.storage?.onChanged?.removeListener(onSavedQueryAuthChanged)
   } catch {
     /* ignore */
   }
@@ -3262,6 +3379,44 @@ select.cell-editor {
 .btn-light:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.3);
   color: #fff;
+}
+
+.history-dialog {
+  width: min(640px, 100%);
+}
+
+.history-empty {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.history-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-item {
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: pointer;
+}
+
+.history-item:hover {
+  border-color: var(--accent);
+  background: var(--soft);
 }
 
 @media (max-width: 960px) {

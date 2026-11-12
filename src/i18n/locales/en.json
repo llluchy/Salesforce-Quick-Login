@@ -653,7 +653,9 @@
     "queryMoreHint": " (more available — use Load more)",
     "fieldTooltipNotFilterable": "{label}\n{name} · {type}\nNot filterable in WHERE",
     "fieldTooltip": "{label}\n{name} · {type}",
-    "emptyValue": "(empty)"
+    "emptyValue": "(empty)",
+    "history": "History",
+    "historyEmpty": "None yet"
   },
   "objectDetail": {
     "defaultTitle": "Object detail",

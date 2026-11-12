@@ -653,7 +653,9 @@
     "queryMoreHint": "（还有更多，可点「继续加载」）",
     "fieldTooltipNotFilterable": "{label}\n{name} · {type}\n不可用于 WHERE",
     "fieldTooltip": "{label}\n{name} · {type}",
-    "emptyValue": "(空)"
+    "emptyValue": "(空)",
+    "history": "检索记录",
+    "historyEmpty": "还没有"
   },
   "objectDetail": {
     "defaultTitle": "对象详情",

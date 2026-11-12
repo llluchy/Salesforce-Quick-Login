@@ -653,7 +653,9 @@
     "queryMoreHint": "（続きあり —「続きを読込」を使用）",
     "fieldTooltipNotFilterable": "{label}\n{name} · {type}\nWHERE に使用不可",
     "fieldTooltip": "{label}\n{name} · {type}",
-    "emptyValue": "(空)"
+    "emptyValue": "(空)",
+    "history": "履歴",
+    "historyEmpty": "まだありません"
   },
   "objectDetail": {
     "defaultTitle": "オブジェクト詳細",
