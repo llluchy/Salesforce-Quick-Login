@@ -85,6 +85,18 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
+.settings-gear.is-action {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.settings-gear.is-light {
+  display: flex;
+  align-items: center;
+  height: 28px;
+}
+
 .settings-gear-btn {
   display: inline-flex;
   align-items: center;
@@ -121,13 +133,20 @@ onBeforeUnmount(() => {
 }
 
 .is-action .settings-gear-btn {
-  box-sizing: border-box;
-  min-width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  height: 100%;
+  gap: 5px;
   padding: 4px 10px;
   border: 1px solid #bbdefb;
   border-radius: 4px;
   background: #ffffff;
   color: #0d47a1;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
 }
 
 .is-action .settings-gear-btn svg {
@@ -138,6 +157,7 @@ onBeforeUnmount(() => {
 .is-action .settings-gear-btn:hover {
   background: #bbdefb;
   border-color: #1976d2;
+  color: #0d47a1;
 }
 
 .settings-overlay {

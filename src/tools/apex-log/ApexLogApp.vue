@@ -190,6 +190,25 @@
               >{{ cat.name }} · {{ cat.level }}</span>
             </div>
 
+            <div class="apex-body-search">
+              <label class="apex-body-search-label" for="apex-body-search">{{ t('apexLog.bodySearchLabel') }}</label>
+              <input
+                id="apex-body-search"
+                v-model="bodyQuery"
+                type="search"
+                class="apex-body-search-input"
+                :placeholder="t('apexLog.bodySearchPlaceholder')"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button
+                v-if="bodyQuery"
+                type="button"
+                class="apex-btn apex-btn-secondary apex-btn-sm"
+                @click="bodyQuery = ''"
+              >{{ t('apexLog.bodySearchClear') }}</button>
+            </div>
+
             <div class="apex-log-view">
               <div class="apex-log-cols">
                 <span>#</span>
@@ -197,19 +216,36 @@
                 <span>{{ t('apexLog.colEvent') }}</span>
                 <span>{{ t('apexLog.colContent') }}</span>
               </div>
-              <div v-if="!visibleLines.length" class="apex-empty apex-empty-inline">{{ t('apexLog.noMatchingLines') }}</div>
+              <div v-if="!visibleLines.length" class="apex-empty apex-empty-inline">
+                {{ bodyQueryActive ? t('apexLog.noBodyMatch') : t('apexLog.noMatchingLines') }}
+              </div>
               <div
                 v-for="row in visibleLines"
                 :key="row.index"
                 :class="['apex-log-row', 'kind-' + row.kind]"
               >
                 <span class="apex-ln">{{ row.index + 1 }}</span>
-                <span class="apex-lt" :title="row.time">{{ compactTime(row.time) }}</span>
+                <span class="apex-lt" :title="row.time">
+                  <template v-for="(part, partIndex) in highlightParts(compactTime(row.time), bodyQuery)" :key="'t-' + row.index + '-' + partIndex">
+                    <mark v-if="part.match" class="apex-hit">{{ part.text }}</mark>
+                    <template v-else>{{ part.text }}</template>
+                  </template>
+                </span>
                 <span class="apex-le">
-                  <span v-if="row.type" :class="['apex-event', 'kind-' + row.kind]">{{ shortEvent(row.type) }}</span>
+                  <span v-if="row.type" :class="['apex-event', 'kind-' + row.kind]">
+                    <template v-for="(part, partIndex) in highlightParts(shortEvent(row.type), bodyQuery)" :key="'e-' + row.index + '-' + partIndex">
+                      <mark v-if="part.match" class="apex-hit">{{ part.text }}</mark>
+                      <template v-else>{{ part.text }}</template>
+                    </template>
+                  </span>
                   <span v-else class="apex-event kind-other">—</span>
                 </span>
-                <span class="apex-lc" :title="row.content || row.raw">{{ row.content || row.raw }}</span>
+                <span class="apex-lc" :title="row.content || row.raw">
+                  <template v-for="(part, partIndex) in highlightParts(row.content || row.raw, bodyQuery)" :key="'c-' + row.index + '-' + partIndex">
+                    <mark v-if="part.match" class="apex-hit">{{ part.text }}</mark>
+                    <template v-else>{{ part.text }}</template>
+                  </template>
+                </span>
               </div>
             </div>
           </template>
@@ -320,7 +356,8 @@ import { useApexLogApi } from './useApexLogApi'
 import { RENEW_RETRY_MS, TRACE_DURATION_MINUTES } from './traceRenew.js'
 import {
   parseApexLogBody,
-  filterParsedLines,
+  filterLogLines,
+  highlightParts,
   getKindLabel
 } from './parseApexLog.js'
 import {
@@ -354,6 +391,7 @@ const statusFilter = ref('')
 const userFilter = ref('current')
 const trackedUsers = ref([])
 const detailFilter = ref('all')
+const bodyQuery = ref('')
 const pollProgress = ref(0)
 
 const userModalOpen = ref(false)
@@ -421,8 +459,10 @@ const filteredLogs = computed(() => {
 
 const parsedLog = computed(() => parseApexLogBody(logBody.value))
 
+const bodyQueryActive = computed(() => bodyQuery.value.trim().length > 0)
+
 const visibleLines = computed(() =>
-  filterParsedLines(parsedLog.value.lines, detailFilter.value)
+  filterLogLines(parsedLog.value.lines, detailFilter.value, bodyQuery.value)
 )
 
 const summaryChips = computed(() => {
@@ -584,6 +624,7 @@ async function loadLogs(replace = false) {
 async function openDetail(log) {
   selectedLog.value = log
   detailFilter.value = 'all'
+  bodyQuery.value = ''
   const next = new Set(readIds.value)
   next.add(log.Id)
   readIds.value = next
@@ -1533,6 +1574,46 @@ watch([appFilter, statusFilter, userFilter], () => {
   white-space: nowrap;
 }
 
+.apex-body-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e3f2fd;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.apex-body-search-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #78909c;
+}
+
+.apex-body-search-input {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #bbdefb;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #333;
+  background: #fff;
+}
+
+.apex-body-search-input:focus {
+  outline: none;
+  border-color: var(--accent, #1976d2);
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.12);
+}
+
+.apex-body-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .apex-log-view {
   flex: 1;
   min-height: 0;
@@ -1672,6 +1753,14 @@ watch([appFilter, statusFilter, userFilter], () => {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.45;
+}
+
+.apex-hit {
+  background: #ffe082;
+  color: inherit;
+  font: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
 }
 
 .apex-log-row.kind-debug .apex-lc {
