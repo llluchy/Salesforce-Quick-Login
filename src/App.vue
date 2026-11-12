@@ -1,6 +1,6 @@
 <template>
   <div class="shell">
-    <!-- 工具入口已迁至 Salesforce 页面浮动栏；Side Panel 仅保留登录与环境管理 -->
+    <!-- 页面栏关掉后，面板里仍可打开日志和查询；栏开着时页面入口保留 -->
     <div class="main-panel">
       <AuthScreen v-if="!isAuthed" @authed="onAuthed" />
       <div v-else class="app-container">
@@ -15,13 +15,41 @@
           @account="accountDialogVisible = true"
         />
 
-        <div class="env-list" ref="envListRef">
+        <PanelTools variant="app" />
+
+        <div class="env-search">
+          <label class="env-search-field">
+            <svg class="env-search-icon" viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="8.5" cy="8.5" r="5.5"/>
+              <line x1="12.5" y1="12.5" x2="17" y2="17"/>
+            </svg>
+            <input
+              v-model="envSearchQuery"
+              type="text"
+              class="env-search-input"
+              :placeholder="t('envSearch.placeholder')"
+              :aria-label="t('envSearch.label')"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <button
+            v-if="envSearchQuery.trim()"
+            type="button"
+            class="env-search-clear"
+            @click="envSearchQuery = ''"
+          >{{ t('envSearch.clear') }}</button>
+        </div>
+
+        <p v-if="envListView.noMatch" class="env-search-empty" role="status">{{ t('envSearch.noMatch') }}</p>
+        <div v-else class="env-list" ref="envListRef">
           <GroupSection
-            v-for="group in displayGroups"
-            :key="group.id"
-            :group="group"
-            :environments="getEnvsByGroup(group.id)"
+            v-for="section in envListView.sections"
+            :key="section.group.id"
+            :group="section.group"
+            :environments="section.environments"
             :groups="groups"
+            :drag-enabled="!envListView.queryActive"
             @toggle-collapse="toggleGroupCollapse"
             @edit-group="openEditGroupModal"
             @delete-group="confirmDeleteGroup"
@@ -184,6 +212,7 @@ import { useLogin } from './composables/useLogin'
 import { initPasskeyBridge, destroyPasskeyBridge, passkeyRequest, passkeyError, passkeySaving, passkeySavingStage } from './composables/usePasskeyBridge'
 import { useTotp } from './composables/useTotp'
 import { t as tt } from './i18n'
+import { buildEnvListView, normalizeEnvSearchQuery } from './utils/envListSearch.js'
 import syncLog from './utils/syncLogger'
 import Toolbar from './components/Toolbar.vue'
 import GroupSection from './components/GroupSection.vue'
@@ -195,6 +224,7 @@ import AuthScreen from './components/AuthScreen.vue'
 import AccountDialog from './components/AccountDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
 import TrashDialog from './components/TrashDialog.vue'
+import PanelTools from './components/PanelTools.vue'
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadTrashedEnvironments, restoreEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
@@ -204,6 +234,7 @@ const { generateCode, scanQR } = useTotp()
 
 const environments = ref([])
 const groups = ref([])
+const envSearchQuery = ref('')
 const envListRef = ref(null)
 const toolbarRef = ref(null)
 
@@ -352,6 +383,13 @@ watch(passkeySaving, (saving, prev) => {
     showToast(t('toast.passkeyBound'))
   }
 })
+
+const envListView = computed(() => buildEnvListView({
+  groups: groups.value,
+  environments: environments.value,
+  query: envSearchQuery.value,
+  ungroupedName: t('group.ungrouped')
+}))
 
 const displayGroups = computed(() => {
   const ungroupedCount = environments.value.filter(e => !e.groupId || e.groupId === 'ungrouped').length
@@ -793,6 +831,7 @@ const handleScanQR = async () => {
 }
 
 const toggleGroupCollapse = async (groupId) => {
+  if (normalizeEnvSearchQuery(envSearchQuery.value)) return
   if (groupId === 'ungrouped') return
   const group = groups.value.find(g => g.id === groupId)
   if (group) {
@@ -841,12 +880,13 @@ const handleEnvDrag = async ({ fromGroupId, toGroupId, fromIndex, toIndex }) => 
 let groupSortable = null
 
 const initGroupSortable = () => {
-  if (!envListRef.value) return
-
   if (groupSortable) {
     groupSortable.destroy()
     groupSortable = null
   }
+
+  if (normalizeEnvSearchQuery(envSearchQuery.value)) return
+  if (!envListRef.value) return
 
   groupSortable = new Sortable(envListRef.value, {
     handle: '.group-drag-handle',
@@ -890,6 +930,12 @@ const initGroupSortable = () => {
     }
   })
 }
+
+watch(envSearchQuery, () => {
+  nextTick(() => {
+    initGroupSortable()
+  })
+})
 
 // ========== 登录态与数据加载 ==========
 
@@ -1024,6 +1070,7 @@ const onSignedOut = () => {
   syncLog.info('App.onSignedOut 退出登录，清空本地视图')
   destroyPasskeyBridge()
   accountDialogVisible.value = false
+  envSearchQuery.value = ''
   environments.value = []
   groups.value = []
   _dataLoadDone = false
@@ -1131,6 +1178,101 @@ onBeforeUnmount(() => {
 .app-container {
   min-height: 100vh;
   background-color: #eef5fc;
+}
+
+.env-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: #e3f2fd;
+  border-bottom: 1px solid #bbdefb;
+}
+
+.env-search-field,
+.env-search-clear {
+  box-sizing: border-box;
+  height: 28px;
+  margin: 0;
+  border: 1px solid #bbdefb;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.env-search-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.env-search-field:focus-within {
+  border-color: #1976d2;
+}
+
+.env-search-icon {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: #1976d2;
+}
+
+.env-search-input {
+  flex: 1;
+  align-self: center;
+  min-width: 0;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #0d47a1;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  transform: translateY(-1px);
+}
+
+.env-search-input::placeholder {
+  color: #90a4ae;
+}
+
+.env-search-clear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  color: #0d47a1;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.env-search-clear:hover {
+  background: #bbdefb;
+  border-color: #1976d2;
+}
+
+.env-search-empty {
+  margin: 12px;
+  padding: 16px 12px;
+  text-align: center;
+  color: #546e7a;
+  font-size: 13px;
+  line-height: 1.5;
+  background: #ffffff;
+  border: 1px solid #bbdefb;
+  border-radius: 6px;
 }
 
 .env-list {

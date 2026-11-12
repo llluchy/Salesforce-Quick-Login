@@ -89,14 +89,19 @@ create table public.user_secrets (
 
 -- ---------- 表：user_metadata 用户设置 ----------
 -- 说明：账户级偏好。show_tool_float 默认显示 Salesforce 页面浮动栏。
--- 与线上表结构对齐，本文件只备份结构，不改线上数据。
+-- ui_locale 为界面语言：system / zh-CN / en / ja，默认跟随系统。
+-- 本文件只备份结构。ui_locale 只加在这里，不改线上数据。
 create table public.user_metadata (
   user_id uuid not null,
   show_tool_float boolean not null default true,
+  ui_locale text not null default 'system'::text,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint user_metadata_pkey primary key (user_id),
-  constraint user_metadata_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE
+  constraint user_metadata_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE,
+  constraint user_metadata_ui_locale_check check (
+    ui_locale in ('system', 'zh-CN', 'en', 'ja')
+  )
 ) TABLESPACE pg_default;
 
 create trigger trg_user_metadata_touch BEFORE
