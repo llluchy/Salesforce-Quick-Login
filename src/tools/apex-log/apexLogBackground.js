@@ -11,6 +11,18 @@ import {
   getSession,
   normalizeSfHostname
 } from '../_shared/sfSessionBg.js'
+import {
+  TRACE_ALARM_NAME,
+  TRACE_DURATION_MINUTES,
+  TRACE_LEASE_KEY,
+  apexLogWindowIsOpen,
+  applyTraceAlarm,
+  applyTraceUnwatch,
+  applyTraceWatch,
+  earliestExpiration,
+  rearmTraceRenewFromLease,
+  writeTraceLease
+} from './traceRenew.js'
 
 const API_VERSION = 'v59.0'
 const STORAGE_KEY_ENVS = 'sfql_apex_environments'
@@ -244,12 +256,13 @@ async function getOrCreateDebugLevel(envId) {
   return createResult?.id || null
 }
 
-async function createOrRenewTraceFlagForUser(envId, userId, durationMinutes = 60) {
+async function createOrRenewTraceFlagForUser(envId, userId, durationMinutes = TRACE_DURATION_MINUTES) {
   if (!userId) throw new Error('缺少用户 Id')
   const debugLevelId = await getOrCreateDebugLevel(envId)
   if (!debugLevelId) throw new Error('无法创建 DebugLevel')
 
-  const expiration = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString()
+  const expiresAt = Date.now() + durationMinutes * 60 * 1000
+  const expiration = new Date(expiresAt).toISOString()
   const start = new Date().toISOString()
   const soql = encodeURIComponent(
     `SELECT Id, DebugLevelId FROM TraceFlag WHERE TracedEntityId = '${escapeSoql(userId)}' LIMIT 1`
@@ -273,7 +286,7 @@ async function createOrRenewTraceFlagForUser(envId, userId, durationMinutes = 60
         })
       }
     )
-    return { success: true, renewed: true, userId, debugLevelId, traceFlagId: existingId }
+    return { success: true, renewed: true, userId, debugLevelId, traceFlagId: existingId, expiresAt }
   }
 
   const createResult = await makeApiRequestForEnv(
@@ -292,10 +305,10 @@ async function createOrRenewTraceFlagForUser(envId, userId, durationMinutes = 60
   )
   const traceFlagId = createResult?.id || null
   if (!traceFlagId) throw new Error('无法创建 TraceFlag')
-  return { success: true, created: true, userId, debugLevelId, traceFlagId }
+  return { success: true, created: true, userId, debugLevelId, traceFlagId, expiresAt }
 }
 
-async function createTraceFlag(envId, debugLevelId, durationMinutes = 60) {
+async function createTraceFlag(envId, debugLevelId, durationMinutes = TRACE_DURATION_MINUTES) {
   const userInfo = await makeApiRequestForEnv(
     envId,
     `/services/data/${API_VERSION}/chatter/users/me`
@@ -303,28 +316,39 @@ async function createTraceFlag(envId, debugLevelId, durationMinutes = 60) {
   const userId = userInfo?.id
   if (!userId) throw new Error('无法获取当前用户')
   // debugLevelId 参数保留兼容；内部会再取/建
-  const result = await createOrRenewTraceFlagForUser(envId, userId, durationMinutes)
-  return result.traceFlagId
+  return createOrRenewTraceFlagForUser(envId, userId, durationMinutes)
 }
 
-async function enableDebugLogging(envId, durationMinutes = 60) {
+async function enableDebugLogging(envId, durationMinutes = TRACE_DURATION_MINUTES) {
   try {
     const debugLevelId = await getOrCreateDebugLevel(envId)
     if (!debugLevelId) return { success: false, error: '无法创建 DebugLevel' }
-    const traceFlagId = await createTraceFlag(envId, debugLevelId, durationMinutes)
-    if (!traceFlagId) return { success: false, error: '无法创建 TraceFlag' }
+    const created = await createTraceFlag(envId, debugLevelId, durationMinutes)
+    if (!created?.traceFlagId) return { success: false, error: '无法创建 TraceFlag' }
 
+    const written = []
+    if (Number.isFinite(created.expiresAt)) written.push(created.expiresAt)
     // 同步续期本环境已追踪的自定义用户
     const tracked = getTrackedUsers(envId)
     const extras = []
     for (const u of tracked) {
       try {
-        extras.push(await createOrRenewTraceFlagForUser(envId, u.id, durationMinutes))
+        const extra = await createOrRenewTraceFlagForUser(envId, u.id, durationMinutes)
+        extras.push(extra)
+        if (Number.isFinite(extra.expiresAt)) written.push(extra.expiresAt)
       } catch (e) {
         extras.push({ success: false, userId: u.id, error: e.message || String(e) })
       }
     }
-    return { success: true, debugLevelId, traceFlagId, tracked: extras }
+    const finite = written.filter((n) => Number.isFinite(n))
+    const expiresAt = finite.length ? Math.min(...finite) : Date.now() + durationMinutes * 60 * 1000
+    return {
+      success: true,
+      debugLevelId,
+      traceFlagId: created.traceFlagId,
+      tracked: extras,
+      expiresAt
+    }
   } catch (e) {
     return { success: false, error: e.message || String(e) }
   }
@@ -444,12 +468,140 @@ async function searchUsers(envId, filters = {}, limit = 40) {
   }))
 }
 
-async function trackCustomUser(envId, user, durationMinutes = 60) {
+async function trackCustomUser(envId, user, durationMinutes = TRACE_DURATION_MINUTES) {
   if (!user?.id) return { success: false, error: '请选择用户' }
   const result = await createOrRenewTraceFlagForUser(envId, user.id, durationMinutes)
   const tracked = upsertTrackedUser(envId, user)
   await saveState()
   return { ...result, trackedUsers: tracked, user: tracked.find((u) => u.id === user.id) }
+}
+
+let memoryTraceLease = null
+
+async function loadTraceLease() {
+  try {
+    const data = await chrome.storage.session.get(TRACE_LEASE_KEY)
+    memoryTraceLease = data?.[TRACE_LEASE_KEY] || null
+    return memoryTraceLease
+  } catch {
+    return memoryTraceLease
+  }
+}
+
+async function saveTraceLease(lease) {
+  memoryTraceLease = lease
+  try {
+    await writeTraceLease({ session: chrome.storage.session }, lease)
+  } catch (e) {
+    console.warn('[ApexLog] 跟踪续期只留在本机内存', e?.message || e)
+  }
+}
+
+async function queryApexLogTabs() {
+  try {
+    return await chrome.tabs.query({})
+  } catch {
+    return []
+  }
+}
+
+async function readTraceExpiration(envId) {
+  const me = await makeApiRequestForEnv(
+    envId,
+    `/services/data/${API_VERSION}/chatter/users/me`
+  )
+  const ids = []
+  if (me?.id) ids.push(me.id)
+  for (const user of getTrackedUsers(envId)) {
+    if (user?.id && !ids.includes(user.id)) ids.push(user.id)
+  }
+  if (!ids.length) return null
+  const list = ids.map((id) => `'${escapeSoql(id)}'`).join(',')
+  const soql = encodeURIComponent(
+    `SELECT ExpirationDate FROM TraceFlag WHERE TracedEntityId IN (${list})`
+  )
+  const result = await makeApiRequestForEnv(
+    envId,
+    `/services/data/${API_VERSION}/tooling/query/?q=${soql}`
+  )
+  return earliestExpiration((result?.records || []).map((row) => row.ExpirationDate))
+}
+
+async function renewEnvTrace(envId) {
+  const result = await enableDebugLogging(envId, TRACE_DURATION_MINUTES)
+  if (!result?.success) throw new Error(result?.error || '续期失败')
+  return { expiresAt: result.expiresAt }
+}
+
+function scheduleTraceAlarm(whenMs) {
+  if (!chrome.alarms?.create) return
+  const when = Math.max(Number(whenMs) || 0, Date.now() + 500)
+  return chrome.alarms.create(TRACE_ALARM_NAME, { when })
+}
+
+function clearTraceAlarm() {
+  if (!chrome.alarms?.clear) return
+  return chrome.alarms.clear(TRACE_ALARM_NAME)
+}
+
+function publishTraceStatus(result) {
+  if (!result || !chrome.runtime?.sendMessage) return
+  chrome.runtime.sendMessage({
+    action: 'apexLog:traceStatus',
+    phase: result.phase || result.action,
+    envId: result.envId || '',
+    expiresAt: result.expiresAt || null,
+    renewAt: result.renewAt || null,
+    error: result.error || ''
+  }).catch(() => {})
+}
+
+function tracePorts(now = Date.now()) {
+  return {
+    now,
+    loadLease: loadTraceLease,
+    saveLease: saveTraceLease,
+    readExpiration: readTraceExpiration,
+    renew: renewEnvTrace,
+    scheduleAlarm: scheduleTraceAlarm,
+    clearAlarm: clearTraceAlarm
+  }
+}
+
+let traceAlarmTask = null
+
+async function handleTraceAlarm() {
+  if (traceAlarmTask) return traceAlarmTask
+  traceAlarmTask = (async () => {
+    try {
+      await loadState()
+      const tabs = await queryApexLogTabs()
+      const result = await applyTraceAlarm({
+        ...tracePorts(),
+        windowOpen: apexLogWindowIsOpen(tabs)
+      })
+      publishTraceStatus(result)
+      return result
+    } finally {
+      traceAlarmTask = null
+    }
+  })()
+  return traceAlarmTask
+}
+
+async function rearmTraceRenewAlarm() {
+  if (!chrome.alarms?.get) return
+  const tabs = await queryApexLogTabs()
+  await rearmTraceRenewFromLease({
+    now: Date.now(),
+    windowOpen: apexLogWindowIsOpen(tabs),
+    loadLease: loadTraceLease,
+    saveLease: saveTraceLease,
+    clearAlarm: clearTraceAlarm,
+    scheduleAlarm: scheduleTraceAlarm,
+    alarmPending: async () => !!(await chrome.alarms.get(TRACE_ALARM_NAME)),
+    runDue: handleTraceAlarm
+  })
 }
 
 function stopPolling() {
@@ -525,7 +677,32 @@ export function handleApexLogMessage(message, sender, sendResponse) {
             break
           }
           await loadState()
-          const result = await enableDebugLogging(activeEnvId, message.durationMinutes || 60)
+          const result = await enableDebugLogging(activeEnvId, message.durationMinutes || TRACE_DURATION_MINUTES)
+          sendResponse(result)
+          break
+        }
+        case 'apexLog:traceWatch': {
+          await loadState()
+          const envId = message.envId || activeEnvId
+          if (!envId || !environments[envId]) {
+            sendResponse({ success: false, phase: 'error', error: '无活动环境' })
+            break
+          }
+          const result = await applyTraceWatch({
+            ...tracePorts(),
+            envId,
+            viewerId: message.viewerId
+          })
+          sendResponse(result)
+          break
+        }
+        case 'apexLog:traceUnwatch': {
+          const result = await applyTraceUnwatch({
+            viewerId: message.viewerId,
+            loadLease: loadTraceLease,
+            saveLease: saveTraceLease,
+            clearAlarm: clearTraceAlarm
+          })
           sendResponse(result)
           break
         }
@@ -606,4 +783,12 @@ export function handleApexLogMessage(message, sender, sendResponse) {
 
 export async function initApexLogBackground() {
   await loadState()
+  await rearmTraceRenewAlarm()
+}
+
+if (typeof chrome !== 'undefined' && chrome.alarms?.onAlarm?.addListener) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm?.name !== TRACE_ALARM_NAME) return
+    handleTraceAlarm().catch((e) => console.warn('[ApexLog] 自动续期失败', e?.message || e))
+  })
 }
