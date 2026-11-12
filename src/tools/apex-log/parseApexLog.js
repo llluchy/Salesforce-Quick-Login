@@ -1,4 +1,7 @@
 import { t } from '../../i18n'
+import { filterLogLines, filterParsedLines, highlightParts } from './logLineFilter.js'
+
+export { filterLogLines, filterParsedLines, highlightParts }
 
 /**
  * Salesforce Apex Debug Log 解析
@@ -148,18 +151,6 @@ export function parseApexLogBody(body) {
   }
 
   return { lines: parsed, counts, apiVersion, categories }
-}
-
-/**
- * @param {ReturnType<typeof parseLogLine>[]} lines
- * @param {string} filter  all|debug|error|db|code|flow|callout
- */
-export function filterParsedLines(lines, filter) {
-  if (!filter || filter === 'all') return lines
-  if (filter === 'debug') {
-    return lines.filter((l) => l.kind === 'debug' || /USER_DEBUG/i.test(l.type))
-  }
-  return lines.filter((l) => l.kind === filter)
 }
 
 /** @param {LogKind|string} kind */

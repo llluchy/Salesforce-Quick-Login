@@ -11,8 +11,10 @@ import {
 } from './src/tools/_shared/sfSessionBg.js'
 import { handleApexLogMessage, initApexLogBackground } from './src/tools/apex-log/apexLogBackground.js'
 import { createToolFloatMessageHandler } from './src/utils/toolFloatController.js'
+import { createLocaleMessageHandler } from './src/utils/localeController.js'
 
 const handleToolFloatMessage = createToolFloatMessageHandler()
+const handleLocaleMessage = createLocaleMessageHandler()
 
 const SF_API_VERSION = '64.0'
 const SF_REST_CLIENT_ID = 'Salesforce Quick Login SOQL'
@@ -223,6 +225,10 @@ chrome.windows.onRemoved.addListener((windowId) => {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (handleToolFloatMessage(request, sender, sendResponse)) {
+    return true
+  }
+
+  if (handleLocaleMessage(request, sender, sendResponse)) {
     return true
   }
 
