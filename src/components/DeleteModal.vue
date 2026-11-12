@@ -11,6 +11,7 @@
           <div class="delete-warning">
             <span class="warning-icon">⚠️</span>
             <p>{{ t('delete.confirmBefore') }} <strong>{{ name }}</strong> {{ t('delete.confirmAfter') }}</p>
+            <p v-if="type === 'env'" class="warning-hint">{{ t('delete.envHint') }}</p>
             <p v-if="type === 'group'" class="warning-hint">
               {{ t('delete.groupHint', { ungrouped: t('group.ungrouped') }) }}
             </p>
