@@ -36,6 +36,9 @@ create table public.environments (
   sort_order integer null default 0,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
+  -- 误删恢复：is_deleted=true 且 deleted_at 起 7 日内可放回原分组。
+  -- 别名、账号、密码、验证器、分组留在原行。超过 7 日由客户端物理删除该行。
+  -- 已收下的分享是接收者自己的环境行，不随这里删除。本文件只记录结构，不改线上数据。
   is_deleted boolean not null default false,
   deleted_at timestamp with time zone null,
   constraint environments_pkey primary key (id),
