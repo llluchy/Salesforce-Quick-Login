@@ -14,6 +14,7 @@ import { deriveKey, generateSalt, bytesToBase64, exportKeyToJwk, importKeyFromJw
 import { STORAGE_KEY_SESSION } from '../utils/constants'
 import { CRYPTO_KEY_STORAGE_KEY, SESSION_ACCOUNT_SECRET_KEYS, clearLocalAccountSecrets } from '../utils/localAccountSecrets.js'
 import { signOutToolFloat } from '../utils/toolFloatPref.js'
+import { refreshLocale, resetLocaleAfterLogout } from './useLocale.js'
 import { WELCOME_PAGE_URL, RECOVERY_PAGE_URL } from '../utils/supabaseConfig'
 import { t } from '../i18n'
 
@@ -600,6 +601,7 @@ async function signUp({ email, password }) {
         window.open(welcomeUrl, '_blank')
       }
 
+      try { await refreshLocale() } catch { /* 语言失败不挡住注册 */ }
       return { needsEmailConfirm: false }
     }
 
@@ -662,6 +664,7 @@ async function signIn({ email, password }) {
     // 旧用户迁移：若无 recovery 密钥则自动生成
     await migrateRecoveryKeyIfNeeded(data.user.id, password)
 
+    try { await refreshLocale() } catch { /* 语言失败不挡住登录 */ }
     log('登录成功', { userId: data.user.id, email: data.user.email })
     return { success: true }
   } catch (e) {
@@ -702,6 +705,7 @@ async function signOut() {
     // 这样退出后的读取不会把云端 show_tool_float 抄进 session。
     await clearSessionFromBg()
     await resetToolFloatAfterLogout()
+    await resetLocaleAfterLogout()
     const supabase = getSupabase()
     if (supabase) {
       await supabase.auth.signOut()
@@ -710,6 +714,7 @@ async function signOut() {
     logError('登出失败', e)
   } finally {
     await resetToolFloatAfterLogout()
+    await resetLocaleAfterLogout()
     currentUser.value = null
     cryptoKey.value = null
     _saltBytes = null
@@ -765,6 +770,8 @@ async function getSession() {
       log('设备码不匹配，强制下线')
       // 强制登出
       try {
+        await clearSessionFromBg()
+        await resetLocaleAfterLogout()
         await supabase.auth.signOut()
       } catch (e) {
         logError('设备不匹配时登出失败', e)
@@ -786,6 +793,8 @@ async function getSession() {
 
     const dailyStatus = await getDailyLoginStatus()
     log('今日登录状态', dailyStatus)
+
+    try { await refreshLocale() } catch { /* 读不到账号语言时保持上次成功的界面语言 */ }
 
     if (dailyStatus.needPassword) {
       log('今日未登录过，需要输入密码')
@@ -843,6 +852,7 @@ async function unlockWithPassword(password) {
     // 旧用户迁移：若无 recovery 密钥则自动生成
     await migrateRecoveryKeyIfNeeded(currentUser.value.id, password)
 
+    try { await refreshLocale() } catch { /* 语言失败不挡住解锁 */ }
     log('解锁成功（用密码派生密钥）')
     return { success: true }
   } catch (e) {

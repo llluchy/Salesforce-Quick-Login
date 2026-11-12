@@ -16,7 +16,8 @@
     "system": "Follow system",
     "zhCN": "中文",
     "en": "English",
-    "ja": "日本語"
+    "ja": "日本語",
+    "saveFailed": "Language was not saved. Still using the last saved language."
   },
   "type": {
     "production": "Production",
@@ -84,6 +85,12 @@
     "share": "Share",
     "shareTitle": "Share environments",
     "accountTitle": "Account"
+  },
+  "envSearch": {
+    "label": "Search environments",
+    "placeholder": "Search by alias or username",
+    "clear": "Clear",
+    "noMatch": "No alias or username matches"
   },
   "settings": {
     "open": "Open settings",
@@ -350,12 +357,19 @@
     "tools": "Tools"
   },
   "toolsHub": {
-    "title": "Tools",
     "subtitle": "Click an icon to open the tool in a separate window. No extension account required.",
     "apexName": "Apex Log Viewer",
     "apexDesc": "Watch Apex Debug Logs in real time",
     "soqlName": "SOQL Creator",
-    "soqlDesc": "Build and run SOQL queries"
+    "soqlDesc": "Build and run SOQL queries",
+    "log": "Logs",
+    "query": "Query",
+    "object": "Objects",
+    "logTitle": "Open logs",
+    "queryTitle": "Open query",
+    "objectTitle": "Open object search",
+    "openPageFirst": "This is not a Salesforce page. Open a Salesforce page first, then use object search.",
+    "openFailed": "Could not open it. Try again."
   },
   "toolWindow": {
     "preview": "Preview",
@@ -409,6 +423,10 @@
     "loadingBody": "Loading body…",
     "linesCount": "{visible} / {total} lines",
     "noMatchingLines": "No lines match current filter",
+    "bodySearchLabel": "Search log text",
+    "bodySearchPlaceholder": "Type text to show only matching lines",
+    "bodySearchClear": "Clear",
+    "noBodyMatch": "No lines contain this text",
     "emptyBody": "Log body is empty",
     "colIndex": "#",
     "colTime": "Time",
@@ -664,6 +682,15 @@
     "deleteFailed": "Delete failed",
     "deleteRejected": "Delete was refused: the object name or record Id is not valid. No delete request was sent.",
     "invalidObjectName": "Object name is not valid, so nothing was loaded.",
-    "invalidRecordQuery": "Record Id is not valid, so no query by Id was sent."
+    "invalidRecordQuery": "Record Id is not valid, so no query by Id was sent.",
+    "fieldCreatedBy": "Field created by",
+    "fieldLastUpdatedBy": "Field last updated by",
+    "fieldAuditUnknown": "—",
+    "fieldAuditFailed": "Could not load who created or last updated each field. Field definitions are still available.",
+    "openObjectManager": "Object Manager",
+    "openObjectManagerTitle": "Open this object in Salesforce Object Manager",
+    "openRecord": "Open record",
+    "openRecordTitle": "Open this record in Salesforce",
+    "openRecordDisabled": "No record Id on this page"
   }
 }

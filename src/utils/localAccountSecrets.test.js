@@ -83,7 +83,8 @@ function sampleSession() {
       totpSecret: 'JBSWY3DPEHPK3PXP',
       lastSfHostname: 'org.my.salesforce.com'
     },
-    sfql_tool_float_session_visible: false
+    sfql_tool_float_session_visible: false,
+    ui_locale_session: 'ja'
   }
 }
 
