@@ -85,7 +85,8 @@ function sampleSession() {
     },
     sfql_tool_float_session_visible: false,
     ui_locale_session: 'ja',
-    sfql_apex_trace_lease: { hostname: 'org.my.salesforce.com', expiresAt: 1 }
+    sfql_apex_trace_lease: { hostname: 'org.my.salesforce.com', expiresAt: 1 },
+    sfql_saved_soql_session: [{ id: '11111111-1111-4111-8111-111111111111', soql: 'SELECT Id FROM Account', createdAt: '2026-11-12T00:00:00.000Z' }]
   }
 }
 

@@ -502,10 +502,11 @@ describe('schema RLS', () => {
     const db = new PGlite()
     const sql = readFileSync(resolve(root, 'supabase/schema.sql'), 'utf8')
     const tableStart = sql.indexOf('-- ---------- 表：user_metadata 用户设置 ----------')
-    const tableEnd = sql.indexOf('-- ---------- 函数：accept_share_lookup', tableStart)
+    const tableEnd = sql.indexOf('-- ---------- 表：saved_soql_queries 常用查询 ----------', tableStart)
     const policyStart = sql.indexOf('-- user_metadata：仅本人可读写自己的偏好')
+    const policyEnd = sql.indexOf('-- saved_soql_queries：仅本人可读写自己记下的查询', policyStart)
     const tableSql = sql.slice(tableStart, tableEnd).replace(/\s*TABLESPACE pg_default/gi, '')
-    const policySql = sql.slice(policyStart)
+    const policySql = sql.slice(policyStart, policyEnd)
 
     await db.exec(`
       CREATE SCHEMA IF NOT EXISTS auth;

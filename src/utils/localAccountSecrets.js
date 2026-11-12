@@ -52,7 +52,8 @@ export const LOCAL_KEYS_KEPT_ON_LOGOUT = [
 export const SESSION_KEYS_KEPT_ON_LOGOUT = [
   'sfql_tool_float_session_visible',
   'ui_locale_session',
-  'sfql_apex_trace_lease'
+  'sfql_apex_trace_lease',
+  'sfql_saved_soql_session'
 ]
 
 function removeFromLocalStorage(keys) {
