@@ -188,12 +188,15 @@ export function useStorage() {
 
       const { decryptEnv } = await import('../utils/crypto')
 
+      const rawRows = data || []
       const envs = []
-      for (const row of data || []) {
+      let decryptFailures = 0
+      for (const row of rawRows) {
         try {
           const env = await decryptEnv(row, key)
           envs.push(env)
         } catch (decryptErr) {
+          decryptFailures++
           console.error('[Storage] 环境解密失败', {
             id: row.id,
             error: decryptErr.message
@@ -202,10 +205,17 @@ export function useStorage() {
         }
       }
 
-      log('读取成功', { count: envs.length, total: data?.length, ids: envs.map(e => e.id) })
+      log('读取成功', { count: envs.length, total: rawRows.length, ids: envs.map(e => e.id) })
 
-      // 成功读到空云端必须接受：写回 []，勿用本机缓存冒充「云端有数据」
-      // （付费门/失败路径已在上方保留本机；此处是真实空远端，含 Path B purge）
+      // 有远端行但全部解密失败 ≠ 空云端：保留本机，勿 cacheSet []
+      if (envs.length === 0 && rawRows.length > 0 && decryptFailures === rawRows.length) {
+        const cached = await cacheGet(STORAGE_KEY)
+        const result = Array.isArray(cached) ? cached : []
+        await syncEnvsToSession(result)
+        return wrap(result, result.length ? 'cache' : 'empty', 'decrypt failed')
+      }
+
+      // 真·空云端（付费门已放行）才写 []；含 Path B purge 后的合法空账户
       await cacheSet(STORAGE_KEY, envs)
       await syncEnvsToSession(envs)
       return wrap(envs, 'remote')
@@ -385,6 +395,14 @@ export function useStorage() {
     const wrap = (data, source, error = null) =>
       detailed ? { data, source, error, count: data.length } : data
 
+    // 与 environments 一致：未付费 RLS 常返回 200 []，不可当空云端盖本机
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) {
+      const cached = await cacheGet(STORAGE_KEY_GROUPS)
+      const result = Array.isArray(cached) ? cached : []
+      return wrap(result, result.length ? 'cache' : 'empty', pay.error)
+    }
+
     const supabase = getSupabase()
     const key = getCryptoKey()
 
@@ -408,9 +426,26 @@ export function useStorage() {
         .order('sort_order', { ascending: true })
       if (error) throw new Error(t('storage.queryFailed', { msg: error.message }))
 
-      const groups = (data || []).map(decryptGroup)
+      const rawRows = data || []
+      const groups = []
+      let decryptFailures = 0
+      for (const row of rawRows) {
+        try {
+          groups.push(decryptGroup(row))
+        } catch (decryptErr) {
+          decryptFailures++
+          logError(`分组解密失败，跳过: ${row?.id}`, decryptErr.message || decryptErr)
+        }
+      }
       log('读取成功', { count: groups.length, ids: groups.map(g => g.id) })
-      // 成功空远端接受空，勿回落本机（避免 purge 后幽灵数据回写）
+
+      if (groups.length === 0 && rawRows.length > 0 && decryptFailures === rawRows.length) {
+        const cached = await cacheGet(STORAGE_KEY_GROUPS)
+        const result = Array.isArray(cached) ? cached : []
+        return wrap(result, result.length ? 'cache' : 'empty', 'decrypt failed')
+      }
+
+      // 付费门已放行后的真·空远端才写 []
       await cacheSet(STORAGE_KEY_GROUPS, groups)
       return wrap(groups, 'remote')
     } catch (e) {
@@ -425,6 +460,8 @@ export function useStorage() {
 
   const saveGroups = async (groups) => {
     log('saveGroups', { count: groups?.length || 0 })
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) return { success: false, error: pay.error }
     const supabase = getSupabase()
     if (!supabase) return { success: false, error: t('storage.supabaseNotInit') }
 

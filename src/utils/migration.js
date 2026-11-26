@@ -16,6 +16,7 @@
 
 import { useStorage } from '../composables/useStorage'
 import { getSupabase } from '../composables/useSupabase'
+import { STORAGE_KEY, STORAGE_KEY_GROUPS } from './constants'
 
 const MIGRATION_FLAG_KEY = '__sf_migrated_to_supabase'
 
@@ -38,7 +39,34 @@ async function cloudHasEnvironmentRows() {
   return { ok: true, hasRows: (count || 0) > 0 }
 }
 
+/** Path A/B 已 purge：付费后按空新用户，禁止把本机旧快照迁回云端 */
+async function readOwnPurgeFlags() {
+  const supabase = getSupabase()
+  if (!supabase) return { ok: false, purged: false, error: 'supabase not init' }
+  const { data: sessionData, error: sessionErr } = await supabase.auth.getSession()
+  if (sessionErr) return { ok: false, purged: false, error: sessionErr.message }
+  const userId = sessionData?.session?.user?.id
+  if (!userId) return { ok: false, purged: false, error: 'not authenticated' }
+  const { data, error } = await supabase
+    .from('user_billing')
+    .select('unpaid_purged_at,deactivate_purged_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return { ok: false, purged: false, error: error.message }
+  const purged = !!(data?.unpaid_purged_at || data?.deactivate_purged_at)
+  return { ok: true, purged }
+}
+
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
+
+async function clearLocalEnvAndGroupCache() {
+  if (!isChromeExt) return
+  try {
+    await chrome.storage.local.remove([STORAGE_KEY, STORAGE_KEY_GROUPS])
+  } catch {
+    /* ignore */
+  }
+}
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -81,6 +109,17 @@ export async function migrateLocalToSupabase() {
   const migrated = await readLocal(MIGRATION_FLAG_KEY)
   if (migrated === true) {
     return { skipped: true, reason: '已迁移过' }
+  }
+
+  // 1b. 已 purge → 空新用户：清本机并拒绝上传（即使竞态残留本地快照）
+  const purge = await readOwnPurgeFlags()
+  if (!purge.ok) {
+    return { success: false, reason: '检查 purge 状态失败：' + (purge.error || '') }
+  }
+  if (purge.purged) {
+    await clearLocalEnvAndGroupCache()
+    await setLocal(MIGRATION_FLAG_KEY, true)
+    return { skipped: true, reason: '已 purge，按空新用户' }
   }
 
   // 2. 读取本地旧数据
