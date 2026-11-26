@@ -214,6 +214,20 @@
     "reencryptFailed": "再暗号化に失敗しました",
     "signOutFailed": "ログアウトに失敗しました"
   },
+  "payment": {
+    "sectionTitle": "支払い状況",
+    "statusPaid": "支払い済み",
+    "statusUnpaid": "未払い",
+    "priceOnce": "一回限り ¥5",
+    "pay": "支払う",
+    "openingCheckout": "決済ページを開いています…",
+    "refreshPaid": "支払い済みです",
+    "contactLabel": "お問い合わせ",
+    "errorUnavailable": "サービスを利用できません",
+    "errorCheckout": "決済ページを開けません",
+    "errorRefresh": "更新に失敗しました",
+    "errorGeneric": "操作に失敗しました"
+  },
   "share": {
     "title": "環境を共有",
     "tabShare": "共有",

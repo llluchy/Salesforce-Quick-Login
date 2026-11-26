@@ -214,6 +214,20 @@
     "reencryptFailed": "重加密失败",
     "signOutFailed": "登出失败"
   },
+  "payment": {
+    "sectionTitle": "付费状态",
+    "statusPaid": "已付费",
+    "statusUnpaid": "未付费",
+    "priceOnce": "一次性 ¥5",
+    "pay": "去支付",
+    "openingCheckout": "打开支付页…",
+    "refreshPaid": "我已付款",
+    "contactLabel": "疑问 / 联系",
+    "errorUnavailable": "服务暂不可用",
+    "errorCheckout": "无法打开支付页",
+    "errorRefresh": "刷新失败",
+    "errorGeneric": "操作失败"
+  },
   "share": {
     "title": "环境分享",
     "tabShare": "分享出去",

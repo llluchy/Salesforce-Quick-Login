@@ -350,8 +350,9 @@ describe('saved query copy and schema', () => {
     const tableStart = sql.indexOf('-- ---------- 表：saved_soql_queries 常用查询 ----------')
     const tableEnd = sql.indexOf('-- ---------- 函数：accept_share_lookup', tableStart)
     const policyStart = sql.indexOf('-- saved_soql_queries：仅本人可读写自己记下的查询')
+    const policyEnd = sql.indexOf('-- user_billing：用户仅可读自己的付费状态', policyStart)
     const tableSql = sql.slice(tableStart, tableEnd).replace(/\s*TABLESPACE pg_default/gi, '')
-    const policySql = sql.slice(policyStart)
+    const policySql = sql.slice(policyStart, policyEnd === -1 ? undefined : policyEnd)
 
     await db.exec(`
       CREATE SCHEMA IF NOT EXISTS auth;
