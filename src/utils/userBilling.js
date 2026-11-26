@@ -49,16 +49,23 @@ export async function fetchOwnBilling(io, userId) {
 /**
  * 调 Edge create-checkout，返回 Checkout URL。
  * invokeFn(name, options) → { data, error }，与 supabase.functions.invoke 对齐。
+ * 已付费时抛 error.code = 'already_paid'（服务端 409）。
  */
 export async function createCheckoutSession(invokeFn) {
   if (typeof invokeFn !== 'function') {
     throw toError({ message: 'checkout invoke missing' })
   }
   const { data, error } = await invokeFn('create-checkout', { method: 'POST', body: {} })
+  const payloadError = data?.error || (typeof data === 'object' && data?.message) || null
+  if (payloadError === 'already_paid' || error?.context?.status === 409) {
+    const err = toError({ message: 'already_paid', code: 'already_paid', status: 409 })
+    throw err
+  }
   if (error) throw toError(error)
+  if (payloadError) throw toError({ message: payloadError })
   const url = data?.url
   if (!url || typeof url !== 'string') {
-    throw toError({ message: data?.error || 'checkout url missing' })
+    throw toError({ message: 'checkout url missing' })
   }
   return url
 }

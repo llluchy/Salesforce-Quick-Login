@@ -4,7 +4,7 @@
       <span class="payment-status-text">
         {{ isPaid ? t('payment.statusPaid') : t('payment.statusUnpaid') }}
       </span>
-      <span v-if="priceHint" class="payment-price">{{ t('payment.priceOnce') }}</span>
+      <span v-if="priceHint && !isPaid" class="payment-price">{{ t('payment.priceOnce') }}</span>
     </div>
 
     <div class="payment-actions">
@@ -63,6 +63,7 @@ const errorText = computed(() => localError.value || mapBillingError(billingErro
 
 function mapBillingError(code) {
   if (!code) return ''
+  if (code === 'already_paid') return ''
   if (code === 'supabase_unavailable') return t('payment.errorUnavailable')
   if (code === 'checkout_failed' || /checkout/i.test(code)) return t('payment.errorCheckout')
   if (code === 'billing_fetch_failed') return t('payment.errorRefresh')
@@ -71,9 +72,11 @@ function mapBillingError(code) {
 
 async function onPay() {
   localError.value = ''
+  if (isPaid.value) return
   try {
     await startCheckout()
-  } catch {
+  } catch (e) {
+    if (e?.code === 'already_paid' || e?.message === 'already_paid') return
     if (!billingError.value) localError.value = t('payment.errorCheckout')
   }
 }

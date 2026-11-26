@@ -50,17 +50,37 @@ async function refreshBilling() {
 async function startCheckout() {
   const client = getSupabase()
   if (!client) throw new Error('supabase_unavailable')
+  const { currentUser } = useAuth()
+  const userId = currentUser.value?.id
+  if (!userId) throw new Error('unauthorized')
 
   checkoutLoading.value = true
   billingError.value = null
   try {
+    // 开单前再拉一次，已付费则不调 Checkout
+    const latest = await fetchOwnBilling(supabaseUserBillingIo(client), userId)
+    isPaid.value = latest.isPaid
+    paidAt.value = latest.paidAt
+    if (latest.isPaid) {
+      billingError.value = 'already_paid'
+      const err = new Error('already_paid')
+      err.code = 'already_paid'
+      throw err
+    }
+
     const url = await createCheckoutSession((name, options) =>
       client.functions.invoke(name, options)
     )
     await openCheckoutUrl(url)
     return url
   } catch (e) {
-    billingError.value = e?.message || 'checkout_failed'
+    if (e?.code === 'already_paid' || e?.message === 'already_paid') {
+      billingError.value = 'already_paid'
+      isPaid.value = true
+      try { await refreshBilling() } catch { /* ignore */ }
+    } else {
+      billingError.value = e?.message || 'checkout_failed'
+    }
     throw e
   } finally {
     checkoutLoading.value = false

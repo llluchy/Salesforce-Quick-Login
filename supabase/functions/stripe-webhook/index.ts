@@ -1,4 +1,5 @@
 // Stripe Webhook：checkout.session.completed → 幂等标记 is_paid。密钥仅环境变量。
+// 部署时必须 verify_jwt = false（见 supabase/config.toml）；鉴权靠 Stripe 签名。
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
 import Stripe from 'https://esm.sh/stripe@14.25.0?target=deno'
 
@@ -30,7 +31,8 @@ Deno.serve(async (req) => {
   const body = await req.text()
   let event: Stripe.Event
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+    // Deno 仅异步 Web Crypto：必须用 constructEventAsync，勿用同步 constructEvent
+    event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret)
   } catch (err) {
     console.error('[stripe-webhook] verify failed', err)
     return new Response('invalid_signature', { status: 400 })

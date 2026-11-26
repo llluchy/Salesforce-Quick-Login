@@ -78,6 +78,13 @@ describe('fetchOwnBilling / checkout helpers', () => {
     )
   })
 
+  it('surfaces already_paid from create-checkout', async () => {
+    await assert.rejects(
+      () => createCheckoutSession(async () => ({ data: { error: 'already_paid' }, error: null })),
+      (err) => err.code === 'already_paid' && err.status === 409
+    )
+  })
+
   it('supabaseUserBillingIo selects own columns only', async () => {
     const calls = []
     const client = {
@@ -254,13 +261,21 @@ describe('edge functions present', () => {
   it('ships create-checkout and stripe-webhook sources', () => {
     const checkout = readFileSync(resolve(root, 'supabase/functions/create-checkout/index.ts'), 'utf8')
     const webhook = readFileSync(resolve(root, 'supabase/functions/stripe-webhook/index.ts'), 'utf8')
+    const config = readFileSync(resolve(root, 'supabase/config.toml'), 'utf8')
     assert.match(checkout, /mode:\s*'payment'/)
     assert.match(checkout, /STRIPE_PRICE_ID/)
+    assert.match(checkout, /already_paid/)
+    assert.match(checkout, /is_paid/)
     assert.match(webhook, /checkout\.session\.completed/)
     assert.match(webhook, /claim_payment_from_stripe/)
     assert.match(webhook, /STRIPE_WEBHOOK_SECRET/)
+    assert.match(webhook, /constructEventAsync/)
+    assert.doesNotMatch(webhook, /constructEvent\(/)
+    assert.match(config, /\[functions\.stripe-webhook\]/)
+    assert.match(config, /verify_jwt\s*=\s*false/)
     const setup = readFileSync(resolve(root, 'docs/stripe-setup.md'), 'utf8')
     assert.match(setup, /STRIPE_SECRET_KEY/)
+    assert.match(setup, /verify_jwt\s*=\s*false/)
     assert.match(setup, /llluchy@outlook\.com/)
     assert.match(setup, /llluchy@qq\.com/)
   })

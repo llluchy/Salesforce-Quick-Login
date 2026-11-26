@@ -1,0 +1,9 @@
+# Supabase 本地 / 部署相关配置（不含密钥）
+# stripe-webhook 由 Stripe 调用，无用户 JWT；必须关闭网关 JWT 校验，否则一律 401。
+# 鉴权改由函数内 Stripe-Signature + STRIPE_WEBHOOK_SECRET 完成。
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = true

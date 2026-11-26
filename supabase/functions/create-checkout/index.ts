@@ -1,4 +1,5 @@
 // Stripe Checkout：一次性 ¥5 CNY。需用户 JWT。密钥仅环境变量，不进 git。
+// 已付费账号拒绝再建 Session，避免重复扣款。
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
 import Stripe from 'https://esm.sh/stripe@14.25.0?target=deno'
 
@@ -45,6 +46,22 @@ Deno.serve(async (req) => {
 
     const userId = userData.user.id
     const email = userData.user.email || undefined
+
+    // 用户 JWT 可读本人 user_billing；已付费则拒绝开新 Checkout
+    const { data: billing, error: billingError } = await supabase
+      .from('user_billing')
+      .select('is_paid')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (billingError) {
+      console.error('[create-checkout] billing read failed', billingError)
+      return json({ error: 'billing_unavailable' }, 500)
+    }
+
+    if (billing?.is_paid === true) {
+      return json({ error: 'already_paid' }, 409)
+    }
 
     const stripe = new Stripe(stripeSecret, {
       apiVersion: '2023-10-16',
