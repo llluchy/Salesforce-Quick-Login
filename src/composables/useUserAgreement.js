@@ -23,6 +23,8 @@ const error = ref(null)
 const acceptedAt = ref(null)
 
 let _refreshing = false
+/** reset / 登出时递增，使进行中的 refresh 结果作废 */
+let _refreshEpoch = 0
 
 function sessionArea() {
   try {
@@ -45,25 +47,33 @@ export function useUserAgreement() {
   }
 
   function reset() {
+    _refreshEpoch += 1
+    _refreshing = false
     hide()
     acceptedAt.value = null
+  }
+
+  function isStale(epoch) {
+    return epoch !== _refreshEpoch
   }
 
   async function refresh() {
     if (_refreshing) return
     _refreshing = true
+    const epoch = _refreshEpoch
     error.value = null
     try {
       if (!isAuthed.value || !currentUser.value?.id) {
-        hide()
-        acceptedAt.value = null
+        if (!isStale(epoch)) {
+          hide()
+          acceptedAt.value = null
+        }
         return
       }
 
       const client = getSupabase()
       if (!client) {
-        // 付费模式无法确认协议时挡住
-        visible.value = true
+        if (!isStale(epoch)) visible.value = true
         return
       }
 
@@ -76,10 +86,10 @@ export function useUserAgreement() {
         })
       } catch (e) {
         syncLog.warn('user agreement: master switch read failed', e?.message || e)
-        // 读不到开关时不当作付费模式强制协议
-        hide()
+        if (!isStale(epoch)) hide()
         return
       }
+      if (isStale(epoch)) return
 
       if (switchEnabled !== true) {
         hide()
@@ -94,11 +104,13 @@ export function useUserAgreement() {
         )
       } catch (e) {
         syncLog.warn('user agreement: read failed', e?.message || e)
-        // 付费模式读失败 → 未同意，强制弹窗
-        acceptedAt.value = null
-        visible.value = true
+        if (!isStale(epoch)) {
+          acceptedAt.value = null
+          visible.value = true
+        }
         return
       }
+      if (isStale(epoch)) return
 
       acceptedAt.value = at
       const show = shouldShowUserAgreement({
@@ -109,7 +121,7 @@ export function useUserAgreement() {
       visible.value = show
       syncLog.info('user agreement: refresh', { acceptedAt: at, show })
     } finally {
-      _refreshing = false
+      if (!isStale(epoch)) _refreshing = false
     }
   }
 
@@ -134,9 +146,28 @@ export function useUserAgreement() {
     } catch (e) {
       error.value = e?.message || 'save_failed'
       syncLog.warn('user agreement: save failed', e?.message || e)
-      return { ok: false }
-    } finally {
       saving.value = false
+      return { ok: false }
+    }
+    // 成功时保持 saving=true 至 reset，或已 visible=false；同意成功后不必再点
+  }
+
+  /**
+   * 不同意：先锁住按钮（saving），再登出。登出成功由 onSignedOut→reset 清状态；
+   * 登出失败则解锁以便重试。
+   */
+  async function disagree(signOutFn) {
+    if (saving.value) return { ok: false }
+    saving.value = true
+    error.value = null
+    try {
+      await signOutFn()
+      return { ok: true }
+    } catch (e) {
+      error.value = e?.message || 'sign_out_failed'
+      syncLog.warn('user agreement: disagree signOut failed', e?.message || e)
+      saving.value = false
+      return { ok: false }
     }
   }
 
@@ -147,6 +178,7 @@ export function useUserAgreement() {
     acceptedAt: readonly(acceptedAt),
     refresh,
     agree,
+    disagree,
     reset
   }
 }

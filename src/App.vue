@@ -266,6 +266,7 @@ const {
   error: userAgreementError,
   refresh: refreshUserAgreement,
   agree: agreeUserAgreement,
+  disagree: disagreeUserAgreement,
   reset: resetUserAgreement
 } = useUserAgreement()
 
@@ -278,11 +279,7 @@ const handleUserAgreementAgree = async () => {
 }
 
 const handleUserAgreementDisagree = async () => {
-  try {
-    await signOut()
-  } catch (e) {
-    syncLog.warn('user agreement disagree signOut failed', e?.message || e)
-  }
+  await disagreeUserAgreement(signOut)
 }
 
 const environments = ref([])
@@ -1097,19 +1094,19 @@ const onAuthed = async () => {
   } catch (e) {
     syncLog.error('加载数据失败', e)
     console.error('[App] onAuthed loadData 异常', e)
-  } finally {
-    _dataLoadDone = true
-    hideBoot()
-    _onAuthedRunning = false
   }
 
-  // 提醒阶段（开关 OFF）/ 用户协议（开关 ON）：nextTick 后弹，避免被 boot 遮罩挡住
+  // 付费模式协议须在 hideBoot 前完成，避免侧栏在协议返回前已可操作
   try {
     await nextTick()
     await refreshPaymentReminder()
     await refreshUserAgreement()
   } catch (e) {
     syncLog.warn('payment reminder / user agreement refresh failed', e?.message || e)
+  } finally {
+    _dataLoadDone = true
+    hideBoot()
+    _onAuthedRunning = false
   }
 }
 

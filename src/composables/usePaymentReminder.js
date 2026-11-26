@@ -26,6 +26,7 @@ const error = ref(null)
 const paymentChoice = ref(null)
 
 let _refreshing = false
+let _refreshEpoch = 0
 
 function sessionArea() {
   try {
@@ -48,24 +49,33 @@ export function usePaymentReminder() {
   }
 
   function reset() {
+    _refreshEpoch += 1
+    _refreshing = false
     hide()
     paymentChoice.value = null
+  }
+
+  function isStale(epoch) {
+    return epoch !== _refreshEpoch
   }
 
   async function refresh() {
     if (_refreshing) return
     _refreshing = true
+    const epoch = _refreshEpoch
     error.value = null
     try {
       if (!isAuthed.value || !currentUser.value?.id) {
-        hide()
-        paymentChoice.value = null
+        if (!isStale(epoch)) {
+          hide()
+          paymentChoice.value = null
+        }
         return
       }
 
       const client = getSupabase()
       if (!client) {
-        hide()
+        if (!isStale(epoch)) hide()
         return
       }
 
@@ -77,22 +87,22 @@ export function usePaymentReminder() {
           force: true
         })
       } catch (e) {
-        // 提醒阶段：读开关失败不弹、不挡（缺表/网络等）
         syncLog.warn('payment reminder: master switch read failed', e?.message || e)
-        hide()
+        if (!isStale(epoch)) hide()
         return
       }
+      if (isStale(epoch)) return
 
       const io = supabasePaymentChoiceIo(client)
       let choice
       try {
         choice = await readPaymentChoice(io, currentUser.value.id)
       } catch (e) {
-        // 常见：线上尚未 apply payment_choice 列 → PostgREST 报 column does not exist
         syncLog.warn('payment reminder: payment_choice read failed', e?.message || e)
-        hide()
+        if (!isStale(epoch)) hide()
         return
       }
+      if (isStale(epoch)) return
 
       paymentChoice.value = choice
       const show = shouldShowPaymentReminder({
@@ -107,7 +117,7 @@ export function usePaymentReminder() {
         show
       })
     } finally {
-      _refreshing = false
+      if (!isStale(epoch)) _refreshing = false
     }
   }
 
