@@ -92,14 +92,17 @@ create table public.user_secrets (
 -- ui_locale 为界面语言：system / zh-CN / en / ja，默认跟随系统。
 -- payment_choice：提醒阶段一次性「继续/停用」；null=未选；选定后不可由客户端改回。
 -- payment_choice_at：选定时间。
--- 本文件只备份结构。新列与触发器只加在这里，不改线上数据（见 migrations/payment_choice.sql）。
--- 冲突说明：管理员总开关 PR 拥有 app_config；本表 payment_choice* 由「提醒与停用选择」PR 维护。
+-- user_agreement_accepted_at：付费模式开启后一次性用户协议同意时间；null=未同意。
+-- 本文件只备份结构。新列与触发器只加在这里，不改线上数据（见 migrations/payment_choice.sql、user_agreement.sql）。
+-- 冲突说明：管理员总开关 PR 拥有 app_config；本表 payment_choice* / user_agreement* 由「提醒与停用选择」PR 维护。
+-- app_config（总开关）见下方。
 create table public.user_metadata (
   user_id uuid not null,
   show_tool_float boolean not null default true,
   ui_locale text not null default 'system'::text,
   payment_choice text null,
   payment_choice_at timestamp with time zone null,
+  user_agreement_accepted_at timestamp with time zone null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint user_metadata_pkey primary key (user_id),
@@ -142,6 +145,27 @@ $$;
 create trigger trg_user_metadata_payment_choice_immutable BEFORE
 update on user_metadata for EACH row
 execute FUNCTION prevent_payment_choice_change ();
+
+-- user_agreement_accepted_at 一旦非 null，禁止客户端改回 null 或改时间戳。
+create or replace function public.prevent_user_agreement_change () returns trigger
+language plpgsql
+as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') then
+    return new;
+  end if;
+  if old.user_agreement_accepted_at is not null
+     and new.user_agreement_accepted_at is distinct from old.user_agreement_accepted_at then
+    raise exception 'user_agreement_accepted_at is immutable once set'
+      using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_user_metadata_user_agreement_immutable BEFORE
+update on user_metadata for EACH row
+execute FUNCTION prevent_user_agreement_change ();
 
 -- ---------- 表：saved_soql_queries 常用查询 ----------
 -- 说明：执行成功后留下的 SOQL。不含名称、Salesforce 主机名、Org 或会话。

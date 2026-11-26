@@ -13,18 +13,23 @@
         </div>
 
         <div class="modal-body">
-          <p class="intro">{{ t('paymentReminder.intro') }}</p>
-          <ul class="choices" role="list">
-            <li>
-              <strong>{{ t('paymentReminder.continueLabel') }}</strong>
-              <span>{{ t('paymentReminder.continueDetail') }}</span>
-            </li>
-            <li>
-              <strong>{{ t('paymentReminder.deactivateLabel') }}</strong>
-              <span>{{ t('paymentReminder.deactivateDetail') }}</span>
-            </li>
-          </ul>
-          <p class="note">{{ t('paymentReminder.note') }}</p>
+          <p class="intro">{{ t('paymentReminder.fee') }}</p>
+          <p class="prompt">{{ t('paymentReminder.prompt') }}</p>
+
+          <div class="choice-block">
+            <strong>{{ t('paymentReminder.continueLabel') }}</strong>
+            <ul>
+              <li v-for="(item, i) in continueItems" :key="`c-${i}`">{{ item }}</li>
+            </ul>
+          </div>
+
+          <div class="choice-block">
+            <strong>{{ t('paymentReminder.deactivateLabel') }}</strong>
+            <ul>
+              <li v-for="(item, i) in deactivateItems" :key="`d-${i}`">{{ item }}</li>
+            </ul>
+          </div>
+
           <div class="contact">
             <span class="contact-label">{{ t('paymentReminder.contact') }}</span>
             <a
@@ -57,11 +62,20 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CONTACT_EMAILS } from '../utils/paymentChoice'
 
-const { t } = useI18n()
+const { t, tm } = useI18n()
 const titleId = 'sfql-payment-reminder-title'
+
+function listMessages(key) {
+  const items = tm(key)
+  return Array.isArray(items) ? items.map((item) => String(item)) : []
+}
+
+const continueItems = computed(() => listMessages('paymentReminder.continueItems'))
+const deactivateItems = computed(() => listMessages('paymentReminder.deactivateItems'))
 
 defineProps({
   visible: {
@@ -107,7 +121,7 @@ function onChoose(choice) {
   background-color: white;
   border-radius: 8px;
   width: 92%;
-  max-width: 420px;
+  max-width: 440px;
   max-height: 90vh;
   overflow: auto;
   box-shadow: 0 4px 20px rgba(25, 118, 210, 0.2);
@@ -124,8 +138,8 @@ function onChoose(choice) {
 
 .modal-header h2 {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.35;
+  font-size: 15px;
+  line-height: 1.4;
   color: #ffffff;
 }
 
@@ -135,46 +149,42 @@ function onChoose(choice) {
 }
 
 .intro,
-.note {
+.prompt {
   margin: 0 0 12px;
   font-size: 13px;
   line-height: 1.55;
   color: #334155;
 }
 
-.note {
-  color: #546e7a;
-  font-size: 12px;
-}
-
-.choices {
+.choice-block {
   margin: 0 0 12px;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.choices li {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   padding: 10px 12px;
   border: 1px solid #bbdefb;
   border-radius: 6px;
   background: #ffffff;
 }
 
-.choices strong {
+.choice-block strong {
+  display: block;
+  margin-bottom: 6px;
   font-size: 13px;
   color: #0d47a1;
 }
 
-.choices span {
+.choice-block ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.choice-block li {
   font-size: 12px;
   line-height: 1.5;
   color: #475569;
+  margin-bottom: 4px;
+}
+
+.choice-block li:last-child {
+  margin-bottom: 0;
 }
 
 .contact {

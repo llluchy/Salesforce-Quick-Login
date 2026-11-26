@@ -741,16 +741,32 @@
     "openRecordDisabled": "No record Id on this page"
   },
   "paymentReminder": {
-    "title": "A one-time paid plan is coming",
-    "intro": "Extension accounts will move to a one-time payment of ¥5 CNY—pay once, use forever. Billing is not turned on yet. This is an early notice, and we need you to choose what you want to do next.",
+    "title": "This extension plans to switch to a one-time paid plan on January 1, 2027",
+    "fee": "The fee is a one-time ¥5 CNY (about US$0.70 / about ¥110 JPY). After you pay, access is permanent and tied to your extension account, so you can sign in again from any client.",
+    "prompt": "This is a billing notice only for now. Please choose what you want to do next (you cannot change this choice in the app later):",
     "continueLabel": "Keep using",
-    "continueDetail": "Everything works as usual for now. After billing starts, you will need to pay to keep using the tools. You cannot change this choice in the app later.",
+    "continueItems": [
+      "Before January 1, 2027: you can keep using everything as usual.",
+      "From January 1, 2027: you must complete payment to keep using the extension.",
+      "If you have not paid by then: your account and data will be kept until January 7, 2027, 23:59:59 Beijing time (January 8, 2027, 00:59:59 Japan time; January 7, 2027, 10:59:59 EST).",
+      "You may pay early, or pay after the paid mode starts."
+    ],
     "deactivateLabel": "Deactivate",
-    "deactivateDetail": "You can still use everything for now. When billing starts, this account’s cloud data will be deleted and the account features will no longer be available. You cannot change this choice in the app later.",
-    "note": "Once saved, this choice cannot be changed in the app. If you need to change it later, please email us.",
+    "deactivateItems": [
+      "Before January 1, 2027: you can still keep using the extension.",
+      "From January 1, 2027: this account and related data stored in the extension will be permanently deleted, and you will no longer be able to sign in.",
+      "Please back up any accounts and other information saved in the extension to another device before that date, and migrate Passkeys and other authentication methods yourself so your work is not interrupted."
+    ],
     "continue": "Keep using",
     "deactivate": "Deactivate",
-    "contact": "Contact email",
+    "contact": "To change your choice later, email",
     "saveFailed": "We couldn’t save your choice. Please try again."
+  },
+  "userAgreement": {
+    "title": "User agreement",
+    "body": "By using this extension, you agree that it may store your account credentials and related information. We encrypt account passwords, but we cannot guarantee absolute security. You must accept and be willing to bear the related risks.",
+    "agree": "Agree",
+    "disagree": "Disagree",
+    "saveFailed": "We couldn’t save your agreement. Please try again."
   }
 }

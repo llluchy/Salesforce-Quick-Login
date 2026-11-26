@@ -119,6 +119,14 @@
           @choose="handlePaymentReminderChoose"
         />
 
+        <UserAgreementModal
+          :visible="userAgreementVisible"
+          :saving="userAgreementSaving"
+          :error="userAgreementError"
+          @agree="handleUserAgreementAgree"
+          @disagree="handleUserAgreementDisagree"
+        />
+
         <!-- Passkey 选择对话框（v4：Side Panel 集中处理） -->
         <div v-if="pkDialog.visible" class="pk-overlay" @click.self="cancelPasskeyDialog">
           <div class="pk-dialog">
@@ -234,11 +242,13 @@ import ShareDialog from './components/ShareDialog.vue'
 import TrashDialog from './components/TrashDialog.vue'
 import PanelTools from './components/PanelTools.vue'
 import PaymentReminderModal from './components/PaymentReminderModal.vue'
+import UserAgreementModal from './components/UserAgreementModal.vue'
 import { usePaymentReminder } from './composables/usePaymentReminder'
+import { useUserAgreement } from './composables/useUserAgreement'
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadTrashedEnvironments, restoreEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
-const { isAuthed, getCryptoKeyRaw, currentUser, getSession, getUnlockStatus } = useAuth()
+const { isAuthed, getCryptoKeyRaw, currentUser, getSession, getUnlockStatus, signOut } = useAuth()
 const { login, fillTotpCode } = useLogin()
 const { generateCode, scanQR } = useTotp()
 const {
@@ -250,9 +260,29 @@ const {
   choose: choosePaymentReminder,
   reset: resetPaymentReminder
 } = usePaymentReminder()
+const {
+  visible: userAgreementVisible,
+  saving: userAgreementSaving,
+  error: userAgreementError,
+  refresh: refreshUserAgreement,
+  agree: agreeUserAgreement,
+  reset: resetUserAgreement
+} = useUserAgreement()
 
 const handlePaymentReminderChoose = async (choice) => {
   await choosePaymentReminder(choice)
+}
+
+const handleUserAgreementAgree = async () => {
+  await agreeUserAgreement()
+}
+
+const handleUserAgreementDisagree = async () => {
+  try {
+    await signOut()
+  } catch (e) {
+    syncLog.warn('user agreement disagree signOut failed', e?.message || e)
+  }
 }
 
 const environments = ref([])
@@ -1073,13 +1103,13 @@ const onAuthed = async () => {
     _onAuthedRunning = false
   }
 
-  // 提醒阶段：总开关 OFF 且尚未选择时强制弹一次（不挡功能；读失败则不弹）
-  // nextTick：等 boot 遮罩卸掉后再弹，避免被挡住
+  // 提醒阶段（开关 OFF）/ 用户协议（开关 ON）：nextTick 后弹，避免被 boot 遮罩挡住
   try {
     await nextTick()
     await refreshPaymentReminder()
+    await refreshUserAgreement()
   } catch (e) {
-    syncLog.warn('payment reminder refresh failed', e?.message || e)
+    syncLog.warn('payment reminder / user agreement refresh failed', e?.message || e)
   }
 }
 
@@ -1097,6 +1127,7 @@ const onSignedOut = () => {
   environments.value = []
   groups.value = []
   resetPaymentReminder()
+  resetUserAgreement()
   _dataLoadDone = false
   hideBoot()
   if (groupSortable) {
