@@ -739,5 +739,12 @@
     "openRecord": "レコードを開く",
     "openRecordTitle": "このレコードの Salesforce ページを開く",
     "openRecordDisabled": "このページにはレコード Id がありません"
+  },
+  "paymentReminder": {
+    "title": "まもなく有料化",
+    "continue": "続ける",
+    "deactivate": "停止する",
+    "contact": "変更はメールで",
+    "saveFailed": "保存に失敗しました。再試行してください。"
   }
 }

@@ -739,5 +739,12 @@
     "openRecord": "Open record",
     "openRecordTitle": "Open this record in Salesforce",
     "openRecordDisabled": "No record Id on this page"
+  },
+  "paymentReminder": {
+    "title": "Paid plan coming",
+    "continue": "Continue",
+    "deactivate": "Deactivate",
+    "contact": "To change, email",
+    "saveFailed": "Save failed. Try again."
   }
 }

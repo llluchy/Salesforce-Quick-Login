@@ -111,6 +111,14 @@
           @restore="handleRestoreEnv"
         />
 
+        <PaymentReminderModal
+          :visible="paymentReminderVisible"
+          :saving="paymentReminderSaving"
+          :error="paymentReminderError"
+          :contact-emails="paymentReminderEmails"
+          @choose="handlePaymentReminderChoose"
+        />
+
         <!-- Passkey 选择对话框（v4：Side Panel 集中处理） -->
         <div v-if="pkDialog.visible" class="pk-overlay" @click.self="cancelPasskeyDialog">
           <div class="pk-dialog">
@@ -225,12 +233,27 @@ import AccountDialog from './components/AccountDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
 import TrashDialog from './components/TrashDialog.vue'
 import PanelTools from './components/PanelTools.vue'
+import PaymentReminderModal from './components/PaymentReminderModal.vue'
+import { usePaymentReminder } from './composables/usePaymentReminder'
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadTrashedEnvironments, restoreEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
 const { isAuthed, getCryptoKeyRaw, currentUser, getSession, getUnlockStatus } = useAuth()
 const { login, fillTotpCode } = useLogin()
 const { generateCode, scanQR } = useTotp()
+const {
+  visible: paymentReminderVisible,
+  saving: paymentReminderSaving,
+  error: paymentReminderError,
+  contactEmails: paymentReminderEmails,
+  refresh: refreshPaymentReminder,
+  choose: choosePaymentReminder,
+  reset: resetPaymentReminder
+} = usePaymentReminder()
+
+const handlePaymentReminderChoose = async (choice) => {
+  await choosePaymentReminder(choice)
+}
 
 const environments = ref([])
 const groups = ref([])
@@ -1049,6 +1072,13 @@ const onAuthed = async () => {
     hideBoot()
     _onAuthedRunning = false
   }
+
+  // 提醒阶段：总开关 OFF 且尚未选择时强制弹一次（不挡功能；读失败则不弹）
+  try {
+    await refreshPaymentReminder()
+  } catch (e) {
+    syncLog.warn('payment reminder refresh failed', e?.message || e)
+  }
 }
 
 const onSignedOut = () => {
@@ -1064,6 +1094,7 @@ const onSignedOut = () => {
   restoringId.value = ''
   environments.value = []
   groups.value = []
+  resetPaymentReminder()
   _dataLoadDone = false
   hideBoot()
   if (groupSortable) {

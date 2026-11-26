@@ -739,5 +739,12 @@
     "openRecord": "打开记录",
     "openRecordTitle": "打开这条记录的 Salesforce 页面",
     "openRecordDisabled": "当前页面没有记录 Id"
+  },
+  "paymentReminder": {
+    "title": "即将收费",
+    "continue": "继续",
+    "deactivate": "停用",
+    "contact": "改选请联系",
+    "saveFailed": "保存失败，请重试"
   }
 }
