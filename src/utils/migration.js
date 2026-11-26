@@ -111,10 +111,17 @@ export async function migrateLocalToSupabase() {
     return { skipped: true, reason: '已迁移过' }
   }
 
-  // 1b. 已 purge → 空新用户：清本机并拒绝上传（即使竞态残留本地快照）
+  // 1b. purge 标记：
+  // - 确认已 purge → 空新用户，清本机并拒绝上传
+  // - 确认未 purge → 继续迁移
+  // - 读取失败 → deferred（勿当 purged；勿标已迁移；调用方勿用空云端盖本机）
   const purge = await readOwnPurgeFlags()
   if (!purge.ok) {
-    return { success: false, reason: '检查 purge 状态失败：' + (purge.error || '') }
+    return {
+      deferred: true,
+      skipped: true,
+      reason: '检查 purge 状态失败：' + (purge.error || '')
+    }
   }
   if (purge.purged) {
     await clearLocalEnvAndGroupCache()
@@ -137,10 +144,14 @@ export async function migrateLocalToSupabase() {
     return { skipped: true, reason: '本地无旧数据' }
   }
 
-  // 3. 检查云端是否已有真实行（避免覆盖）；查询失败则中止，勿误标已迁移
+  // 3. 检查云端是否已有真实行（避免覆盖）；查询失败则 defer，勿误标已迁移、勿随后空云端覆盖
   const cloud = await cloudHasEnvironmentRows()
   if (!cloud.ok) {
-    return { success: false, reason: '检查云端失败：' + (cloud.error || '') }
+    return {
+      deferred: true,
+      skipped: true,
+      reason: '检查云端失败：' + (cloud.error || '')
+    }
   }
   if (cloud.hasRows) {
     await setLocal(MIGRATION_FLAG_KEY, true)
@@ -197,6 +208,17 @@ export async function migrateLocalToSupabase() {
     }
   } catch (e) {
     console.error('[Migration] 迁移异常', e)
-    return { success: false, reason: e.message || String(e) }
+    return { success: false, deferred: true, reason: e.message || String(e) }
   }
+}
+
+/**
+ * migrateThenLoad 是否可安全走远端 loadData。
+ * deferred / 明确失败时禁止：空云端会盖掉尚未迁完的本机数据。
+ */
+export function migrateAllowsRemoteLoad(result) {
+  if (!result) return false
+  if (result.deferred === true) return false
+  if (result.success === false) return false
+  return true
 }

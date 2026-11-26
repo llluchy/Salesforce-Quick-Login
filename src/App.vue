@@ -237,11 +237,11 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Sortable from 'sortablejs'
-import { MAX_ENVIRONMENTS } from './utils/constants'
+import { MAX_ENVIRONMENTS, STORAGE_KEY, STORAGE_KEY_GROUPS } from './utils/constants'
 import { generateUuid } from './utils/crypto'
 import { useStorage } from './composables/useStorage'
 import { useAuth } from './composables/useAuth'
-import { migrateLocalToSupabase } from './utils/migration'
+import { migrateAllowsRemoteLoad, migrateLocalToSupabase } from './utils/migration'
 import { useLogin } from './composables/useLogin'
 import { initPasskeyBridge, destroyPasskeyBridge, passkeyRequest, passkeyError, passkeySaving, passkeySavingStage } from './composables/usePasskeyBridge'
 import { useTotp } from './composables/useTotp'
@@ -366,24 +366,46 @@ const {
   refreshPaymentGate
 } = usePaymentGate()
 
+async function hydrateUiFromLocalCache() {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local?.get) return
+    const data = await chrome.storage.local.get([STORAGE_KEY, STORAGE_KEY_GROUPS])
+    environments.value = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : []
+    groups.value = Array.isArray(data[STORAGE_KEY_GROUPS]) ? data[STORAGE_KEY_GROUPS] : []
+  } catch (e) {
+    console.error('[App] hydrateUiFromLocalCache 失败', e)
+  }
+}
+
 async function migrateThenLoad() {
+  let migrateResult = null
   try {
     showBoot(t('boot.migrating'), t('boot.migratingDetail'))
-    const result = await migrateLocalToSupabase()
-    if (result?.success) {
-      const m = result.migrated
+    migrateResult = await migrateLocalToSupabase()
+    if (migrateResult?.success) {
+      const m = migrateResult.migrated
       showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
+    } else if (migrateResult?.deferred) {
+      syncLog.error('迁移推迟', migrateResult.reason)
+    } else if (migrateResult?.success === false) {
+      syncLog.error('迁移失败', migrateResult.reason)
     }
   } catch (e) {
     syncLog.error('迁移本地数据失败', e)
     console.error('[App] migrateThenLoad 迁移异常', e)
+    migrateResult = { deferred: true, success: false, reason: e.message || String(e) }
   }
   try {
     initPasskeyBridge()
   } catch (e) {
     syncLog.error('初始化 Passkey Bridge 失败', e)
   }
-  await loadData()
+  // 仅在迁移成功/可安全跳过时走远端 loadData；否则保留本机，避免空云端覆盖
+  if (migrateAllowsRemoteLoad(migrateResult)) {
+    await loadData()
+  } else {
+    await hydrateUiFromLocalCache()
+  }
 }
 
 // 付费页消失后：先迁移本机→云端，再 loadData（避免空云端盖掉本机）
