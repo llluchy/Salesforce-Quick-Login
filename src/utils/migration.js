@@ -15,8 +15,28 @@
 // ============================================
 
 import { useStorage } from '../composables/useStorage'
+import { getSupabase } from '../composables/useSupabase'
 
 const MIGRATION_FLAG_KEY = '__sf_migrated_to_supabase'
+
+/**
+ * 直接查云端行数（head count），勿经 loadEnvironments——
+ * 后者在失败/付费门时会回落本机缓存，不能当作「云端已有数据」。
+ */
+async function cloudHasEnvironmentRows() {
+  const supabase = getSupabase()
+  if (!supabase) {
+    return { ok: false, hasRows: false, error: 'supabase not init' }
+  }
+  const { count, error } = await supabase
+    .from('environments')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_deleted', false)
+  if (error) {
+    return { ok: false, hasRows: false, error: error.message }
+  }
+  return { ok: true, hasRows: (count || 0) > 0 }
+}
 
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
 
@@ -78,15 +98,18 @@ export async function migrateLocalToSupabase() {
     return { skipped: true, reason: '本地无旧数据' }
   }
 
-  // 3. 检查云端是否已有数据（避免覆盖）
-  const { loadEnvironments, saveEnvironments, saveGroups, savePasskeyCredential } = useStorage()
-  const existingEnvs = await loadEnvironments()
-  if (existingEnvs.length > 0) {
+  // 3. 检查云端是否已有真实行（避免覆盖）；查询失败则中止，勿误标已迁移
+  const cloud = await cloudHasEnvironmentRows()
+  if (!cloud.ok) {
+    return { success: false, reason: '检查云端失败：' + (cloud.error || '') }
+  }
+  if (cloud.hasRows) {
     await setLocal(MIGRATION_FLAG_KEY, true)
     return { skipped: true, reason: '云端已有数据' }
   }
 
   // 4. 加密 + upsert 到 Supabase
+  const { saveEnvironments, saveGroups, savePasskeyCredential } = useStorage()
   try {
     if (envCount > 0) {
       // 清理 env 的临时 id（让 Supabase 生成 UUID）

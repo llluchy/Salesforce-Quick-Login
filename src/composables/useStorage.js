@@ -204,15 +204,8 @@ export function useStorage() {
 
       log('读取成功', { count: envs.length, total: data?.length, ids: envs.map(e => e.id) })
 
-      // 空云端不得盖掉非空本机缓存（付费门期间迁移未完成时）
-      if (envs.length === 0) {
-        const cached = await cacheGet(STORAGE_KEY)
-        if (Array.isArray(cached) && cached.length > 0) {
-          await syncEnvsToSession(cached)
-          return wrap(cached, 'cache')
-        }
-      }
-
+      // 成功读到空云端必须接受：写回 []，勿用本机缓存冒充「云端有数据」
+      // （付费门/失败路径已在上方保留本机；此处是真实空远端，含 Path B purge）
       await cacheSet(STORAGE_KEY, envs)
       await syncEnvsToSession(envs)
       return wrap(envs, 'remote')
@@ -417,12 +410,7 @@ export function useStorage() {
 
       const groups = (data || []).map(decryptGroup)
       log('读取成功', { count: groups.length, ids: groups.map(g => g.id) })
-      if (groups.length === 0) {
-        const cached = await cacheGet(STORAGE_KEY_GROUPS)
-        if (Array.isArray(cached) && cached.length > 0) {
-          return wrap(cached, 'cache')
-        }
-      }
+      // 成功空远端接受空，勿回落本机（避免 purge 后幽灵数据回写）
       await cacheSet(STORAGE_KEY_GROUPS, groups)
       return wrap(groups, 'remote')
     } catch (e) {

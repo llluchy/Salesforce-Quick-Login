@@ -95,10 +95,15 @@ export function usePaymentGate() {
           userId,
           isAuthed: isAuthed.value === true,
           onPurged: async () => {
+            // 路径 A 即时 purge：清本机，避免幽灵行回写云端
             await clearLocalEnvCacheOnly()
           }
         })
         applySnapshot(snapshot)
+        // 路径 B（日批）或已 purge 标记：同样清本机，付费后按空新用户，勿 migrate 旧缓存
+        if (snapshot.deactivatePurgedAt || snapshot.unpaidPurgedAt) {
+          await clearLocalEnvCacheOnly()
+        }
         return snapshot
       } finally {
         loading.value = false
