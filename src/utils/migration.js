@@ -111,25 +111,7 @@ export async function migrateLocalToSupabase() {
     return { skipped: true, reason: '已迁移过' }
   }
 
-  // 1b. purge 标记：
-  // - 确认已 purge → 空新用户，清本机并拒绝上传
-  // - 确认未 purge → 继续迁移
-  // - 读取失败 → deferred（勿当 purged；勿标已迁移；调用方勿用空云端盖本机）
-  const purge = await readOwnPurgeFlags()
-  if (!purge.ok) {
-    return {
-      deferred: true,
-      skipped: true,
-      reason: '检查 purge 状态失败：' + (purge.error || '')
-    }
-  }
-  if (purge.purged) {
-    await clearLocalEnvAndGroupCache()
-    await setLocal(MIGRATION_FLAG_KEY, true)
-    return { skipped: true, reason: '已 purge，按空新用户' }
-  }
-
-  // 2. 读取本地旧数据
+  // 2. 先读本地：无本地可保护 → 直接跳过（允许远端 loadData），勿因 purge 探测失败 deferred
   const oldEnvs = await readLocal('salesforce_environments')
   const oldGroups = await readLocal('salesforce_groups')
   const oldPasskeys = await readLocal('__sf_passkey_credentials')
@@ -139,17 +121,36 @@ export async function migrateLocalToSupabase() {
   const passkeyCount = Array.isArray(oldPasskeys) ? oldPasskeys.length : 0
 
   if (envCount === 0 && groupCount === 0 && passkeyCount === 0) {
-    // 无本地数据，直接标记迁移完成（避免后续重复检查）
     await setLocal(MIGRATION_FLAG_KEY, true)
     return { skipped: true, reason: '本地无旧数据' }
   }
 
-  // 3. 检查云端是否已有真实行（避免覆盖）；查询失败则 defer，勿误标已迁移、勿随后空云端覆盖
+  // 3. purge 标记（仅在有本地数据需保护时）：
+  // - 确认已 purge → 空新用户，清本机并拒绝上传
+  // - 确认未 purge → 继续迁移
+  // - 读取失败 → deferred（勿当 purged；勿标已迁移；调用方勿用空云端盖本机）
+  const purge = await readOwnPurgeFlags()
+  if (!purge.ok) {
+    return {
+      deferred: true,
+      skipped: true,
+      hasLocalData: true,
+      reason: '检查 purge 状态失败：' + (purge.error || '')
+    }
+  }
+  if (purge.purged) {
+    await clearLocalEnvAndGroupCache()
+    await setLocal(MIGRATION_FLAG_KEY, true)
+    return { skipped: true, reason: '已 purge，按空新用户' }
+  }
+
+  // 4. 检查云端是否已有真实行（避免覆盖）；查询失败则 defer，勿误标已迁移、勿随后空云端覆盖
   const cloud = await cloudHasEnvironmentRows()
   if (!cloud.ok) {
     return {
       deferred: true,
       skipped: true,
+      hasLocalData: true,
       reason: '检查云端失败：' + (cloud.error || '')
     }
   }
@@ -158,7 +159,7 @@ export async function migrateLocalToSupabase() {
     return { skipped: true, reason: '云端已有数据' }
   }
 
-  // 4. 加密 + upsert 到 Supabase
+  // 5. 加密 + upsert 到 Supabase
   const { saveEnvironments, saveGroups, savePasskeyCredential } = useStorage()
   try {
     if (envCount > 0) {
@@ -195,7 +196,7 @@ export async function migrateLocalToSupabase() {
       }
     }
 
-    // 5. 标记迁移完成
+    // 6. 标记迁移完成
     await setLocal(MIGRATION_FLAG_KEY, true)
 
     return {
@@ -214,11 +215,13 @@ export async function migrateLocalToSupabase() {
 
 /**
  * migrateThenLoad 是否可安全走远端 loadData。
- * deferred / 明确失败时禁止：空云端会盖掉尚未迁完的本机数据。
+ * deferred/失败且有本机数据时禁止（空云端会盖掉）；无本机则可安全拉云端。
  */
-export function migrateAllowsRemoteLoad(result) {
+export function migrateAllowsRemoteLoad(result, { localEnvCount = 0 } = {}) {
   if (!result) return false
-  if (result.deferred === true) return false
-  if (result.success === false) return false
+  if (result.deferred === true || result.success === false) {
+    // 无本机环境可保护 → 仍应 loadData（云端可能完整）
+    return localEnvCount === 0
+  }
   return true
 }
