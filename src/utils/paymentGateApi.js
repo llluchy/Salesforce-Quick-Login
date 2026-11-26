@@ -11,6 +11,17 @@ import { resolvePaymentAccess } from './paymentAccess.js'
 export const PAYMENT_MASTER_KEY = 'payment_master'
 export const PAYMENT_GATE_CACHE_SESSION_KEY = 'sfql_payment_gate_cache'
 export const PAYMENT_GATE_CACHE_TTL_MS = 120_000
+export const PAYMENT_GATE_CACHE_ANON = '__anon__'
+
+/** 缓存按用户隔离，避免已付费快照泄漏给下一账号。 */
+export function paymentGateCacheUserKey(userId) {
+  return userId ? String(userId) : PAYMENT_GATE_CACHE_ANON
+}
+
+export function paymentGateCacheMatchesUser(cache, userId) {
+  if (!cache || typeof cache !== 'object') return false
+  return cache.cacheUserId === paymentGateCacheUserKey(userId)
+}
 
 function toError(error) {
   if (error instanceof Error) return error
@@ -166,25 +177,38 @@ export async function invokeEnsureOwnUnpaidGrace(options) {
   return parseRest(res)
 }
 
-export async function readPaymentGateSessionCache(storageSession) {
+export async function readPaymentGateSessionCache(storageSession, userId) {
   if (!storageSession?.get) return null
   try {
     const data = await storageSession.get(PAYMENT_GATE_CACHE_SESSION_KEY)
-    return data?.[PAYMENT_GATE_CACHE_SESSION_KEY] || null
+    const cache = data?.[PAYMENT_GATE_CACHE_SESSION_KEY] || null
+    if (!paymentGateCacheMatchesUser(cache, userId)) return null
+    return cache
   } catch {
     return null
   }
 }
 
-export async function writePaymentGateSessionCache(storageSession, snapshot) {
+export async function writePaymentGateSessionCache(storageSession, snapshot, userId) {
   if (!storageSession?.set) return
   try {
     await storageSession.set({
       [PAYMENT_GATE_CACHE_SESSION_KEY]: {
         ...snapshot,
+        cacheUserId: paymentGateCacheUserKey(userId),
         fetchedAt: Date.now()
       }
     })
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 登出 / 换账号时清掉门闩缓存，防止 paid 泄漏。 */
+export async function clearPaymentGateSessionCache(storageSession) {
+  if (!storageSession?.remove) return
+  try {
+    await storageSession.remove(PAYMENT_GATE_CACHE_SESSION_KEY)
   } catch {
     /* ignore */
   }
@@ -195,20 +219,27 @@ export function isPaymentGateCacheFresh(cache, now = Date.now(), ttlMs = PAYMENT
   return now - cache.fetchedAt < ttlMs
 }
 
+function billingFromCache(cache) {
+  return {
+    isPaid: cache?.isPaid === true,
+    paidAt: null,
+    deactivatePurgedAt: cache?.deactivatePurgedAt || null,
+    payPhaseStartedAt: null,
+    unpaidGraceExpiresAt: cache?.unpaidGraceExpiresAt || null,
+    unpaidPurgedAt: cache?.unpaidPurgedAt || null,
+    paymentChoice: cache?.paymentChoice ?? null,
+    paymentChoiceAt: null
+  }
+}
+
 /**
  * 组装完整门闩快照（background / Vue / 工具窗共用）。
+ * 读开关失败：优先同用户 last-known-good；否则 fail-closed（不把失败当成开关 OFF）。
  */
 export async function loadPaymentGateSnapshot(options = {}) {
   const storage = options.storage || (typeof chrome !== 'undefined' ? chrome.storage : null)
   const force = options.force === true
   const sessionStore = storage?.session
-
-  if (!force && sessionStore) {
-    const cached = await readPaymentGateSessionCache(sessionStore)
-    if (isPaymentGateCacheFresh(cached)) {
-      return { ...cached, fromCache: true }
-    }
-  }
 
   let accessToken = options.accessToken || null
   let userId = options.userId || null
@@ -231,7 +262,15 @@ export async function loadPaymentGateSnapshot(options = {}) {
     isAuthed = !!(accessToken && userId)
   }
 
+  if (!force && sessionStore) {
+    const cached = await readPaymentGateSessionCache(sessionStore, userId)
+    if (isPaymentGateCacheFresh(cached) && cached.switchReadOk === true) {
+      return { ...cached, fromCache: true }
+    }
+  }
+
   let switchEnabled = false
+  let switchReadOk = false
   let billing = {
     isPaid: false,
     paidAt: null,
@@ -251,15 +290,21 @@ export async function loadPaymentGateSnapshot(options = {}) {
       anonKey: options.anonKey,
       fetchImpl: options.fetchImpl
     })
+    switchReadOk = true
   } catch {
-    // 提醒阶段默认关；收费阶段 fail-closed 需要知道开关。
-    // 读开关失败：若无缓存则视为 OFF（不挡），与「提醒阶段网络失败不挡」一致；
-    // 但若调用方声明 expectPayPhase，则 fail-closed。
-    if (options.expectPayPhase === true) {
+    // 不得把「读开关失败」静默当成 OFF（否则可挡 app_config 绕过工具门）。
+    // 1) 同用户 last-known-good（可过期）
+    // 2) 否则 fail-closed
+    const stale = sessionStore
+      ? await readPaymentGateSessionCache(sessionStore, userId)
+      : null
+    if (stale?.switchReadOk === true) {
+      switchEnabled = stale.switchEnabled === true
+      switchReadOk = true
+      billing = billingFromCache(stale)
+    } else {
       fetchFailed = true
       switchEnabled = true
-    } else {
-      switchEnabled = false
     }
   }
 
@@ -286,6 +331,7 @@ export async function loadPaymentGateSnapshot(options = {}) {
 
   const snapshot = {
     switchEnabled,
+    switchReadOk,
     isAuthed,
     isPaid: billing.isPaid === true,
     paymentChoice: billing.paymentChoice,
@@ -294,11 +340,15 @@ export async function loadPaymentGateSnapshot(options = {}) {
     unpaidPurgedAt: billing.unpaidPurgedAt,
     fetchFailed,
     access,
+    cacheUserId: paymentGateCacheUserKey(userId),
     fetchedAt: Date.now(),
     fromCache: false
   }
 
-  if (sessionStore) await writePaymentGateSessionCache(sessionStore, snapshot)
+  // 仅在成功读到开关时写入缓存，避免把 fail-closed 空壳当成 last-known-good
+  if (sessionStore && switchReadOk && !fetchFailed) {
+    await writePaymentGateSessionCache(sessionStore, snapshot, userId)
+  }
 
   // 路径 A：停用 + ON → 尝试自 purge（服务端幂等）
   if (

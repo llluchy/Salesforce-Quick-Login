@@ -26,7 +26,20 @@ export function createPaymentGateMessageHandler(options = {}) {
   }
 
   async function assertToolsAllowed() {
-    const snapshot = await resolveSnapshot(false)
+    let snapshot
+    try {
+      snapshot = await resolveSnapshot(false)
+    } catch (error) {
+      // 工具入口：读门异常一律 fail-closed，不可当开关 OFF
+      return {
+        ok: false,
+        snapshot: null,
+        decision: 'blocked',
+        success: false,
+        error: 'blocked',
+        reason: error?.message || 'switch_fetch_failed'
+      }
+    }
     const decision = planPaymentToolGate(snapshot.access)
     if (decision === 'proceed') {
       return { ok: true, snapshot, decision }
@@ -95,7 +108,8 @@ export async function resolveToolFloatVisibleWithPaymentGate(getVisible, assertT
       return { ...base, visible: false, paymentBlocked: true, paymentReason: gate.reason }
     }
   } catch {
-    // 读门失败：若 getVisible 成功且无 session，提醒阶段保持；保守起见不额外挡
+    // 读门失败：工具表面 fail-closed，隐藏浮动栏
+    return { ...base, visible: false, paymentBlocked: true, paymentReason: 'switch_fetch_failed' }
   }
   return base
 }

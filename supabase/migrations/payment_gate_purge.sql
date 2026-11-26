@@ -87,7 +87,10 @@ as $function$
   );
 $function$;
 
+-- 显式收回 named role（Supabase CREATE 时 ALTER DEFAULT PRIVILEGES 会授给 anon/authenticated）
 revoke all on function public.is_payment_master_enabled() from public;
+revoke all on function public.is_payment_master_enabled() from anon;
+revoke all on function public.is_payment_master_enabled() from authenticated;
 grant execute on function public.is_payment_master_enabled() to anon, authenticated, service_role;
 
 -- ---------- 辅助：当前用户是否已付费（收费阶段业务表 RLS）----------
@@ -110,6 +113,8 @@ as $function$
 $function$;
 
 revoke all on function public.payment_business_access_allowed() from public;
+revoke all on function public.payment_business_access_allowed() from anon;
+revoke all on function public.payment_business_access_allowed() from authenticated;
 grant execute on function public.payment_business_access_allowed() to authenticated, service_role;
 
 -- ---------- 共用删除清单（路径 A / B）----------
@@ -140,7 +145,10 @@ begin
 end;
 $function$;
 
+-- service_role only：禁止 anon/authenticated 经 REST RPC 跨用户清数据
 revoke all on function public.purge_user_business_data(uuid) from public;
+revoke all on function public.purge_user_business_data(uuid) from anon;
+revoke all on function public.purge_user_business_data(uuid) from authenticated;
 grant execute on function public.purge_user_business_data(uuid) to service_role;
 
 -- ---------- 路径 A：停用用户立即清数据 ----------
@@ -194,6 +202,8 @@ end;
 $function$;
 
 revoke all on function public.purge_deactivated_user_data(uuid) from public;
+revoke all on function public.purge_deactivated_user_data(uuid) from anon;
+revoke all on function public.purge_deactivated_user_data(uuid) from authenticated;
 grant execute on function public.purge_deactivated_user_data(uuid) to service_role;
 
 -- 登录用户在 ON 阶段自 purge（仅本人 + 须已选 deactivate）
@@ -211,7 +221,10 @@ begin
 end;
 $function$;
 
+-- 仅本人：内部仍调 purge_deactivated_user_data，但绑定 auth.uid()；DEFINER 所有者可调用下游
 revoke all on function public.try_purge_own_deactivated() from public;
+revoke all on function public.try_purge_own_deactivated() from anon;
+revoke all on function public.try_purge_own_deactivated() from authenticated;
 grant execute on function public.try_purge_own_deactivated() to authenticated;
 
 -- ---------- 路径 B：未付费宽限起算 + 到期清数据 ----------
@@ -269,6 +282,8 @@ end;
 $function$;
 
 revoke all on function public.ensure_own_unpaid_grace() from public;
+revoke all on function public.ensure_own_unpaid_grace() from anon;
+revoke all on function public.ensure_own_unpaid_grace() from authenticated;
 grant execute on function public.ensure_own_unpaid_grace() to authenticated;
 
 create or replace function public.purge_unpaid_expired_user_data(p_user_id uuid)
@@ -319,6 +334,8 @@ end;
 $function$;
 
 revoke all on function public.purge_unpaid_expired_user_data(uuid) from public;
+revoke all on function public.purge_unpaid_expired_user_data(uuid) from anon;
+revoke all on function public.purge_unpaid_expired_user_data(uuid) from authenticated;
 grant execute on function public.purge_unpaid_expired_user_data(uuid) to service_role;
 
 -- 每日批处理：路径 A 扫漏 + 路径 B 到期
@@ -380,6 +397,8 @@ end;
 $function$;
 
 revoke all on function public.run_payment_purge_daily(integer) from public;
+revoke all on function public.run_payment_purge_daily(integer) from anon;
+revoke all on function public.run_payment_purge_daily(integer) from authenticated;
 grant execute on function public.run_payment_purge_daily(integer) to service_role;
 
 -- ---------- 开关翻 ON 时批量打宽限戳（Dashboard 手工或运维调用）----------
@@ -396,13 +415,19 @@ begin
     return 0;
   end if;
 
+  with candidates as (
+    select u.id as user_id
+    from auth.users u
+    left join public.user_metadata m on m.user_id = u.id
+    left join public.user_billing b on b.user_id = u.id
+    where coalesce(m.payment_choice, '') is distinct from 'deactivate'
+      and (b.user_id is null or (b.is_paid = false and b.unpaid_grace_expires_at is null))
+    order by u.created_at nulls last, u.id
+    limit greatest(coalesce(p_limit, 5000), 1)
+  )
   insert into public.user_billing (user_id, pay_phase_started_at, unpaid_grace_expires_at)
-  select u.id, now(), now() + interval '7 days'
-  from auth.users u
-  left join public.user_metadata m on m.user_id = u.id
-  left join public.user_billing b on b.user_id = u.id
-  where coalesce(m.payment_choice, '') is distinct from 'deactivate'
-    and (b.user_id is null or (b.is_paid = false and b.unpaid_grace_expires_at is null))
+  select c.user_id, now(), now() + interval '7 days'
+  from candidates c
   on conflict (user_id) do update
     set
       pay_phase_started_at = coalesce(public.user_billing.pay_phase_started_at, excluded.pay_phase_started_at),
@@ -417,6 +442,8 @@ end;
 $function$;
 
 revoke all on function public.stamp_unpaid_grace_for_pay_phase(integer) from public;
+revoke all on function public.stamp_unpaid_grace_for_pay_phase(integer) from anon;
+revoke all on function public.stamp_unpaid_grace_for_pay_phase(integer) from authenticated;
 grant execute on function public.stamp_unpaid_grace_for_pay_phase(integer) to service_role;
 
 -- ---------- RLS 收紧：业务表在收费阶段要求 is_paid ----------

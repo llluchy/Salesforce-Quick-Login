@@ -257,7 +257,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               return
             }
           } catch {
-            /* 读门失败时保持原可见性（提醒阶段网络失败不挡） */
+            // 读门失败：工具表面 fail-closed，强制隐藏浮动栏
+            sendResponse({
+              ...result,
+              visible: false,
+              paymentBlocked: true,
+              paymentReason: 'switch_fetch_failed'
+            })
+            return
           }
         }
         sendResponse(result)

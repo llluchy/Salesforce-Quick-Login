@@ -24,28 +24,32 @@ async function bootstrap() {
   document.body.style.backgroundColor = theme.page
   document.documentElement.dataset.toolTheme = theme.id
 
-  // 工具窗自身再校验收费门；失败则整页不可用态
+  // 工具窗自身再校验收费门；读失败 / 未授权一律整页不可用（fail-closed）
+  const showBlocked = (statusText) => {
+    document.title = t('payment.toolBlockedTitle')
+    createApp(ToolWindowShell, {
+      toolId,
+      title: t('payment.toolBlockedTitle'),
+      subtitle: '',
+      statusText
+    })
+      .use(i18n)
+      .mount('#app')
+  }
   try {
     const snapshot = await loadPaymentGateSnapshot({ force: true, skipSideEffects: true })
     const gate = planPaymentToolGate(snapshot.access)
     if (gate !== 'proceed') {
-      const status =
+      showBlocked(
         gate === 'need-login' ? t('payment.toolNeedLogin')
           : gate === 'need-payment' ? t('payment.toolNeedPayment')
             : t('toolsHub.blocked')
-      document.title = t('payment.toolBlockedTitle')
-      createApp(ToolWindowShell, {
-        toolId,
-        title: t('payment.toolBlockedTitle'),
-        subtitle: '',
-        statusText: status
-      })
-        .use(i18n)
-        .mount('#app')
+      )
       return
     }
   } catch {
-    /* 读门失败：提醒阶段不挡；若开关实际为 ON，background 已挡打开 */
+    showBlocked(t('toolsHub.blocked'))
+    return
   }
 
   if (toolId === 'soql') {

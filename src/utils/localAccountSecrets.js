@@ -28,7 +28,9 @@ export const SESSION_ACCOUNT_SECRET_KEYS = [
   'sf_userKeyJwk',
   'sf_isLoggedIn',
   'sf_environments',
-  'pendingLoginEnv'
+  'pendingLoginEnv',
+  // 收费门快照按用户隔离；登出必须清，避免 paid 泄漏给下一账号
+  'sfql_payment_gate_cache'
 ]
 
 /**

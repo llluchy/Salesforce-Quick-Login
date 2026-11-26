@@ -5,6 +5,11 @@ import {
   planPaymentToolGate,
   resolvePaymentAccess
 } from './paymentAccess.js'
+import {
+  paymentGateCacheMatchesUser,
+  paymentGateCacheUserKey,
+  PAYMENT_GATE_CACHE_ANON
+} from './paymentGateApi.js'
 
 describe('resolvePaymentAccess', () => {
   it('switch OFF: always allow', () => {
@@ -53,5 +58,23 @@ describe('resolvePaymentAccess', () => {
     assert.equal(r.allow, false)
     assert.equal(r.reason, PAYMENT_GATE_REASONS.UNKNOWN_BLOCKED)
     assert.equal(planPaymentToolGate(r), 'blocked')
+  })
+})
+
+describe('payment gate session cache isolation', () => {
+  it('keys anon and user separately', () => {
+    assert.equal(paymentGateCacheUserKey(null), PAYMENT_GATE_CACHE_ANON)
+    assert.equal(paymentGateCacheUserKey('u-1'), 'u-1')
+  })
+
+  it('rejects cache from another user', () => {
+    assert.equal(
+      paymentGateCacheMatchesUser({ cacheUserId: 'paid-user', isPaid: true }, 'unpaid-user'),
+      false
+    )
+    assert.equal(
+      paymentGateCacheMatchesUser({ cacheUserId: 'u-1', isPaid: true }, 'u-1'),
+      true
+    )
   })
 })

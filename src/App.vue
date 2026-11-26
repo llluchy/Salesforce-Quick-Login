@@ -363,18 +363,17 @@ const onVisibilityRefreshGates = () => {
 
 const {
   showPaymentRequired,
-  refreshPaymentGate,
-  isPaid
+  refreshPaymentGate
 } = usePaymentGate()
 
-// 付费页刷新为已付费后加载业务数据
+// 付费页消失后加载业务数据：已付费解锁，或开关拨回 OFF
 watch(showPaymentRequired, async (needPay, wasNeedPay) => {
-  if (wasNeedPay === true && needPay === false && isAuthed.value && isPaid.value) {
+  if (wasNeedPay === true && needPay === false && isAuthed.value) {
     try {
       initPasskeyBridge()
       await loadData()
     } catch (e) {
-      console.error('[App] 付费解锁后加载数据失败', e)
+      console.error('[App] 付费门解除后加载数据失败', e)
     }
   }
 })
@@ -1166,7 +1165,21 @@ const onAuthed = async () => {
   accountDialogVisible.value = false
   showBoot(t('boot.loginSuccess'), t('boot.syncing'))
 
-  // 收费门：开关 ON 且未付费则只展示付费页，不拉业务数据
+  // 先迁移本地旧数据到云端，再判收费门。
+  // 否则付费页提前 return 会跳过迁移，付费解锁后 loadData 可能用空云端盖掉本机环境。
+  try {
+    showBoot(t('boot.migrating'), t('boot.migratingDetail'))
+    const result = await migrateLocalToSupabase()
+    if (result?.success) {
+      const m = result.migrated
+      showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
+    }
+  } catch (e) {
+    syncLog.error('迁移本地数据失败', e)
+    console.error('[App] onAuthed 迁移异常', e)
+  }
+
+  // 收费门：开关 ON 且未付费则只展示付费页（迁移已完成，云端已有数据）
   try {
     await refreshPaymentGate({ force: true })
   } catch (e) {
@@ -1179,19 +1192,6 @@ const onAuthed = async () => {
     hideBoot()
     _onAuthedRunning = false
     return
-  }
-
-  // 首次登录时尝试迁移本地旧数据到 Supabase（云端有数据则自动跳过）
-  try {
-    showBoot(t('boot.migrating'), t('boot.migratingDetail'))
-    const result = await migrateLocalToSupabase()
-    if (result?.success) {
-      const m = result.migrated
-      showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
-    }
-  } catch (e) {
-    syncLog.error('迁移本地数据失败', e)
-    console.error('[App] onAuthed 迁移异常', e)
   }
 
   try {
