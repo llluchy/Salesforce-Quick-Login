@@ -28,7 +28,8 @@ export function parsePaymentMasterEnabled(value) {
       return false
     }
   }
-  if (typeof obj !== 'object' || Array.isArray(obj)) return false
+  // typeof null === 'object'；JSON "null" / 非对象一律默认关
+  if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) return false
   return obj.enabled === true
 }
 

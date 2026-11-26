@@ -50,6 +50,8 @@ describe('parsePaymentMasterEnabled', () => {
     assert.equal(parsePaymentMasterEnabled(null), false)
     assert.equal(parsePaymentMasterEnabled(undefined), false)
     assert.equal(parsePaymentMasterEnabled('not-json'), false)
+    assert.equal(parsePaymentMasterEnabled('null'), false)
+    assert.equal(parsePaymentMasterEnabled('true'), false)
     assert.equal(parsePaymentMasterEnabled([]), false)
     assert.equal(parsePaymentMasterEnabled({}), false)
     assert.equal(parsePaymentMasterEnabled({ enabled: false }), false)
