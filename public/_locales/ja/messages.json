@@ -124,5 +124,17 @@
         "example": "不明なエラー"
       }
     }
+  },
+  "paymentNeedLogin": {
+    "message": "先に拡張機能アカウントでログインしてください"
+  },
+  "paymentNeedPayment": {
+    "message": "先にお支払いください"
+  },
+  "paymentBlocked": {
+    "message": "一時的に利用できません。しばらくしてから再試行してください"
+  },
+  "paymentContactLabel": {
+    "message": "お問い合わせ"
   }
 }

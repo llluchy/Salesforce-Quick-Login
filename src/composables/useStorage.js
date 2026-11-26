@@ -25,6 +25,19 @@ import {
   restoreTrashedEnvironment,
   softDeletePatch
 } from '../utils/envTrash'
+import { loadPaymentGateSnapshot } from '../utils/paymentGateApi.js'
+
+async function assertStoragePaymentAllowed() {
+  try {
+    const snapshot = await loadPaymentGateSnapshot({ skipSideEffects: true })
+    if (snapshot?.access?.allow === false) {
+      return { ok: false, error: t('toolsHub.needPayment') }
+    }
+  } catch {
+    /* 提醒阶段读失败不挡；收费阶段靠 RLS */
+  }
+  return { ok: true }
+}
 
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
 const isChromeSession = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session
@@ -131,6 +144,12 @@ export function useStorage() {
     const wrap = (data, source, error = null) =>
       detailed ? { data, source, error, count: data.length } : data
 
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) {
+      await syncEnvsToSession([])
+      return wrap([], 'empty', pay.error)
+    }
+
     const supabase = getSupabase()
     const key = getCryptoKey()
 
@@ -204,6 +223,8 @@ export function useStorage() {
    */
   const saveEnvironments = async (envs) => {
     log('saveEnvironments', { count: envs?.length || 0 })
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) return { success: false, error: pay.error }
     const supabase = getSupabase()
     const userKey = getCryptoKey()
 

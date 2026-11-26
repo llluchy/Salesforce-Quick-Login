@@ -424,7 +424,25 @@
     "queryTitle": "クエリを開く",
     "objectTitle": "オブジェクト検索を開く",
     "openPageFirst": "今のページは Salesforce ではありません。先に Salesforce のページを開いてから、オブジェクト検索を使ってください。",
-    "openFailed": "開けませんでした。もう一度お試しください。"
+    "openFailed": "開けませんでした。もう一度お試しください。",
+    "needLogin": "先に拡張機能アカウントでログインしてください",
+    "needPayment": "先にお支払いください",
+    "blocked": "一時的に利用できません。しばらくしてから再試行してください"
+  },
+  "payment": {
+    "requiredTitle": "続行するにはお支払いが必要です",
+    "priceOnce": "一度きり ¥5。支払い後は永久利用可",
+    "payCta": "支払う",
+    "refreshStatus": "支払い済み — 状態を更新",
+    "contactLabel": "お問い合わせ",
+    "checkoutFailed": "決済ページを開けません。後でもう一度、またはメールで連絡してください",
+    "refreshFailed": "更新に失敗しました。もう一度お試しください",
+    "stillUnpaid": "まだ支払いを確認できません。しばらくしてから再試行してください",
+    "paidUnlocked": "支払いを確認しました",
+    "dataPurged": "クラウド上の業務データを削除しました",
+    "toolBlockedTitle": "機能を利用できません",
+    "toolNeedLogin": "先に拡張機能アカウントでログインしてください",
+    "toolNeedPayment": "先にお支払いください"
   },
   "toolWindow": {
     "preview": "プレビュー",

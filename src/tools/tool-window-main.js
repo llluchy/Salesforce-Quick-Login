@@ -6,6 +6,8 @@ import ApexLogApp from './apex-log/ApexLogApp.vue'
 import { getToolWindowDef } from './_shared/toolWindows.js'
 import { applyToolThemeVars } from './_shared/toolThemes.js'
 import { i18n, resolveLocale } from '../i18n'
+import { loadPaymentGateSnapshot } from '../utils/paymentGateApi.js'
+import { planPaymentToolGate } from '../utils/paymentAccess.js'
 import '../assets/styles.css'
 import './_shared/toolThemes.css'
 
@@ -21,6 +23,30 @@ async function bootstrap() {
   const theme = applyToolThemeVars(toolId)
   document.body.style.backgroundColor = theme.page
   document.documentElement.dataset.toolTheme = theme.id
+
+  // 工具窗自身再校验收费门；失败则整页不可用态
+  try {
+    const snapshot = await loadPaymentGateSnapshot({ force: true, skipSideEffects: true })
+    const gate = planPaymentToolGate(snapshot.access)
+    if (gate !== 'proceed') {
+      const status =
+        gate === 'need-login' ? t('payment.toolNeedLogin')
+          : gate === 'need-payment' ? t('payment.toolNeedPayment')
+            : t('toolsHub.blocked')
+      document.title = t('payment.toolBlockedTitle')
+      createApp(ToolWindowShell, {
+        toolId,
+        title: t('payment.toolBlockedTitle'),
+        subtitle: '',
+        statusText: status
+      })
+        .use(i18n)
+        .mount('#app')
+      return
+    }
+  } catch {
+    /* 读门失败：提醒阶段不挡；若开关实际为 ON，background 已挡打开 */
+  }
 
   if (toolId === 'soql') {
     document.title = t('tools.titleSoqlCreator')

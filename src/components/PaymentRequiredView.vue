@@ -1,195 +1,168 @@
 <template>
-  <div class="payment-required" data-testid="payment-required">
-    <div class="payment-status" :class="{ paid: isPaid }">
-      <span class="payment-status-text">
-        {{ isPaid ? t('payment.statusPaid') : t('payment.statusUnpaid') }}
-      </span>
-      <span v-if="priceHint && !isPaid" class="payment-price">{{ t('payment.priceOnce') }}</span>
+  <section class="pay-required" role="region" :aria-label="t('payment.requiredTitle')">
+    <h1 class="pay-title">{{ t('payment.requiredTitle') }}</h1>
+    <p class="pay-price">{{ t('payment.priceOnce') }}</p>
+
+    <button
+      type="button"
+      class="pay-btn"
+      :disabled="busy"
+      @click="onPay"
+    >
+      {{ t('payment.payCta') }}
+    </button>
+
+    <button
+      type="button"
+      class="pay-refresh"
+      :disabled="busy"
+      @click="onRefresh"
+    >
+      {{ t('payment.refreshStatus') }}
+    </button>
+
+    <p v-if="notice" class="pay-notice" role="status">{{ notice }}</p>
+
+    <div class="pay-contact">
+      <p class="pay-contact-label">{{ t('payment.contactLabel') }}</p>
+      <a
+        v-for="email in emails"
+        :key="email"
+        class="pay-email"
+        :href="`mailto:${email}`"
+      >{{ email }}</a>
     </div>
-
-    <div class="payment-actions">
-      <button
-        v-if="!isPaid"
-        type="button"
-        class="btn btn-primary"
-        :disabled="busy"
-        @click="onPay"
-      >
-        <span v-if="checkoutLoading" class="spinner-mini"></span>
-        <span>{{ checkoutLoading ? t('payment.openingCheckout') : t('payment.pay') }}</span>
-      </button>
-      <button
-        type="button"
-        class="btn btn-outline"
-        :disabled="busy"
-        @click="onRefresh"
-      >
-        <span v-if="billingLoading" class="spinner-mini"></span>
-        <span>{{ t('payment.refreshPaid') }}</span>
-      </button>
-    </div>
-
-    <div v-if="errorText" class="payment-error" role="alert">{{ errorText }}</div>
-
-    <PaymentContact />
-  </div>
+  </section>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useBilling } from '../composables/useBilling'
-import PaymentContact from './PaymentContact.vue'
-
-defineProps({
-  /** 未付费时是否展示一次性价格短文案 */
-  priceHint: { type: Boolean, default: true }
-})
+import { PAYMENT_CONTACT_EMAILS } from '../utils/paymentContacts.js'
+import { usePaymentGate } from '../composables/usePaymentGate.js'
 
 const { t } = useI18n()
-const {
-  isPaid,
-  billingLoading,
-  checkoutLoading,
-  billingError,
-  refreshBilling,
-  startCheckout
-} = useBilling()
+const { openCheckout, refreshPaidStatus } = usePaymentGate()
 
-const localError = ref('')
-
-const busy = computed(() => billingLoading.value || checkoutLoading.value)
-const errorText = computed(() => localError.value || mapBillingError(billingError.value))
-
-function mapBillingError(code) {
-  if (!code) return ''
-  if (code === 'already_paid') return ''
-  if (code === 'supabase_unavailable') return t('payment.errorUnavailable')
-  if (code === 'checkout_failed' || /checkout/i.test(code)) return t('payment.errorCheckout')
-  if (code === 'billing_fetch_failed') return t('payment.errorRefresh')
-  return t('payment.errorGeneric')
-}
+const emails = PAYMENT_CONTACT_EMAILS
+const busy = ref(false)
+const notice = ref('')
 
 async function onPay() {
-  localError.value = ''
-  if (isPaid.value) return
+  if (busy.value) return
+  busy.value = true
+  notice.value = ''
   try {
-    await startCheckout()
-  } catch (e) {
-    if (e?.code === 'already_paid' || e?.message === 'already_paid') return
-    if (!billingError.value) localError.value = t('payment.errorCheckout')
+    await openCheckout()
+  } catch {
+    notice.value = t('payment.checkoutFailed')
+  } finally {
+    busy.value = false
   }
 }
 
 async function onRefresh() {
-  localError.value = ''
+  if (busy.value) return
+  busy.value = true
+  notice.value = ''
   try {
-    await refreshBilling()
+    const paid = await refreshPaidStatus()
+    notice.value = paid ? t('payment.paidUnlocked') : t('payment.stillUnpaid')
   } catch {
-    if (!billingError.value) localError.value = t('payment.errorRefresh')
+    notice.value = t('payment.refreshFailed')
+  } finally {
+    busy.value = false
   }
 }
 </script>
 
 <style scoped>
-.payment-required {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.payment-status {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  background: #fff8e1;
-  border: 1px solid #ffe082;
-  border-radius: 6px;
-}
-
-.payment-status.paid {
-  background: #e8f5e9;
-  border-color: #a5d6a7;
-}
-
-.payment-status-text {
-  font-size: 13px;
-  font-weight: 600;
-  color: #0d47a1;
-}
-
-.payment-status.paid .payment-status-text {
-  color: #1b5e20;
-}
-
-.payment-price {
-  font-size: 11px;
-  color: #5c7a9b;
-}
-
-.payment-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+.pay-required {
+  box-sizing: border-box;
   width: 100%;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
+  max-width: 360px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.pay-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a237e;
+}
+
+.pay-price {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: #455a64;
+}
+
+.pay-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #1565c0;
+  color: #fff;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid transparent;
-  box-sizing: border-box;
 }
 
-.btn:disabled {
+.pay-btn:disabled,
+.pay-refresh:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
-  color: white;
-}
-
-.btn-outline {
-  background: white;
+.pay-refresh {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 14px;
+  border: 1px solid #90caf9;
+  border-radius: 8px;
+  background: #fff;
   color: #1565c0;
-  border-color: #90caf9;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.payment-error {
-  font-size: 12px;
-  color: #c62828;
-  background: #ffebee;
-  border: 1px solid #ffcdd2;
+.pay-notice {
+  margin: 12px 0 0;
+  padding: 8px;
   border-radius: 6px;
-  padding: 8px 10px;
+  background: #e3f2fd;
+  color: #0d47a1;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
-.spinner-mini {
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  flex-shrink: 0;
+.pay-contact {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
 }
 
-.btn-outline .spinner-mini {
-  border-color: rgba(21, 101, 192, 0.25);
-  border-top-color: #1565c0;
+.pay-contact-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #607d8b;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.pay-email {
+  display: block;
+  margin: 4px 0;
+  font-size: 13px;
+  color: #1565c0;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.pay-email:hover {
+  text-decoration: underline;
 }
 </style>

@@ -28,6 +28,8 @@ import {
   openToolWindowMessage,
   planPanelToolOpen
 } from '../utils/panelTools.js'
+import { planPaymentToolGate } from '../utils/paymentAccess.js'
+import { usePaymentGate } from '../composables/usePaymentGate.js'
 
 defineProps({
   variant: {
@@ -37,6 +39,7 @@ defineProps({
 })
 
 const { t } = useI18n()
+const { access, refreshPaymentGate } = usePaymentGate()
 const notice = ref('')
 const busy = ref(false)
 
@@ -120,6 +123,25 @@ async function openTool(toolId) {
   busy.value = true
   notice.value = ''
   try {
+    try {
+      await refreshPaymentGate()
+    } catch {
+      /* fail-closed via access */
+    }
+    const gate = planPaymentToolGate(access.value)
+    if (gate === 'need-login') {
+      notice.value = t('toolsHub.needLogin')
+      return
+    }
+    if (gate === 'need-payment') {
+      notice.value = t('toolsHub.needPayment')
+      return
+    }
+    if (gate === 'blocked') {
+      notice.value = t('toolsHub.blocked')
+      return
+    }
+
     const tab = await queryActiveTab()
     const plan = planPanelToolOpen(toolId, tab)
     if (plan.type === 'need-salesforce-page') {
@@ -128,7 +150,11 @@ async function openTool(toolId) {
     }
     if (plan.type === 'open-window') {
       const res = await sendRuntime(openToolWindowMessage(plan.toolId, plan.hostname))
-      if (!res?.success) notice.value = t('toolsHub.openFailed')
+      if (!res?.success) {
+        if (res?.error === 'need-login') notice.value = t('toolsHub.needLogin')
+        else if (res?.error === 'need-payment') notice.value = t('toolsHub.needPayment')
+        else notice.value = t('toolsHub.openFailed')
+      }
       return
     }
     if (plan.type === 'open-object-search') {

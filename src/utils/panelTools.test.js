@@ -148,10 +148,13 @@ describe('panel tool copy and wiring', () => {
     assert.match(vue, /openObjectSearchMessage/)
 
     const auth = readFileSync(resolve(root, 'src/components/AuthScreen.vue'), 'utf8')
-    assert.match(auth, /<PanelTools variant="auth" \/>/)
+    assert.match(auth, /PanelTools[^>]*variant="auth"/)
+    assert.match(auth, /forceLoginForTools/)
     const app = readFileSync(resolve(root, 'src/App.vue'), 'utf8')
-    const signedIn = app.slice(app.indexOf('v-else'), app.indexOf('class="env-list"'))
+    const signedIn = app.slice(app.indexOf('v-else class="app-container"'), app.indexOf('class="env-list"'))
     assert.match(signedIn, /<PanelTools variant="app" \/>/)
+    assert.match(app, /PaymentRequiredView/)
+    assert.match(app, /showPaymentRequired/)
 
     const content = readFileSync(resolve(root, 'content.js'), 'utf8')
     assert.match(content, /data-tool="apex-log"/)

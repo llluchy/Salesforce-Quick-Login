@@ -124,5 +124,17 @@
         "example": "未知错误"
       }
     }
+  },
+  "paymentNeedLogin": {
+    "message": "请先登录扩展账号"
+  },
+  "paymentNeedPayment": {
+    "message": "请先完成付费"
+  },
+  "paymentBlocked": {
+    "message": "暂时不可用，请稍后重试"
+  },
+  "paymentContactLabel": {
+    "message": "疑问 / 联系"
   }
 }

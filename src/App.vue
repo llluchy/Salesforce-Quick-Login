@@ -3,6 +3,24 @@
     <!-- 页面栏关掉后，面板里仍可打开日志和查询；栏开着时页面入口保留 -->
     <div class="main-panel">
       <AuthScreen v-if="!isAuthed" @authed="onAuthed" />
+      <div v-else-if="showPaymentRequired" class="app-container app-container-pay">
+        <div class="pay-topbar">
+          <span class="pay-topbar-title">{{ t('common.productName') }}</span>
+          <button
+            type="button"
+            class="pay-topbar-account"
+            :title="t('toolbar.accountTitle')"
+            :aria-label="t('toolbar.accountTitle')"
+            @click="accountDialogVisible = true"
+          >{{ currentUser?.email || t('toolbar.accountTitle') }}</button>
+        </div>
+        <PaymentRequiredView />
+        <AccountDialog
+          :visible="accountDialogVisible"
+          @close="accountDialogVisible = false"
+          @signed-out="onSignedOut"
+        />
+      </div>
       <div v-else class="app-container">
         <Toolbar
           :env-count="environments.length"
@@ -243,8 +261,10 @@ import TrashDialog from './components/TrashDialog.vue'
 import PanelTools from './components/PanelTools.vue'
 import PaymentReminderModal from './components/PaymentReminderModal.vue'
 import UserAgreementModal from './components/UserAgreementModal.vue'
+import PaymentRequiredView from './components/PaymentRequiredView.vue'
 import { usePaymentReminder } from './composables/usePaymentReminder'
 import { useUserAgreement } from './composables/useUserAgreement'
+import { usePaymentGate } from './composables/usePaymentGate.js'
 import { getSupabase } from './composables/useSupabase'
 import {
   clearPaymentMasterCache,
@@ -340,6 +360,24 @@ const onVisibilityRefreshGates = () => {
     syncLog.warn('payment gates visibility refresh failed', e?.message || e)
   })
 }
+
+const {
+  showPaymentRequired,
+  refreshPaymentGate,
+  isPaid
+} = usePaymentGate()
+
+// 付费页刷新为已付费后加载业务数据
+watch(showPaymentRequired, async (needPay, wasNeedPay) => {
+  if (wasNeedPay === true && needPay === false && isAuthed.value && isPaid.value) {
+    try {
+      initPasskeyBridge()
+      await loadData()
+    } catch (e) {
+      console.error('[App] 付费解锁后加载数据失败', e)
+    }
+  }
+})
 
 const environments = ref([])
 const groups = ref([])
@@ -1128,6 +1166,21 @@ const onAuthed = async () => {
   accountDialogVisible.value = false
   showBoot(t('boot.loginSuccess'), t('boot.syncing'))
 
+  // 收费门：开关 ON 且未付费则只展示付费页，不拉业务数据
+  try {
+    await refreshPaymentGate({ force: true })
+  } catch (e) {
+    syncLog.error('刷新收费门失败', e)
+  }
+  if (showPaymentRequired.value) {
+    environments.value = []
+    groups.value = []
+    _dataLoadDone = true
+    hideBoot()
+    _onAuthedRunning = false
+    return
+  }
+
   // 首次登录时尝试迁移本地旧数据到 Supabase（云端有数据则自动跳过）
   try {
     showBoot(t('boot.migrating'), t('boot.migratingDetail'))
@@ -1249,6 +1302,12 @@ onMounted(async () => {
   //   4. 否则 → AuthScreen 显示要求输入密码
   try {
     await getSession()
+    // 未登录也要读总开关（anon），以便 Auth 上挡 PanelTools
+    try {
+      await refreshPaymentGate({ force: true })
+    } catch (e) {
+      syncLog.warn('启动时读收费门失败', e?.message || e)
+    }
     const unlockStatus = await getUnlockStatus()
     syncLog.info('会话检查完成', {
       isAuthed: isAuthed.value,
@@ -1310,6 +1369,35 @@ onBeforeUnmount(() => {
 .app-container {
   min-height: 100vh;
   background-color: #eef5fc;
+}
+
+.pay-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+  color: #fff;
+}
+
+.pay-topbar-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pay-topbar-account {
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
 }
 
 .env-search {

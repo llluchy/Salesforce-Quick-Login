@@ -12,7 +12,9 @@ import {
 import { handleApexLogMessage, initApexLogBackground } from './src/tools/apex-log/apexLogBackground.js'
 import { createToolFloatMessageHandler } from './src/utils/toolFloatController.js'
 import { createLocaleMessageHandler } from './src/utils/localeController.js'
+import { createPaymentGateMessageHandler } from './src/utils/paymentGateController.js'
 
+const handlePaymentGateMessage = createPaymentGateMessageHandler()
 const handleToolFloatMessage = createToolFloatMessageHandler()
 const handleLocaleMessage = createLocaleMessageHandler()
 
@@ -177,6 +179,16 @@ async function openToolWindow(toolId, options = {}) {
     return { success: false, error: '未知工具：' + toolId }
   }
 
+  // 收费门第二道：开关 ON 且未登录/未付费时拒绝打开
+  try {
+    const gate = await handlePaymentGateMessage.assertToolsAllowed()
+    if (!gate.ok) {
+      return { success: false, error: gate.decision || 'blocked', reason: gate.reason }
+    }
+  } catch (e) {
+    return { success: false, error: 'blocked', reason: e?.message || String(e) }
+  }
+
   const ctx = await resolvePageEnvContext(options.hostname || '')
   const extra = {}
   if (ctx.hostname) extra.hostname = ctx.hostname
@@ -224,6 +236,38 @@ chrome.windows.onRemoved.addListener((windowId) => {
 })
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (handlePaymentGateMessage(request, sender, sendResponse)) {
+    return true
+  }
+
+  // 浮动栏可见性：合成收费门（未登录/未付费时强制隐藏）
+  if (request?.action === 'getToolFloatVisible') {
+    handleToolFloatMessage.getVisible()
+      .then(async (result) => {
+        if (result?.success) {
+          try {
+            const gate = await handlePaymentGateMessage.assertToolsAllowed()
+            if (!gate.ok) {
+              sendResponse({
+                ...result,
+                visible: false,
+                paymentBlocked: true,
+                paymentReason: gate.reason
+              })
+              return
+            }
+          } catch {
+            /* 读门失败时保持原可见性（提醒阶段网络失败不挡） */
+          }
+        }
+        sendResponse(result)
+      })
+      .catch((error) =>
+        sendResponse({ success: false, error: error?.message || String(error) })
+      )
+    return true
+  }
+
   if (handleToolFloatMessage(request, sender, sendResponse)) {
     return true
   }
@@ -245,27 +289,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Content 浮动栏：打开 Object Detail（须带 object + hostname，可选 id）
   if (request.action === 'openObjectDetailTab') {
-    const objectName = request.object || request.objectName || ''
-    const hostname = request.hostname || ''
-    const recordId = request.id || request.recordId || ''
-    if (!objectName) {
-      sendResponse({ success: false, error: '缺少 object 参数' })
-      return true
-    }
-    if (!hostname) {
-      sendResponse({ success: false, error: '缺少 hostname 参数' })
-      return true
-    }
-    openObjectDetailTab({ objectName, hostname, recordId: recordId || undefined })
-      .then((tab) => sendResponse({ success: true, tabId: tab?.id }))
+    handlePaymentGateMessage.assertToolsAllowed()
+      .then((gate) => {
+        if (!gate.ok) {
+          sendResponse({ success: false, error: gate.decision || 'blocked', reason: gate.reason })
+          return null
+        }
+        const objectName = request.object || request.objectName || ''
+        const hostname = request.hostname || ''
+        const recordId = request.id || request.recordId || ''
+        if (!objectName) {
+          sendResponse({ success: false, error: '缺少 object 参数' })
+          return null
+        }
+        if (!hostname) {
+          sendResponse({ success: false, error: '缺少 hostname 参数' })
+          return null
+        }
+        return openObjectDetailTab({ objectName, hostname, recordId: recordId || undefined })
+      })
+      .then((tab) => {
+        if (tab == null) return
+        sendResponse({ success: true, tabId: tab?.id })
+      })
       .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
     return true
   }
 
   // Content 对象搜索：Global Describe / describeSObject
   if (request.action === 'sfGetSObjects') {
-    sfRestViaSession(request.hostname || '', '/sobjects/')
-      .then((result) => sendResponse(result))
+    handlePaymentGateMessage.assertToolsAllowed()
+      .then((gate) => {
+        if (!gate.ok) {
+          sendResponse({ success: false, error: gate.decision || 'blocked', reason: gate.reason })
+          return null
+        }
+        return sfRestViaSession(request.hostname || '', '/sobjects/')
+      })
+      .then((result) => {
+        if (result == null) return
+        sendResponse(result)
+      })
       .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
     return true
   }
@@ -276,11 +340,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: false, error: '缺少 object 参数' })
       return true
     }
-    sfRestViaSession(
-      request.hostname || '',
-      `/sobjects/${encodeURIComponent(name)}/describe/`
-    )
-      .then((result) => sendResponse(result))
+    handlePaymentGateMessage.assertToolsAllowed()
+      .then((gate) => {
+        if (!gate.ok) {
+          sendResponse({ success: false, error: gate.decision || 'blocked', reason: gate.reason })
+          return null
+        }
+        return sfRestViaSession(
+          request.hostname || '',
+          `/sobjects/${encodeURIComponent(name)}/describe/`
+        )
+      })
+      .then((result) => {
+        if (result == null) return
+        sendResponse(result)
+      })
       .catch((error) => sendResponse({ success: false, error: error.message || String(error) }))
     return true
   }
