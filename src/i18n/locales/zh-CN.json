@@ -741,10 +741,16 @@
     "openRecordDisabled": "当前页面没有记录 Id"
   },
   "paymentReminder": {
-    "title": "即将收费",
-    "continue": "继续",
+    "title": "即将推出一次性收费",
+    "intro": "扩展账号计划改为一次性付费：¥5，付过一次即可永久使用。当前收费尚未开启，这次只是提前说明，并请你选一次后续意向。",
+    "continueLabel": "继续使用",
+    "continueDetail": "现在功能照常可用。收费开启后，需要完成付款才能继续使用。此选择确定后不能在应用内更改。",
+    "deactivateLabel": "停用",
+    "deactivateDetail": "现在仍可正常使用。收费一开启，该账号上的云端数据会被清除，也无法再使用本扩展的账号功能。此选择确定后不能在应用内更改。",
+    "note": "选定后不可在应用内改回。若以后需要改选，请发邮件联系我们。",
+    "continue": "继续使用",
     "deactivate": "停用",
-    "contact": "改选请联系",
-    "saveFailed": "保存失败，请重试"
+    "contact": "联系邮箱",
+    "saveFailed": "没能保存你的选择，请再试一次"
   }
 }

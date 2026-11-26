@@ -741,10 +741,16 @@
     "openRecordDisabled": "No record Id on this page"
   },
   "paymentReminder": {
-    "title": "Paid plan coming",
-    "continue": "Continue",
+    "title": "A one-time paid plan is coming",
+    "intro": "Extension accounts will move to a one-time payment of ¥5 CNY—pay once, use forever. Billing is not turned on yet. This is an early notice, and we need you to choose what you want to do next.",
+    "continueLabel": "Keep using",
+    "continueDetail": "Everything works as usual for now. After billing starts, you will need to pay to keep using the tools. You cannot change this choice in the app later.",
+    "deactivateLabel": "Deactivate",
+    "deactivateDetail": "You can still use everything for now. When billing starts, this account’s cloud data will be deleted and the account features will no longer be available. You cannot change this choice in the app later.",
+    "note": "Once saved, this choice cannot be changed in the app. If you need to change it later, please email us.",
+    "continue": "Keep using",
     "deactivate": "Deactivate",
-    "contact": "To change, email",
-    "saveFailed": "Save failed. Try again."
+    "contact": "Contact email",
+    "saveFailed": "We couldn’t save your choice. Please try again."
   }
 }

@@ -13,6 +13,18 @@
         </div>
 
         <div class="modal-body">
+          <p class="intro">{{ t('paymentReminder.intro') }}</p>
+          <ul class="choices" role="list">
+            <li>
+              <strong>{{ t('paymentReminder.continueLabel') }}</strong>
+              <span>{{ t('paymentReminder.continueDetail') }}</span>
+            </li>
+            <li>
+              <strong>{{ t('paymentReminder.deactivateLabel') }}</strong>
+              <span>{{ t('paymentReminder.deactivateDetail') }}</span>
+            </li>
+          </ul>
+          <p class="note">{{ t('paymentReminder.note') }}</p>
           <div class="contact">
             <span class="contact-label">{{ t('paymentReminder.contact') }}</span>
             <a
@@ -94,8 +106,10 @@ function onChoose(choice) {
 .modal-content {
   background-color: white;
   border-radius: 8px;
-  width: 90%;
-  max-width: 360px;
+  width: 92%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow: auto;
   box-shadow: 0 4px 20px rgba(25, 118, 210, 0.2);
 }
 
@@ -111,12 +125,56 @@ function onChoose(choice) {
 .modal-header h2 {
   margin: 0;
   font-size: 16px;
+  line-height: 1.35;
   color: #ffffff;
 }
 
 .modal-body {
   padding: 16px;
   background: #f5f9ff;
+}
+
+.intro,
+.note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.note {
+  color: #546e7a;
+  font-size: 12px;
+}
+
+.choices {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choices li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #bbdefb;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.choices strong {
+  font-size: 13px;
+  color: #0d47a1;
+}
+
+.choices span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #475569;
 }
 
 .contact {
@@ -145,6 +203,7 @@ function onChoose(choice) {
 .modal-footer {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 16px;
   border-top: 1px solid #bbdefb;
