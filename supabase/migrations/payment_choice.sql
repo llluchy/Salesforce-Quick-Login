@@ -6,10 +6,10 @@
 --   选定后不可由普通客户端改回；改选只能邮件联系所有者后由管理员手工改。
 --
 -- 说明：
---   - 本文件只备份结构变更，不改线上数据。
---   - 等产品确认后再在 Supabase 控制台 / apply_migration 执行。
---   - 依赖约定：总开关表 public.app_config（key=payment_master）由「管理员总开关」PR 维护；
---     本迁移不创建 app_config，避免与该 PR 的 schema 冲突。
+--   - 仓库备份 + 可 apply 的迁移脚本。
+--   - 2026-11-26：已对线上项目 Salesforce Quick Login apply（缺列会导致提醒弹窗静默不出现）。
+--   - 依赖约定：总开关表 public.app_config（key=payment_master）由「管理员总开关」维护；
+--     本迁移不创建 app_config。
 -- ============================================================
 
 alter table public.user_metadata

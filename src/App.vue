@@ -1074,7 +1074,9 @@ const onAuthed = async () => {
   }
 
   // 提醒阶段：总开关 OFF 且尚未选择时强制弹一次（不挡功能；读失败则不弹）
+  // nextTick：等 boot 遮罩卸掉后再弹，避免被挡住
   try {
+    await nextTick()
     await refreshPaymentReminder()
   } catch (e) {
     syncLog.warn('payment reminder refresh failed', e?.message || e)

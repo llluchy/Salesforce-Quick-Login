@@ -1,5 +1,6 @@
 // 提醒阶段：登录后若总开关 OFF 且尚未选择，强制一次性弹窗。
-// 读开关约定见 paymentMasterSwitch；choice 真相源为 Supabase user_metadata。
+// 读开关复用管理员总开关模块 paymentMaster / usePaymentGate 同款 API。
+// choice 真相源为 Supabase user_metadata。
 // 提醒阶段读失败 → 不弹窗、不挡功能。不做应用内改选。
 
 import { ref, readonly } from 'vue'
@@ -14,9 +15,10 @@ import {
   writePaymentChoiceOnce
 } from '../utils/paymentChoice'
 import {
-  readPaymentMasterEnabled,
-  supabasePaymentMasterIo
-} from '../utils/paymentMasterSwitch'
+  getPaymentMasterEnabled,
+  supabaseAppConfigIo
+} from '../utils/paymentMaster'
+import syncLog from '../utils/syncLogger'
 
 const visible = ref(false)
 const saving = ref(false)
@@ -24,6 +26,17 @@ const error = ref(null)
 const paymentChoice = ref(null)
 
 let _refreshing = false
+
+function sessionArea() {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+      return chrome.storage.session
+    }
+  } catch {
+    /* 非扩展环境 */
+  }
+  return null
+}
 
 export function usePaymentReminder() {
   const { isAuthed, currentUser } = useAuth()
@@ -58,9 +71,14 @@ export function usePaymentReminder() {
 
       let switchEnabled
       try {
-        switchEnabled = await readPaymentMasterEnabled(supabasePaymentMasterIo(client))
-      } catch {
-        // 提醒阶段：读开关失败不弹、不挡
+        switchEnabled = await getPaymentMasterEnabled({
+          io: supabaseAppConfigIo(client),
+          sessionArea: sessionArea(),
+          force: true
+        })
+      } catch (e) {
+        // 提醒阶段：读开关失败不弹、不挡（缺表/网络等）
+        syncLog.warn('payment reminder: master switch read failed', e?.message || e)
         hide()
         return
       }
@@ -69,16 +87,24 @@ export function usePaymentReminder() {
       let choice
       try {
         choice = await readPaymentChoice(io, currentUser.value.id)
-      } catch {
+      } catch (e) {
+        // 常见：线上尚未 apply payment_choice 列 → PostgREST 报 column does not exist
+        syncLog.warn('payment reminder: payment_choice read failed', e?.message || e)
         hide()
         return
       }
 
       paymentChoice.value = choice
-      visible.value = shouldShowPaymentReminder({
+      const show = shouldShowPaymentReminder({
         isAuthed: true,
         switchEnabled,
         paymentChoice: choice
+      })
+      visible.value = show
+      syncLog.info('payment reminder: refresh', {
+        switchEnabled,
+        paymentChoice: choice,
+        show
       })
     } finally {
       _refreshing = false
