@@ -215,13 +215,12 @@ export async function migrateLocalToSupabase() {
 
 /**
  * migrateThenLoad 是否可安全走远端 loadData。
- * deferred/失败且有本机数据时禁止（空云端会盖掉）；无本机则可安全拉云端。
+ * deferred/失败且有本机业务缓存（envs 或 groups）时禁止；全空才可安全拉云端。
  */
-export function migrateAllowsRemoteLoad(result, { localEnvCount = 0 } = {}) {
+export function migrateAllowsRemoteLoad(result, { localCacheCount = 0 } = {}) {
   if (!result) return false
   if (result.deferred === true || result.success === false) {
-    // 无本机环境可保护 → 仍应 loadData（云端可能完整）
-    return localEnvCount === 0
+    return localCacheCount === 0
   }
   return true
 }

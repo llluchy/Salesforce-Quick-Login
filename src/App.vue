@@ -366,11 +366,14 @@ const {
   refreshPaymentGate
 } = usePaymentGate()
 
-async function readLocalEnvCount() {
+/** 本机业务缓存条数（envs + groups）；任一侧非空都需保护，勿被空云端盖掉 */
+async function readLocalBusinessCacheCount() {
   try {
     if (typeof chrome === 'undefined' || !chrome.storage?.local?.get) return 0
-    const data = await chrome.storage.local.get(STORAGE_KEY)
-    return Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY].length : 0
+    const data = await chrome.storage.local.get([STORAGE_KEY, STORAGE_KEY_GROUPS])
+    const envs = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY].length : 0
+    const groupsCount = Array.isArray(data[STORAGE_KEY_GROUPS]) ? data[STORAGE_KEY_GROUPS].length : 0
+    return envs + groupsCount
   } catch {
     return 0
   }
@@ -412,9 +415,9 @@ async function migrateThenLoad() {
   } catch (e) {
     syncLog.error('初始化 Passkey Bridge 失败', e)
   }
-  // deferred/失败：有本机则 hydrate；无本机则仍 loadData（勿挡住云端完整数据）
-  const localEnvCount = await readLocalEnvCount()
-  if (migrateAllowsRemoteLoad(migrateResult, { localEnvCount })) {
+  // deferred/失败：本机有 envs 或 groups 则 hydrate；全空才 loadData
+  const localCacheCount = await readLocalBusinessCacheCount()
+  if (migrateAllowsRemoteLoad(migrateResult, { localCacheCount })) {
     await loadData()
   } else {
     await hydrateUiFromLocalCache()
