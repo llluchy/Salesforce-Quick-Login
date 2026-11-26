@@ -146,8 +146,11 @@ export function useStorage() {
 
     const pay = await assertStoragePaymentAllowed()
     if (!pay.ok) {
-      await syncEnvsToSession([])
-      return wrap([], 'empty', pay.error)
+      // 付费门挡读写时保留本机缓存，切勿当成空云端写回
+      const cached = await cacheGet(STORAGE_KEY)
+      const result = Array.isArray(cached) ? cached : []
+      await syncEnvsToSession(result)
+      return wrap(result, result.length ? 'cache' : 'empty', pay.error)
     }
 
     const supabase = getSupabase()
@@ -200,6 +203,15 @@ export function useStorage() {
       }
 
       log('读取成功', { count: envs.length, total: data?.length, ids: envs.map(e => e.id) })
+
+      // 空云端不得盖掉非空本机缓存（付费门期间迁移未完成时）
+      if (envs.length === 0) {
+        const cached = await cacheGet(STORAGE_KEY)
+        if (Array.isArray(cached) && cached.length > 0) {
+          await syncEnvsToSession(cached)
+          return wrap(cached, 'cache')
+        }
+      }
 
       await cacheSet(STORAGE_KEY, envs)
       await syncEnvsToSession(envs)
@@ -405,6 +417,12 @@ export function useStorage() {
 
       const groups = (data || []).map(decryptGroup)
       log('读取成功', { count: groups.length, ids: groups.map(g => g.id) })
+      if (groups.length === 0) {
+        const cached = await cacheGet(STORAGE_KEY_GROUPS)
+        if (Array.isArray(cached) && cached.length > 0) {
+          return wrap(cached, 'cache')
+        }
+      }
       await cacheSet(STORAGE_KEY_GROUPS, groups)
       return wrap(groups, 'remote')
     } catch (e) {

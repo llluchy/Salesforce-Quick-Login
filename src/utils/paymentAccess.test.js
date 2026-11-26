@@ -77,4 +77,16 @@ describe('payment gate session cache isolation', () => {
       true
     )
   })
+
+  it('stale OFF must not allow tools without fresh switch read', () => {
+    // Documented contract: expired/OFF last-known-good → fetchFailed fail-closed
+    const blocked = resolvePaymentAccess({
+      switchEnabled: true,
+      isAuthed: true,
+      isPaid: false,
+      fetchFailed: true
+    })
+    assert.equal(blocked.allow, false)
+    assert.equal(planPaymentToolGate(blocked), 'blocked')
+  })
 })

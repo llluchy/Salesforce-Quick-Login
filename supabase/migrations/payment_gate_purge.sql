@@ -161,6 +161,7 @@ as $function$
 declare
   v_choice text;
   v_purged timestamptz;
+  v_paid boolean;
 begin
   if not public.is_payment_master_enabled() then
     return false;
@@ -178,9 +179,14 @@ begin
   values (p_user_id)
   on conflict (user_id) do nothing;
 
-  select deactivate_purged_at into v_purged
+  select is_paid, deactivate_purged_at into v_paid, v_purged
   from public.user_billing
   where user_id = p_user_id;
+
+  -- 与路径 B 一致：已付费永不清业务数据（停用后付款须保留）
+  if v_paid then
+    return false;
+  end if;
 
   if v_purged is not null then
     return true; -- 幂等
@@ -354,12 +360,13 @@ begin
     return jsonb_build_object('ok', true, 'skipped', true, 'reason', 'switch_off');
   end if;
 
-  -- 路径 A：deactivate 且尚未 purge
+  -- 路径 A：deactivate、未付费、尚未 purge（已付费跳过）
   for r in
     select m.user_id
     from public.user_metadata m
     left join public.user_billing b on b.user_id = m.user_id
     where m.payment_choice = 'deactivate'
+      and coalesce(b.is_paid, false) = false
       and (b.deactivate_purged_at is null)
     limit greatest(p_limit, 1)
   loop

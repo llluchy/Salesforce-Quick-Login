@@ -292,14 +292,18 @@ export async function loadPaymentGateSnapshot(options = {}) {
     })
     switchReadOk = true
   } catch {
-    // 不得把「读开关失败」静默当成 OFF（否则可挡 app_config 绕过工具门）。
-    // 1) 同用户 last-known-good（可过期）
-    // 2) 否则 fail-closed
+    // 不得把失败当成 OFF。过期缓存 / OFF 快照 / force 刷新：一律 fail-closed。
+    // 仅允许「未过期且已知 ON」的同用户缓存继续走付费判断（未付费仍挡）。
     const stale = sessionStore
       ? await readPaymentGateSessionCache(sessionStore, userId)
       : null
-    if (stale?.switchReadOk === true) {
-      switchEnabled = stale.switchEnabled === true
+    const freshOn =
+      !force &&
+      isPaymentGateCacheFresh(stale) &&
+      stale?.switchReadOk === true &&
+      stale.switchEnabled === true
+    if (freshOn) {
+      switchEnabled = true
       switchReadOk = true
       billing = billingFromCache(stale)
     } else {
@@ -350,12 +354,13 @@ export async function loadPaymentGateSnapshot(options = {}) {
     await writePaymentGateSessionCache(sessionStore, snapshot, userId)
   }
 
-  // 路径 A：停用 + ON → 尝试自 purge（服务端幂等）
+  // 路径 A：停用 + ON + 未付费 → 尝试自 purge（已付费绝不清）
   if (
     switchEnabled &&
     isAuthed &&
     accessToken &&
     billing.paymentChoice === 'deactivate' &&
+    billing.isPaid !== true &&
     !billing.deactivatePurgedAt &&
     !fetchFailed &&
     options.skipSideEffects !== true

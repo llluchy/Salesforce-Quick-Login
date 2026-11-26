@@ -366,12 +366,31 @@ const {
   refreshPaymentGate
 } = usePaymentGate()
 
-// 付费页消失后加载业务数据：已付费解锁，或开关拨回 OFF
+async function migrateThenLoad() {
+  try {
+    showBoot(t('boot.migrating'), t('boot.migratingDetail'))
+    const result = await migrateLocalToSupabase()
+    if (result?.success) {
+      const m = result.migrated
+      showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
+    }
+  } catch (e) {
+    syncLog.error('迁移本地数据失败', e)
+    console.error('[App] migrateThenLoad 迁移异常', e)
+  }
+  try {
+    initPasskeyBridge()
+  } catch (e) {
+    syncLog.error('初始化 Passkey Bridge 失败', e)
+  }
+  await loadData()
+}
+
+// 付费页消失后：先迁移本机→云端，再 loadData（避免空云端盖掉本机）
 watch(showPaymentRequired, async (needPay, wasNeedPay) => {
   if (wasNeedPay === true && needPay === false && isAuthed.value) {
     try {
-      initPasskeyBridge()
-      await loadData()
+      await migrateThenLoad()
     } catch (e) {
       console.error('[App] 付费门解除后加载数据失败', e)
     }
@@ -1165,27 +1184,14 @@ const onAuthed = async () => {
   accountDialogVisible.value = false
   showBoot(t('boot.loginSuccess'), t('boot.syncing'))
 
-  // 先迁移本地旧数据到云端，再判收费门。
-  // 否则付费页提前 return 会跳过迁移，付费解锁后 loadData 可能用空云端盖掉本机环境。
-  try {
-    showBoot(t('boot.migrating'), t('boot.migratingDetail'))
-    const result = await migrateLocalToSupabase()
-    if (result?.success) {
-      const m = result.migrated
-      showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
-    }
-  } catch (e) {
-    syncLog.error('迁移本地数据失败', e)
-    console.error('[App] onAuthed 迁移异常', e)
-  }
-
-  // 收费门：开关 ON 且未付费则只展示付费页（迁移已完成，云端已有数据）
+  // 先读收费门。未付费时 RLS/客户端门会挡 save，迁移必须推迟到解锁后。
   try {
     await refreshPaymentGate({ force: true })
   } catch (e) {
     syncLog.error('刷新收费门失败', e)
   }
   if (showPaymentRequired.value) {
+    // 仅清 UI 列表；保留 chrome.storage.local 本机环境，待付费/开关 OFF 后再 migrate
     environments.value = []
     groups.value = []
     _dataLoadDone = true
@@ -1195,14 +1201,7 @@ const onAuthed = async () => {
   }
 
   try {
-    initPasskeyBridge()
-  } catch (e) {
-    syncLog.error('初始化 Passkey Bridge 失败', e)
-    console.error('[App] onAuthed Passkey Bridge 异常', e)
-  }
-
-  try {
-    await loadData()
+    await migrateThenLoad()
   } catch (e) {
     syncLog.error('加载数据失败', e)
     console.error('[App] onAuthed loadData 异常', e)
