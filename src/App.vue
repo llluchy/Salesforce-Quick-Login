@@ -428,12 +428,16 @@ watch(showPaymentRequired, async (needPay, wasNeedPay) => {
     return
   }
   if (wasNeedPay === true && needPay === false) {
+    // 付款刷新解锁：加载完必须 hideBoot，否则会停在「分组已加载」遮罩上
     try {
       await nextTick()
       await refreshPaymentGates()
       await migrateThenLoad()
     } catch (e) {
       console.error('[App] 付费门解除后加载数据失败', e)
+    } finally {
+      _dataLoadDone = true
+      hideBoot()
     }
   }
 })
