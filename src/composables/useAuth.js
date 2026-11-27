@@ -18,6 +18,7 @@ import { refreshLocale, resetLocaleAfterLogout } from './useLocale.js'
 import { WELCOME_PAGE_URL, RECOVERY_PAGE_URL } from '../utils/supabaseConfig'
 import { t } from '../i18n'
 import { carryTrashFlags } from '../utils/envTrash'
+import { localizeAuthErrorMessage } from '../utils/authErrors'
 import {
   ensureUserAgreementFromAuthMeta,
   supabaseUserAgreementIo,
@@ -637,8 +638,9 @@ async function signUp({ email, password, agreementAcceptedAt }) {
     return { needsEmailConfirm: true }
   } catch (e) {
     logError('注册失败', e)
-    authError.value = e.message || String(e)
-    throw e
+    const message = localizeAuthErrorMessage(e, t)
+    authError.value = message
+    throw new Error(message)
   } finally {
     isLoading.value = false
   }
@@ -712,8 +714,9 @@ async function signIn({ email, password }) {
     return { success: true }
   } catch (e) {
     logError('登录失败', e)
-    authError.value = e.message || String(e)
-    throw e
+    const message = localizeAuthErrorMessage(e, t)
+    authError.value = message
+    throw new Error(message)
   } finally {
     isLoading.value = false
   }
