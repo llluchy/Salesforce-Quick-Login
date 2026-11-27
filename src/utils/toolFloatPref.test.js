@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { STORAGE_KEY_SESSION } from './constants.js'
+import { SESSION_KEY_LOGGED_IN, STORAGE_KEY_SESSION } from './constants.js'
 import { createToolFloatMessageHandler } from './toolFloatController.js'
 import {
   TOOL_FLOAT_SESSION_KEY,
@@ -110,6 +110,11 @@ function assertStorageUntouched(guard, before) {
 
 function authSession(id) {
   return { access_token: `token-${id}`, user: { id } }
+}
+
+/** 模拟扩展已解锁（与 Side Panel isAuthed / sf_isLoggedIn 对齐） */
+function markUnlocked(guard) {
+  guard.session.data[SESSION_KEY_LOGGED_IN] = true
 }
 
 function createMetadataStore() {
@@ -277,6 +282,7 @@ describe('logged-in cloud value', () => {
 
     const showGuard = createGuardedStorage()
     showGuard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
+    markUnlocked(showGuard)
     await setLoggedOutVisible(showGuard.session, false)
     const beforeShow = snapshotStorage(showGuard)
     const show = await handlerFor(showGuard, store).getVisible()
@@ -287,6 +293,7 @@ describe('logged-in cloud value', () => {
     await writeShowToolFloat(store.io(USER_A), USER_A, false)
     const hideGuard = createGuardedStorage()
     hideGuard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
+    markUnlocked(hideGuard)
     await setLoggedOutVisible(hideGuard.session, false)
     const beforeHide = snapshotStorage(hideGuard)
     const hidden = await handlerFor(hideGuard, store).getVisible()
@@ -296,12 +303,25 @@ describe('logged-in cloud value', () => {
     assertStorageUntouched(hideGuard, beforeHide)
   })
 
+  it('hides float when supabase session exists but extension is still locked', async () => {
+    const store = createMetadataStore()
+    await readOrInsertShowToolFloat(store.io(USER_A), USER_A)
+    const guard = createGuardedStorage()
+    guard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
+    // 故意不 markUnlocked：侧栏停在解锁页
+    const result = await handlerFor(guard, store).getVisible()
+    assert.equal(result.visible, false)
+    assert.equal(result.loginRequired, true)
+  })
+
   it('shares one cloud row across two session areas', async () => {
     const store = createMetadataStore()
     const first = createGuardedStorage()
     const second = createGuardedStorage()
     first.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
     second.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
+    markUnlocked(first)
+    markUnlocked(second)
     await readOrInsertShowToolFloat(store.io(USER_A), USER_A)
     await writeShowToolFloat(store.io(USER_A), USER_A, false)
     const seen = await handlerFor(second, store).getVisible()
@@ -318,6 +338,7 @@ describe('logged-in cloud value', () => {
 
     const guard = createGuardedStorage()
     guard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
+    markUnlocked(guard)
     await setLoggedOutVisible(guard.session, false)
     await handlerFor(guard, store).applyCloud(false)
     assert.equal(guard.session.data[TOOL_FLOAT_SESSION_KEY], undefined)
@@ -389,6 +410,7 @@ describe('RLS and offline', () => {
 
     const guard = createGuardedStorage()
     guard.localData[STORAGE_KEY_SESSION] = authSession(USER_A)
+    markUnlocked(guard)
     await setLoggedOutVisible(guard.session, false)
     const before = snapshotStorage(guard)
     const failed = await handlerFor(guard, {

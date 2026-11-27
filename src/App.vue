@@ -1375,9 +1375,20 @@ onMounted(async () => {
       // 有 session 但密钥未恢复，仍需输入密码
       syncLog.info('今日已解锁过密码，等待用户输入密码派生密钥')
       hideBoot()
+      // 未解锁：立刻让已打开的 Salesforce 页藏掉浮动栏
+      try {
+        chrome.runtime.sendMessage({ action: 'toolFloatSignedOut' }, () => {
+          void chrome.runtime.lastError
+        })
+      } catch { /* ignore */ }
     } else {
       // 需要登录/解锁：关闭遮罩，显示 AuthScreen
       hideBoot()
+      try {
+        chrome.runtime.sendMessage({ action: 'toolFloatSignedOut' }, () => {
+          void chrome.runtime.lastError
+        })
+      } catch { /* ignore */ }
     }
   } catch (e) {
     syncLog.error('会话检查失败', e)

@@ -11,7 +11,7 @@
 import { ref, readonly } from 'vue'
 import { getSupabase } from './useSupabase'
 import { deriveKey, generateSalt, bytesToBase64, exportKeyToJwk, importKeyFromJwk, getDeviceCode } from '../utils/crypto'
-import { STORAGE_KEY_SESSION } from '../utils/constants'
+import { SESSION_KEY_LOGGED_IN, STORAGE_KEY_SESSION } from '../utils/constants'
 import { CRYPTO_KEY_STORAGE_KEY, SESSION_ACCOUNT_SECRET_KEYS, clearLocalAccountSecrets } from '../utils/localAccountSecrets.js'
 import { signOutToolFloat } from '../utils/toolFloatPref.js'
 import { refreshLocale, resetLocaleAfterLogout } from './useLocale.js'
@@ -29,7 +29,6 @@ const LAST_LOGIN_DATE_KEY = '__sf_last_login_date'
 const LOGIN_COUNT_KEY = '__sf_login_count'
 
 const SESSION_KEY_USER_KEY_JWK = 'sf_userKeyJwk'
-const SESSION_KEY_LOGGED_IN = 'sf_isLoggedIn'
 
 // ============================================
 // 全局单例状态（多个组件共享同一份认证态）
@@ -849,6 +848,8 @@ async function getSession() {
     if (savedKey) {
       cryptoKey.value = savedKey
       isAuthed.value = true
+      // 与浮动栏判定对齐：恢复解锁态时写入 sf_isLoggedIn
+      await exportUserKeyToSession()
       log('密钥已恢复，直接进入主页')
       return { hasSession: true, hasKey: true, needPassword: false, deviceMismatch: false }
     }

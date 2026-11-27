@@ -1,4 +1,4 @@
-import { STORAGE_KEY_SESSION } from './constants.js'
+import { SESSION_KEY_LOGGED_IN, STORAGE_KEY_SESSION } from './constants.js'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig.js'
 import {
   clearSessionOverride,
@@ -60,16 +60,29 @@ export function createToolFloatMessageHandler(options = {}) {
     fetchImpl: options.fetchImpl
   }))
 
+  async function isExtensionUnlocked() {
+    try {
+      const area = storage.session
+      if (!area?.get) return false
+      const data = await area.get(SESSION_KEY_LOGGED_IN)
+      return data?.[SESSION_KEY_LOGGED_IN] === true
+    } catch {
+      return false
+    }
+  }
+
   async function resolveAuth() {
     const data = await storage.local.get(STORAGE_KEY_SESSION)
     const session = data?.[STORAGE_KEY_SESSION]
     if (!session?.access_token || !session?.user?.id) return null
+    // 仅有持久 Supabase session 不够：侧栏停在解锁页时不算已登录
+    if (!(await isExtensionUnlocked())) return null
     return session
   }
 
   async function getVisible() {
     const auth = await resolveAuth()
-    // 未登录（或 session 无效）：不注入页面浮动工具入口
+    // 未登录 / 未解锁：不注入页面浮动工具入口
     if (!auth) {
       return { success: true, visible: false, source: 'session', loginRequired: true }
     }

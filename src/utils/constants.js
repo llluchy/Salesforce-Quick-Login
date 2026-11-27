@@ -6,6 +6,9 @@ export const STORAGE_KEY_GROUPS = 'salesforce_groups'
 // Supabase session 在 chrome.storage.local 中的同步 key（供 background.js 使用）
 export const STORAGE_KEY_SESSION = '__sf_supabase_session'
 
+/** chrome.storage.session：扩展账号已解锁（与 Side Panel isAuthed 对齐） */
+export const SESSION_KEY_LOGGED_IN = 'sf_isLoggedIn'
+
 export const MAX_ENVIRONMENTS = 50
 
 export const TYPE_URLS = {

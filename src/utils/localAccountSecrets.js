@@ -6,7 +6,12 @@
 // 以及已打开页面上的 Apex 工具状态。已登录网站的主机名只活在本地环境镜像里，
 // 随镜像一起删掉，不会写到云端，因此不会跟到另一台电脑。
 
-import { STORAGE_KEY, STORAGE_KEY_GROUPS, STORAGE_KEY_SESSION } from './constants.js'
+import {
+  SESSION_KEY_LOGGED_IN,
+  STORAGE_KEY,
+  STORAGE_KEY_GROUPS,
+  STORAGE_KEY_SESSION
+} from './constants.js'
 
 /** 旧版单独存放的 Passkey，迁移后仍可能留在本机。 */
 export const LEGACY_PASSKEY_STORAGE_KEY = '__sf_passkey_credentials'
@@ -26,7 +31,7 @@ export const LOCAL_ACCOUNT_SECRET_KEYS = [
 /** chrome.storage.session 里要删掉的账号机密。 */
 export const SESSION_ACCOUNT_SECRET_KEYS = [
   'sf_userKeyJwk',
-  'sf_isLoggedIn',
+  SESSION_KEY_LOGGED_IN,
   'sf_environments',
   'pendingLoginEnv',
   // 收费门快照按用户隔离；登出必须清，避免 paid 泄漏给下一账号

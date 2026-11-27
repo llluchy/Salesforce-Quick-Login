@@ -663,8 +663,8 @@ function cropImage(dataUrl, x, y, width, height) {
   let effectiveLocale = DEFAULT_LOCALE;
   /** @type {ShadowRoot | null} */
   let railShadow = null;
-  /** @type {boolean | null} null 表示还没问到后台 */
-  let railVisible = null;
+  // 默认隐藏：未拿到 background 明确允许前不注入（避免未登录闪一下）
+  let railVisible = false;
   let railQuery = null;
   let railEpoch = 0;
   /** @type {null | { host: HTMLElement, shadow: ShadowRoot, pageHostname: string, apiHostname: string, sobjects: Array, matches: Array, selected: any, recordId: string, describeCache: Map, searchGen: number, _rerunSearch: null | Function }} */
@@ -1642,10 +1642,13 @@ function cropImage(dataUrl, x, y, width, height) {
     const epoch = ++railEpoch;
     railQuery = sendMsg({ action: 'getToolFloatVisible' }).then((res) => {
       if (epoch !== railEpoch) return;
-      if (res && res.success === true && typeof res.visible === 'boolean') {
-        railVisible = res.visible;
-        applyRailVisibility();
-      }
+      // 失败或未登录：一律隐藏（fail-closed）
+      railVisible = !!(res && res.success === true && res.visible === true);
+      applyRailVisibility();
+    }).catch(() => {
+      if (epoch !== railEpoch) return;
+      railVisible = false;
+      applyRailVisibility();
     }).finally(() => {
       railQuery = null;
     });
@@ -1701,14 +1704,10 @@ function cropImage(dataUrl, x, y, width, height) {
     syncRailFromBackground();
   });
 
-  // Lightning SPA 可能重建 DOM，定期确认入口仍在；隐藏时不注入
+  // Lightning SPA 可能重建 DOM；每次向 background 重问可见性（登录态可能已变）
   const recheck = () => {
     try {
-      if (railVisible == null) {
-        syncRailFromBackground();
-      } else {
-        applyRailVisibility();
-      }
+      syncRailFromBackground();
       if (modalState && !document.getElementById(MODAL_HOST_ID)) {
         modalState = null;
       }
