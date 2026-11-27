@@ -218,15 +218,26 @@
     "sectionTitle": "Payment",
     "statusPaid": "Paid",
     "statusUnpaid": "Not paid",
-    "priceOnce": "One-time ¥5",
+    "priceOnce": "One-time ¥5 — pay once, use forever",
     "pay": "Pay",
     "openingCheckout": "Opening checkout…",
     "refreshPaid": "I have paid",
-    "contactLabel": "Contact",
+    "contactLabel": "Questions / contact",
     "errorUnavailable": "Service unavailable",
     "errorCheckout": "Could not open checkout",
     "errorRefresh": "Refresh failed",
-    "errorGeneric": "Something went wrong"
+    "errorGeneric": "Something went wrong",
+    "requiredTitle": "Payment required to continue",
+    "payCta": "Pay now",
+    "refreshStatus": "I paid — refresh status",
+    "checkoutFailed": "Could not open checkout. Retry later or email us",
+    "refreshFailed": "Refresh failed. Please try again",
+    "stillUnpaid": "Payment not confirmed yet. Try again shortly",
+    "paidUnlocked": "Payment confirmed",
+    "dataPurged": "Cloud business data was cleared",
+    "toolBlockedTitle": "Feature unavailable",
+    "toolNeedLogin": "Sign in to the extension first",
+    "toolNeedPayment": "Payment required"
   },
   "share": {
     "title": "Share environments",
@@ -424,7 +435,10 @@
     "queryTitle": "Open query",
     "objectTitle": "Open object search",
     "openPageFirst": "This is not a Salesforce page. Open a Salesforce page first, then use object search.",
-    "openFailed": "Could not open it. Try again."
+    "openFailed": "Could not open it. Try again.",
+    "needLogin": "Sign in to the extension first",
+    "needPayment": "Payment required",
+    "blocked": "Unavailable. Please try again later"
   },
   "toolWindow": {
     "preview": "Preview",

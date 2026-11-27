@@ -218,7 +218,7 @@
     "sectionTitle": "支払い状況",
     "statusPaid": "支払い済み",
     "statusUnpaid": "未払い",
-    "priceOnce": "一回限り ¥5",
+    "priceOnce": "一度きり ¥5。支払い後は永久利用可",
     "pay": "支払う",
     "openingCheckout": "決済ページを開いています…",
     "refreshPaid": "支払い済みです",
@@ -226,7 +226,18 @@
     "errorUnavailable": "サービスを利用できません",
     "errorCheckout": "決済ページを開けません",
     "errorRefresh": "更新に失敗しました",
-    "errorGeneric": "操作に失敗しました"
+    "errorGeneric": "操作に失敗しました",
+    "requiredTitle": "続行するにはお支払いが必要です",
+    "payCta": "支払う",
+    "refreshStatus": "支払い済み — 状態を更新",
+    "checkoutFailed": "決済ページを開けません。後でもう一度、またはメールで連絡してください",
+    "refreshFailed": "更新に失敗しました。もう一度お試しください",
+    "stillUnpaid": "まだ支払いを確認できません。しばらくしてから再試行してください",
+    "paidUnlocked": "支払いを確認しました",
+    "dataPurged": "クラウド上の業務データを削除しました",
+    "toolBlockedTitle": "機能を利用できません",
+    "toolNeedLogin": "先に拡張機能アカウントでログインしてください",
+    "toolNeedPayment": "先にお支払いください"
   },
   "share": {
     "title": "環境を共有",
@@ -424,7 +435,10 @@
     "queryTitle": "クエリを開く",
     "objectTitle": "オブジェクト検索を開く",
     "openPageFirst": "今のページは Salesforce ではありません。先に Salesforce のページを開いてから、オブジェクト検索を使ってください。",
-    "openFailed": "開けませんでした。もう一度お試しください。"
+    "openFailed": "開けませんでした。もう一度お試しください。",
+    "needLogin": "先に拡張機能アカウントでログインしてください",
+    "needPayment": "先にお支払いください",
+    "blocked": "一時的に利用できません。しばらくしてから再試行してください"
   },
   "toolWindow": {
     "preview": "プレビュー",

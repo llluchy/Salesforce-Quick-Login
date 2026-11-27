@@ -15,10 +15,58 @@
 // ============================================
 
 import { useStorage } from '../composables/useStorage'
+import { getSupabase } from '../composables/useSupabase'
+import { STORAGE_KEY, STORAGE_KEY_GROUPS } from './constants'
 
 const MIGRATION_FLAG_KEY = '__sf_migrated_to_supabase'
 
+/**
+ * 直接查云端行数（head count），勿经 loadEnvironments——
+ * 后者在失败/付费门时会回落本机缓存，不能当作「云端已有数据」。
+ */
+async function cloudHasEnvironmentRows() {
+  const supabase = getSupabase()
+  if (!supabase) {
+    return { ok: false, hasRows: false, error: 'supabase not init' }
+  }
+  const { count, error } = await supabase
+    .from('environments')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_deleted', false)
+  if (error) {
+    return { ok: false, hasRows: false, error: error.message }
+  }
+  return { ok: true, hasRows: (count || 0) > 0 }
+}
+
+/** Path A/B 已 purge：付费后按空新用户，禁止把本机旧快照迁回云端 */
+async function readOwnPurgeFlags() {
+  const supabase = getSupabase()
+  if (!supabase) return { ok: false, purged: false, error: 'supabase not init' }
+  const { data: sessionData, error: sessionErr } = await supabase.auth.getSession()
+  if (sessionErr) return { ok: false, purged: false, error: sessionErr.message }
+  const userId = sessionData?.session?.user?.id
+  if (!userId) return { ok: false, purged: false, error: 'not authenticated' }
+  const { data, error } = await supabase
+    .from('user_billing')
+    .select('unpaid_purged_at,deactivate_purged_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return { ok: false, purged: false, error: error.message }
+  const purged = !!(data?.unpaid_purged_at || data?.deactivate_purged_at)
+  return { ok: true, purged }
+}
+
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
+
+async function clearLocalEnvAndGroupCache() {
+  if (!isChromeExt) return
+  try {
+    await chrome.storage.local.remove([STORAGE_KEY, STORAGE_KEY_GROUPS])
+  } catch {
+    /* ignore */
+  }
+}
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -63,7 +111,7 @@ export async function migrateLocalToSupabase() {
     return { skipped: true, reason: '已迁移过' }
   }
 
-  // 2. 读取本地旧数据
+  // 2. 先读本地：无本地可保护 → 直接跳过（允许远端 loadData），勿因 purge 探测失败 deferred
   const oldEnvs = await readLocal('salesforce_environments')
   const oldGroups = await readLocal('salesforce_groups')
   const oldPasskeys = await readLocal('__sf_passkey_credentials')
@@ -73,20 +121,46 @@ export async function migrateLocalToSupabase() {
   const passkeyCount = Array.isArray(oldPasskeys) ? oldPasskeys.length : 0
 
   if (envCount === 0 && groupCount === 0 && passkeyCount === 0) {
-    // 无本地数据，直接标记迁移完成（避免后续重复检查）
     await setLocal(MIGRATION_FLAG_KEY, true)
     return { skipped: true, reason: '本地无旧数据' }
   }
 
-  // 3. 检查云端是否已有数据（避免覆盖）
-  const { loadEnvironments, saveEnvironments, saveGroups, savePasskeyCredential } = useStorage()
-  const existingEnvs = await loadEnvironments()
-  if (existingEnvs.length > 0) {
+  // 3. purge 标记（仅在有本地数据需保护时）：
+  // - 确认已 purge → 空新用户，清本机并拒绝上传
+  // - 确认未 purge → 继续迁移
+  // - 读取失败 → deferred（勿当 purged；勿标已迁移；调用方勿用空云端盖本机）
+  const purge = await readOwnPurgeFlags()
+  if (!purge.ok) {
+    return {
+      deferred: true,
+      skipped: true,
+      hasLocalData: true,
+      reason: '检查 purge 状态失败：' + (purge.error || '')
+    }
+  }
+  if (purge.purged) {
+    await clearLocalEnvAndGroupCache()
+    await setLocal(MIGRATION_FLAG_KEY, true)
+    return { skipped: true, reason: '已 purge，按空新用户' }
+  }
+
+  // 4. 检查云端是否已有真实行（避免覆盖）；查询失败则 defer，勿误标已迁移、勿随后空云端覆盖
+  const cloud = await cloudHasEnvironmentRows()
+  if (!cloud.ok) {
+    return {
+      deferred: true,
+      skipped: true,
+      hasLocalData: true,
+      reason: '检查云端失败：' + (cloud.error || '')
+    }
+  }
+  if (cloud.hasRows) {
     await setLocal(MIGRATION_FLAG_KEY, true)
     return { skipped: true, reason: '云端已有数据' }
   }
 
-  // 4. 加密 + upsert 到 Supabase
+  // 5. 加密 + upsert 到 Supabase
+  const { saveEnvironments, saveGroups, savePasskeyCredential } = useStorage()
   try {
     if (envCount > 0) {
       // 清理 env 的临时 id（让 Supabase 生成 UUID）
@@ -122,7 +196,7 @@ export async function migrateLocalToSupabase() {
       }
     }
 
-    // 5. 标记迁移完成
+    // 6. 标记迁移完成
     await setLocal(MIGRATION_FLAG_KEY, true)
 
     return {
@@ -135,6 +209,18 @@ export async function migrateLocalToSupabase() {
     }
   } catch (e) {
     console.error('[Migration] 迁移异常', e)
-    return { success: false, reason: e.message || String(e) }
+    return { success: false, deferred: true, reason: e.message || String(e) }
   }
+}
+
+/**
+ * migrateThenLoad 是否可安全走远端 loadData。
+ * deferred/失败且有本机业务缓存（envs 或 groups）时禁止；全空才可安全拉云端。
+ */
+export function migrateAllowsRemoteLoad(result, { localCacheCount = 0 } = {}) {
+  if (!result) return false
+  if (result.deferred === true || result.success === false) {
+    return localCacheCount === 0
+  }
+  return true
 }

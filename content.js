@@ -818,11 +818,43 @@ function cropImage(dataUrl, x, y, width, height) {
     });
   }
 
+  function paymentGateMessage(decision) {
+    if (decision === 'need-login') {
+      return (typeof chrome !== 'undefined' && chrome.i18n?.getMessage)
+        ? (chrome.i18n.getMessage('paymentNeedLogin') || 'Sign in first')
+        : 'Sign in first';
+    }
+    if (decision === 'need-payment') {
+      return (typeof chrome !== 'undefined' && chrome.i18n?.getMessage)
+        ? (chrome.i18n.getMessage('paymentNeedPayment') || 'Payment required')
+        : 'Payment required';
+    }
+    return (typeof chrome !== 'undefined' && chrome.i18n?.getMessage)
+      ? (chrome.i18n.getMessage('paymentBlocked') || 'Unavailable')
+      : 'Unavailable';
+  }
+
+  async function assertPaymentToolsAllowed() {
+    const res = await sendMsg({ action: 'getPaymentAccess' });
+    if (res && res.success === true && res.allow === true) return { ok: true };
+    const decision =
+      res?.reason === 'login_required' ? 'need-login'
+        : res?.reason === 'payment_required' ? 'need-payment'
+          : (res?.allow === false ? 'blocked' : 'blocked');
+    return { ok: false, decision, message: paymentGateMessage(decision) };
+  }
+
   function openTool(toolId) {
-    sendMsg({
-      action: 'openToolWindow',
-      toolId,
-      hostname: location.hostname || ''
+    assertPaymentToolsAllowed().then((gate) => {
+      if (!gate.ok) {
+        try { window.alert(gate.message); } catch { /* ignore */ }
+        return;
+      }
+      sendMsg({
+        action: 'openToolWindow',
+        toolId,
+        hostname: location.hostname || ''
+      });
     });
   }
 
@@ -1641,13 +1673,19 @@ function cropImage(dataUrl, x, y, width, height) {
     chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       if (request?.action === 'openObjectSearch') {
         if (window.top !== window) return;
-        try {
-          openObjectSearchModal();
-          sendResponse({ success: true });
-        } catch (error) {
-          sendResponse({ success: false, error: error?.message || String(error) });
-        }
-        return;
+        assertPaymentToolsAllowed().then((gate) => {
+          if (!gate.ok) {
+            sendResponse({ success: false, error: gate.decision || 'blocked' });
+            return;
+          }
+          try {
+            openObjectSearchModal();
+            sendResponse({ success: true });
+          } catch (error) {
+            sendResponse({ success: false, error: error?.message || String(error) });
+          }
+        });
+        return true;
       }
       if (request?.action !== 'toolFloatVisibility') return;
       if (typeof request.visible !== 'boolean') return;

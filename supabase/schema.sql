@@ -473,3 +473,12 @@ alter table public.user_billing enable row level security;
 create policy "user_billing_select_own" on public.user_billing
   as PERMISSIVE for SELECT to authenticated
   using (auth.uid() = user_id);
+
+-- ============================================================
+-- 收费门 / 停用清数据（结构说明；实现见 migrations/payment_gate_purge.sql）
+-- app_config / payment_choice / user_billing 已由先行 PR 引入上文；
+-- 本段不重复建表。函数：is_payment_master_enabled、payment_business_access_allowed、
+-- purge_user_business_data、purge_deactivated_user_data、try_purge_own_deactivated、
+-- ensure_own_unpaid_grace、purge_unpaid_expired_user_data、run_payment_purge_daily、
+-- stamp_unpaid_grace_for_pay_phase（均见 payment_gate_purge.sql）。
+-- ============================================================

@@ -124,5 +124,17 @@
         "example": "unknown"
       }
     }
+  },
+  "paymentNeedLogin": {
+    "message": "Sign in to the extension first"
+  },
+  "paymentNeedPayment": {
+    "message": "Payment required"
+  },
+  "paymentBlocked": {
+    "message": "Unavailable. Please try again later"
+  },
+  "paymentContactLabel": {
+    "message": "Questions / contact"
   }
 }

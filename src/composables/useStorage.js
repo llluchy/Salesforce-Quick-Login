@@ -25,6 +25,50 @@ import {
   restoreTrashedEnvironment,
   softDeletePatch
 } from '../utils/envTrash'
+import { loadPaymentGateSnapshot } from '../utils/paymentGateApi.js'
+
+async function assertStoragePaymentAllowed() {
+  try {
+    // 必须 force：提醒阶段 session 缓存（switch OFF → allow）最长 120s；
+    // 开关拨 ON 后若复用旧快照，RLS 会返回 []，后续 cacheSet([]) 会清掉本机密钥。
+    const snapshot = await loadPaymentGateSnapshot({
+      force: true,
+      skipSideEffects: true
+    })
+    if (snapshot?.access?.allow === false) {
+      return { ok: false, error: t('toolsHub.needPayment'), snapshot }
+    }
+    return { ok: true, snapshot }
+  } catch {
+    /* 提醒阶段读失败不挡；收费阶段靠 RLS */
+  }
+  return { ok: true, snapshot: null }
+}
+
+/**
+ * 空远端写回本机前的二次闸：非空本地缓存不可被「可能被 RLS 藏住」的空结果盖掉。
+ * 仅在开关 OFF，或开关 ON 且已付费（真·空账户 / purge 后）时允许 cacheSet([])。
+ */
+async function cacheReplaceIfSafe(key, remoteList, gateSnapshot) {
+  const remote = Array.isArray(remoteList) ? remoteList : []
+  if (remote.length === 0) {
+    const cached = await cacheGet(key)
+    if (Array.isArray(cached) && cached.length > 0) {
+      let snap = gateSnapshot
+      if (!snap || snap.fromCache === true) {
+        snap = await loadPaymentGateSnapshot({ force: true, skipSideEffects: true })
+      }
+      const switchOn = snap?.switchEnabled === true
+      const paid = snap?.isPaid === true
+      const blocked = snap?.access?.allow === false
+      if (blocked || (switchOn && !paid)) {
+        return { wrote: false, kept: cached }
+      }
+    }
+  }
+  await cacheSet(key, remote)
+  return { wrote: true, kept: remote }
+}
 
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
 const isChromeSession = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session
@@ -131,6 +175,15 @@ export function useStorage() {
     const wrap = (data, source, error = null) =>
       detailed ? { data, source, error, count: data.length } : data
 
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) {
+      // 付费门挡读写时保留本机缓存，切勿当成空云端写回
+      const cached = await cacheGet(STORAGE_KEY)
+      const result = Array.isArray(cached) ? cached : []
+      await syncEnvsToSession(result)
+      return wrap(result, result.length ? 'cache' : 'empty', pay.error)
+    }
+
     const supabase = getSupabase()
     const key = getCryptoKey()
 
@@ -166,12 +219,15 @@ export function useStorage() {
 
       const { decryptEnv } = await import('../utils/crypto')
 
+      const rawRows = data || []
       const envs = []
-      for (const row of data || []) {
+      let decryptFailures = 0
+      for (const row of rawRows) {
         try {
           const env = await decryptEnv(row, key)
           envs.push(env)
         } catch (decryptErr) {
+          decryptFailures++
           console.error('[Storage] 环境解密失败', {
             id: row.id,
             error: decryptErr.message
@@ -180,9 +236,22 @@ export function useStorage() {
         }
       }
 
-      log('读取成功', { count: envs.length, total: data?.length, ids: envs.map(e => e.id) })
+      log('读取成功', { count: envs.length, total: rawRows.length, ids: envs.map(e => e.id) })
 
-      await cacheSet(STORAGE_KEY, envs)
+      // 有远端行但全部解密失败 ≠ 空云端：保留本机，勿 cacheSet []
+      if (envs.length === 0 && rawRows.length > 0 && decryptFailures === rawRows.length) {
+        const cached = await cacheGet(STORAGE_KEY)
+        const result = Array.isArray(cached) ? cached : []
+        await syncEnvsToSession(result)
+        return wrap(result, result.length ? 'cache' : 'empty', 'decrypt failed')
+      }
+
+      // 真·空云端才写 []；收费 ON 未付费时的 RLS 空结果不得清本机密钥
+      const replaced = await cacheReplaceIfSafe(STORAGE_KEY, envs, pay.snapshot)
+      if (!replaced.wrote) {
+        await syncEnvsToSession(replaced.kept)
+        return wrap(replaced.kept, 'cache', t('toolsHub.needPayment'))
+      }
       await syncEnvsToSession(envs)
       return wrap(envs, 'remote')
     } catch (e) {
@@ -204,6 +273,8 @@ export function useStorage() {
    */
   const saveEnvironments = async (envs) => {
     log('saveEnvironments', { count: envs?.length || 0 })
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) return { success: false, error: pay.error }
     const supabase = getSupabase()
     const userKey = getCryptoKey()
 
@@ -359,6 +430,14 @@ export function useStorage() {
     const wrap = (data, source, error = null) =>
       detailed ? { data, source, error, count: data.length } : data
 
+    // 与 environments 一致：未付费 RLS 常返回 200 []，不可当空云端盖本机
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) {
+      const cached = await cacheGet(STORAGE_KEY_GROUPS)
+      const result = Array.isArray(cached) ? cached : []
+      return wrap(result, result.length ? 'cache' : 'empty', pay.error)
+    }
+
     const supabase = getSupabase()
     const key = getCryptoKey()
 
@@ -382,9 +461,29 @@ export function useStorage() {
         .order('sort_order', { ascending: true })
       if (error) throw new Error(t('storage.queryFailed', { msg: error.message }))
 
-      const groups = (data || []).map(decryptGroup)
+      const rawRows = data || []
+      const groups = []
+      let decryptFailures = 0
+      for (const row of rawRows) {
+        try {
+          groups.push(decryptGroup(row))
+        } catch (decryptErr) {
+          decryptFailures++
+          logError(`分组解密失败，跳过: ${row?.id}`, decryptErr.message || decryptErr)
+        }
+      }
       log('读取成功', { count: groups.length, ids: groups.map(g => g.id) })
-      await cacheSet(STORAGE_KEY_GROUPS, groups)
+
+      if (groups.length === 0 && rawRows.length > 0 && decryptFailures === rawRows.length) {
+        const cached = await cacheGet(STORAGE_KEY_GROUPS)
+        const result = Array.isArray(cached) ? cached : []
+        return wrap(result, result.length ? 'cache' : 'empty', 'decrypt failed')
+      }
+
+      const replaced = await cacheReplaceIfSafe(STORAGE_KEY_GROUPS, groups, pay.snapshot)
+      if (!replaced.wrote) {
+        return wrap(replaced.kept, 'cache', t('toolsHub.needPayment'))
+      }
       return wrap(groups, 'remote')
     } catch (e) {
       logError('从 Supabase 读取分组失败，fallback 到本地缓存', e)
@@ -398,6 +497,8 @@ export function useStorage() {
 
   const saveGroups = async (groups) => {
     log('saveGroups', { count: groups?.length || 0 })
+    const pay = await assertStoragePaymentAllowed()
+    if (!pay.ok) return { success: false, error: pay.error }
     const supabase = getSupabase()
     if (!supabase) return { success: false, error: t('storage.supabaseNotInit') }
 

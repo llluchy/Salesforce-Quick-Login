@@ -345,16 +345,13 @@ describe('schema app_config', () => {
 })
 
 describe('scope guards', () => {
-  it('does not write local/sync or stripe from paymentMaster modules', () => {
+  it('paymentMaster util stays read-only (no local/sync truth, no stripe)', () => {
     const util = readFileSync(resolve(root, 'src/utils/paymentMaster.js'), 'utf8')
+    // 总开关模块：仅 session 短缓存；不以 local/sync 为真相源；不接 Stripe
+    assert.doesNotMatch(util, /chrome\.storage\.local|chrome\.storage\.sync|storage\.sync/)
+    assert.doesNotMatch(util, /stripe|checkout/i)
+    // usePaymentGate（收费门 PR）可清 local 环境缓存、调 checkout；禁止 sync 作真相源
     const gate = readFileSync(resolve(root, 'src/composables/usePaymentGate.js'), 'utf8')
-    const panel = readFileSync(resolve(root, 'src/components/PanelTools.vue'), 'utf8')
-
-    for (const src of [util, gate]) {
-      assert.doesNotMatch(src, /chrome\.storage\.local|chrome\.storage\.sync|storage\.sync/)
-      assert.doesNotMatch(src, /stripe|checkout|payment_choice|is_paid|purge/i)
-    }
-    // App.vue 可读 paymentMaster 驱动提醒/协议；工具入口仍不直接挂收费门
-    assert.doesNotMatch(panel, /usePaymentGate|paymentMaster|paymentEnabled/)
+    assert.doesNotMatch(gate, /chrome\.storage\.sync|storage\.sync/)
   })
 })

@@ -3,6 +3,24 @@
     <!-- 页面栏关掉后，面板里仍可打开日志和查询；栏开着时页面入口保留 -->
     <div class="main-panel">
       <AuthScreen v-if="!isAuthed" @authed="onAuthed" />
+      <div v-else-if="showPaymentRequired" class="app-container app-container-pay">
+        <div class="pay-topbar">
+          <span class="pay-topbar-title">{{ t('common.productName') }}</span>
+          <button
+            type="button"
+            class="pay-topbar-account"
+            :title="t('toolbar.accountTitle')"
+            :aria-label="t('toolbar.accountTitle')"
+            @click="accountDialogVisible = true"
+          >{{ currentUser?.email || t('toolbar.accountTitle') }}</button>
+        </div>
+        <PaymentRequiredView />
+        <AccountDialog
+          :visible="accountDialogVisible"
+          @close="accountDialogVisible = false"
+          @signed-out="onSignedOut"
+        />
+      </div>
       <div v-else class="app-container">
         <Toolbar
           :env-count="environments.length"
@@ -111,22 +129,6 @@
           @restore="handleRestoreEnv"
         />
 
-        <PaymentReminderModal
-          :visible="paymentReminderVisible"
-          :saving="paymentReminderSaving"
-          :error="paymentReminderError"
-          :contact-emails="paymentReminderEmails"
-          @choose="handlePaymentReminderChoose"
-        />
-
-        <UserAgreementModal
-          :visible="userAgreementVisible"
-          :saving="userAgreementSaving"
-          :error="userAgreementError"
-          @agree="handleUserAgreementAgree"
-          @disagree="handleUserAgreementDisagree"
-        />
-
         <!-- Passkey 选择对话框（v4：Side Panel 集中处理） -->
         <div v-if="pkDialog.visible" class="pk-overlay" @click.self="cancelPasskeyDialog">
           <div class="pk-dialog">
@@ -196,6 +198,25 @@
         </div>
       </div>
 
+      <!-- 提醒 / 协议：挂在 main-panel 层，付费页与完整 UI 都能挡住（勿只放在 v-else 内） -->
+      <PaymentReminderModal
+        v-if="isAuthed"
+        :visible="paymentReminderVisible"
+        :saving="paymentReminderSaving"
+        :error="paymentReminderError"
+        :contact-emails="paymentReminderEmails"
+        @choose="handlePaymentReminderChoose"
+      />
+
+      <UserAgreementModal
+        v-if="isAuthed"
+        :visible="userAgreementVisible"
+        :saving="userAgreementSaving"
+        :error="userAgreementError"
+        @agree="handleUserAgreementAgree"
+        @disagree="handleUserAgreementDisagree"
+      />
+
       <!-- 启动 / 同步遮罩 -->
       <div v-if="bootOverlay.visible" class="boot-overlay">
         <div class="boot-box">
@@ -219,11 +240,11 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Sortable from 'sortablejs'
-import { MAX_ENVIRONMENTS } from './utils/constants'
+import { MAX_ENVIRONMENTS, STORAGE_KEY, STORAGE_KEY_GROUPS } from './utils/constants'
 import { generateUuid } from './utils/crypto'
 import { useStorage } from './composables/useStorage'
 import { useAuth } from './composables/useAuth'
-import { migrateLocalToSupabase } from './utils/migration'
+import { migrateAllowsRemoteLoad, migrateLocalToSupabase } from './utils/migration'
 import { useLogin } from './composables/useLogin'
 import { initPasskeyBridge, destroyPasskeyBridge, passkeyRequest, passkeyError, passkeySaving, passkeySavingStage } from './composables/usePasskeyBridge'
 import { useTotp } from './composables/useTotp'
@@ -243,8 +264,10 @@ import TrashDialog from './components/TrashDialog.vue'
 import PanelTools from './components/PanelTools.vue'
 import PaymentReminderModal from './components/PaymentReminderModal.vue'
 import UserAgreementModal from './components/UserAgreementModal.vue'
+import PaymentRequiredView from './components/PaymentRequiredView.vue'
 import { usePaymentReminder } from './composables/usePaymentReminder'
 import { useUserAgreement } from './composables/useUserAgreement'
+import { usePaymentGate } from './composables/usePaymentGate.js'
 import { getSupabase } from './composables/useSupabase'
 import {
   clearPaymentMasterCache,
@@ -333,13 +356,113 @@ const refreshPaymentGates = async (options = {}) => {
   })
 }
 
+const {
+  showPaymentRequired,
+  refreshPaymentGate
+} = usePaymentGate()
+
 const onVisibilityRefreshGates = () => {
   if (document.visibilityState !== 'visible') return
   if (!isAuthed.value || _onAuthedRunning) return
-  refreshPaymentGates({ blockPending: false }).catch((e) => {
-    syncLog.warn('payment gates visibility refresh failed', e?.message || e)
-  })
+  // 同时刷收费门：侧栏开着时 Dashboard 拨 ON，须切到付费页，不能只刷提醒/协议
+  ;(async () => {
+    try {
+      await refreshPaymentGate({ force: true })
+    } catch (e) {
+      syncLog.warn('payment gate visibility refresh failed', e?.message || e)
+    }
+    try {
+      await refreshPaymentGates({
+        blockPending: showPaymentRequired.value === true
+      })
+    } catch (e) {
+      syncLog.warn('payment gates visibility refresh failed', e?.message || e)
+    }
+  })()
 }
+
+/** 本机业务缓存条数（envs + groups）；任一侧非空都需保护，勿被空云端盖掉 */
+async function readLocalBusinessCacheCount() {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local?.get) return 0
+    const data = await chrome.storage.local.get([STORAGE_KEY, STORAGE_KEY_GROUPS])
+    const envs = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY].length : 0
+    const groupsCount = Array.isArray(data[STORAGE_KEY_GROUPS]) ? data[STORAGE_KEY_GROUPS].length : 0
+    return envs + groupsCount
+  } catch {
+    return 0
+  }
+}
+
+async function hydrateUiFromLocalCache() {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local?.get) return
+    const data = await chrome.storage.local.get([STORAGE_KEY, STORAGE_KEY_GROUPS])
+    environments.value = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : []
+    groups.value = Array.isArray(data[STORAGE_KEY_GROUPS]) ? data[STORAGE_KEY_GROUPS] : []
+    await nextTick()
+    initGroupSortable()
+  } catch (e) {
+    console.error('[App] hydrateUiFromLocalCache 失败', e)
+  }
+}
+
+async function migrateThenLoad() {
+  let migrateResult = null
+  try {
+    showBoot(t('boot.migrating'), t('boot.migratingDetail'))
+    migrateResult = await migrateLocalToSupabase()
+    if (migrateResult?.success) {
+      const m = migrateResult.migrated
+      showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
+    } else if (migrateResult?.deferred) {
+      syncLog.error('迁移推迟', migrateResult.reason)
+    } else if (migrateResult?.success === false) {
+      syncLog.error('迁移失败', migrateResult.reason)
+    }
+  } catch (e) {
+    syncLog.error('迁移本地数据失败', e)
+    console.error('[App] migrateThenLoad 迁移异常', e)
+    migrateResult = { deferred: true, success: false, reason: e.message || String(e) }
+  }
+  try {
+    initPasskeyBridge()
+  } catch (e) {
+    syncLog.error('初始化 Passkey Bridge 失败', e)
+  }
+  // deferred/失败：本机有 envs 或 groups 则 hydrate；全空才 loadData
+  const localCacheCount = await readLocalBusinessCacheCount()
+  if (migrateAllowsRemoteLoad(migrateResult, { localCacheCount })) {
+    await loadData()
+  } else {
+    await hydrateUiFromLocalCache()
+  }
+}
+
+// 开关拨 ON → 清内存中的环境列表并刷协议；付费解锁 → 先协议再迁移
+watch(showPaymentRequired, async (needPay, wasNeedPay) => {
+  if (!isAuthed.value) return
+  if (needPay === true && wasNeedPay === false) {
+    environments.value = []
+    groups.value = []
+    try {
+      await nextTick()
+      await refreshPaymentGates({ blockPending: true })
+    } catch (e) {
+      syncLog.warn('payment gates refresh failed (switch ON)', e?.message || e)
+    }
+    return
+  }
+  if (wasNeedPay === true && needPay === false) {
+    try {
+      await nextTick()
+      await refreshPaymentGates({ blockPending: true })
+      await migrateThenLoad()
+    } catch (e) {
+      console.error('[App] 付费门解除后加载数据失败', e)
+    }
+  }
+})
 
 const environments = ref([])
 const groups = ref([])
@@ -1128,28 +1251,32 @@ const onAuthed = async () => {
   accountDialogVisible.value = false
   showBoot(t('boot.loginSuccess'), t('boot.syncing'))
 
-  // 首次登录时尝试迁移本地旧数据到 Supabase（云端有数据则自动跳过）
+  // 先读收费门。未付费时 RLS/客户端门会挡 save，迁移必须推迟到解锁后。
   try {
-    showBoot(t('boot.migrating'), t('boot.migratingDetail'))
-    const result = await migrateLocalToSupabase()
-    if (result?.success) {
-      const m = result.migrated
-      showToast(t('toast.migrated', { envs: m.environments, groups: m.groups, passkeys: m.passkeys }), 'success')
+    await refreshPaymentGate({ force: true })
+  } catch (e) {
+    syncLog.error('刷新收费门失败', e)
+  }
+  if (showPaymentRequired.value) {
+    // 仅清 UI 列表；保留 chrome.storage.local 本机环境，待付费/开关 OFF 后再 migrate
+    environments.value = []
+    groups.value = []
+    // 付费页也必须跑协议（开关 ON）：勿跳过 refreshPaymentGates
+    try {
+      await nextTick()
+      await refreshPaymentGates({ blockPending: true })
+    } catch (e) {
+      syncLog.warn('payment gates refresh failed (pay wall)', e?.message || e)
+    } finally {
+      _dataLoadDone = true
+      hideBoot()
+      _onAuthedRunning = false
     }
-  } catch (e) {
-    syncLog.error('迁移本地数据失败', e)
-    console.error('[App] onAuthed 迁移异常', e)
+    return
   }
 
   try {
-    initPasskeyBridge()
-  } catch (e) {
-    syncLog.error('初始化 Passkey Bridge 失败', e)
-    console.error('[App] onAuthed Passkey Bridge 异常', e)
-  }
-
-  try {
-    await loadData()
+    await migrateThenLoad()
   } catch (e) {
     syncLog.error('加载数据失败', e)
     console.error('[App] onAuthed loadData 异常', e)
@@ -1249,6 +1376,12 @@ onMounted(async () => {
   //   4. 否则 → AuthScreen 显示要求输入密码
   try {
     await getSession()
+    // 未登录也要读总开关（anon），以便 Auth 上挡 PanelTools
+    try {
+      await refreshPaymentGate({ force: true })
+    } catch (e) {
+      syncLog.warn('启动时读收费门失败', e?.message || e)
+    }
     const unlockStatus = await getUnlockStatus()
     syncLog.info('会话检查完成', {
       isAuthed: isAuthed.value,
@@ -1310,6 +1443,35 @@ onBeforeUnmount(() => {
 .app-container {
   min-height: 100vh;
   background-color: #eef5fc;
+}
+
+.pay-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+  color: #fff;
+}
+
+.pay-topbar-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pay-topbar-account {
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
 }
 
 .env-search {

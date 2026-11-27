@@ -218,7 +218,7 @@
     "sectionTitle": "付费状态",
     "statusPaid": "已付费",
     "statusUnpaid": "未付费",
-    "priceOnce": "一次性 ¥5",
+    "priceOnce": "一次性 ¥5，付过永久可用",
     "pay": "去支付",
     "openingCheckout": "打开支付页…",
     "refreshPaid": "我已付款",
@@ -226,7 +226,18 @@
     "errorUnavailable": "服务暂不可用",
     "errorCheckout": "无法打开支付页",
     "errorRefresh": "刷新失败",
-    "errorGeneric": "操作失败"
+    "errorGeneric": "操作失败",
+    "requiredTitle": "需要付费后继续使用",
+    "payCta": "去付费",
+    "refreshStatus": "我已付款，刷新状态",
+    "checkoutFailed": "无法打开付款页，请稍后重试或发邮件联系",
+    "refreshFailed": "刷新失败，请稍后重试",
+    "stillUnpaid": "尚未确认付款，请稍后再试",
+    "paidUnlocked": "已确认付费",
+    "dataPurged": "云端业务数据已清除",
+    "toolBlockedTitle": "功能暂不可用",
+    "toolNeedLogin": "请先登录扩展账号",
+    "toolNeedPayment": "请先完成付费"
   },
   "share": {
     "title": "环境分享",
@@ -424,7 +435,10 @@
     "queryTitle": "打开查询",
     "objectTitle": "打开对象搜索",
     "openPageFirst": "当前不是 Salesforce 页面。请先打开 Salesforce 页面，再使用对象搜索。",
-    "openFailed": "暂时打不开，请重试。"
+    "openFailed": "暂时打不开，请重试。",
+    "needLogin": "请先登录扩展账号",
+    "needPayment": "请先完成付费",
+    "blocked": "暂时不可用，请稍后重试"
   },
   "toolWindow": {
     "preview": "预览",
