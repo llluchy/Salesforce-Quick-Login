@@ -129,6 +129,27 @@ create trigger trg_saved_soql_touch BEFORE
 update on saved_soql_queries for EACH row
 execute FUNCTION touch_updated_at ();
 
+-- ---------- 表：app_config 全局配置（管理员总开关等） ----------
+-- 说明：扩展用 anon/authenticated 只读；写入仅 Dashboard SQL / service_role。
+-- key=payment_master 时 value.enabled=false 为提醒阶段（默认），true 为收费阶段。
+-- 本文件只备份结构与默认种子；线上 apply 等产品确认，不在此自动执行。
+create table public.app_config (
+  key text not null,
+  value jsonb not null,
+  updated_at timestamp with time zone null default now(),
+  updated_by uuid null,
+  constraint app_config_pkey primary key (key),
+  constraint app_config_updated_by_fkey foreign KEY (updated_by) references auth.users (id) on delete set null
+) TABLESPACE pg_default;
+
+create trigger trg_app_config_touch BEFORE
+update on app_config for EACH row
+execute FUNCTION touch_updated_at ();
+
+insert into public.app_config (key, value)
+values ('payment_master', '{"enabled": false}'::jsonb)
+on conflict (key) do nothing;
+
 -- ---------- 函数：accept_share_lookup 接受分享查询 ----------
 -- 说明：根据分享码+验证码查询有效分享记录，SECURITY DEFINER 绕过 RLS 读取
 CREATE OR REPLACE FUNCTION public.accept_share_lookup(p_share_code text, p_verify_code text)
@@ -184,7 +205,7 @@ END;
 $function$
 
 -- ---------- 函数：touch_updated_at 自动更新 updated_at ----------
--- 说明：environments、groups、user_metadata、saved_soql_queries 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
+-- 说明：environments、groups、user_metadata、saved_soql_queries、app_config 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
 CREATE OR REPLACE FUNCTION public.touch_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -199,6 +220,14 @@ $function$
 -- RLS 策略（Row Level Security）
 -- 说明：以下需确认各表已执行 enable row level security
 -- ------------------------------------------------------------
+
+-- app_config：anon / authenticated 可读总开关；普通角色不可写（无写策略；仅 service_role / Dashboard）
+-- 放在 RLS 区最前，避免后续表策略切片测试误执行本段（依赖 anon 角色）。
+alter table public.app_config enable row level security;
+create policy "app_config_select" on public.app_config
+  as PERMISSIVE for SELECT to anon, authenticated
+  using (true);
+grant select on public.app_config to anon, authenticated;
 
 -- env_shares：用户管理自己创建的分享
 alter table public.env_shares enable row level security;
