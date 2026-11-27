@@ -1,6 +1,6 @@
 // 付费模式（开关 ON）：登录后强制一次性用户协议。
 // 同意写入 user_metadata.user_agreement_accepted_at；不同意由调用方登出。
-// 开关 ON 且读失败 → 视为未同意（fail-closed，挡住使用）。
+// 开关 ON 且协议读失败 → 视为未同意（fail-closed，挡住使用）。
 
 import { ref, readonly } from 'vue'
 import { getSupabase } from './useSupabase'
@@ -12,6 +12,7 @@ import {
   writeUserAgreementOnce
 } from '../utils/userAgreement'
 import {
+  clearPaymentMasterCache,
   getPaymentMasterEnabled,
   supabaseAppConfigIo
 } from '../utils/paymentMaster'
@@ -57,11 +58,17 @@ export function useUserAgreement() {
     return epoch !== _refreshEpoch
   }
 
-  async function refresh() {
+  /**
+   * @param {{ switchEnabled?: boolean, force?: boolean, blockPending?: boolean }} [options]
+   * switchEnabled 传入时跳过读开关（由 App 统一读一次）。
+   * blockPending：确认开关 ON 后、读同意状态前先挡住（配合 boot / 登录路径）。
+   */
+  async function refresh(options = {}) {
     if (_refreshing) return
     _refreshing = true
     const epoch = _refreshEpoch
     error.value = null
+    const force = options.force !== false
     try {
       if (!isAuthed.value || !currentUser.value?.id) {
         if (!isStale(epoch)) {
@@ -77,23 +84,35 @@ export function useUserAgreement() {
         return
       }
 
-      let switchEnabled
-      try {
-        switchEnabled = await getPaymentMasterEnabled({
-          io: supabaseAppConfigIo(client),
-          sessionArea: sessionArea(),
-          force: true
-        })
-      } catch (e) {
-        syncLog.warn('user agreement: master switch read failed', e?.message || e)
-        if (!isStale(epoch)) hide()
-        return
+      let switchEnabled = options.switchEnabled
+      if (typeof switchEnabled !== 'boolean') {
+        const area = sessionArea()
+        try {
+          if (force) await clearPaymentMasterCache(area)
+          switchEnabled = await getPaymentMasterEnabled({
+            io: supabaseAppConfigIo(client),
+            sessionArea: area,
+            force: true
+          })
+        } catch (e) {
+          syncLog.warn('user agreement: master switch read failed', e?.message || e)
+          // 读不到开关时无法确认付费模式；不弹协议（避免提醒阶段误挡）
+          if (!isStale(epoch)) hide()
+          return
+        }
       }
       if (isStale(epoch)) return
+
+      syncLog.info('user agreement: switch', { switchEnabled })
 
       if (switchEnabled !== true) {
         hide()
         return
+      }
+
+      // 登录路径：先挡住，再确认是否已同意
+      if (options.blockPending === true && !isStale(epoch)) {
+        visible.value = true
       }
 
       let at = null
@@ -149,13 +168,8 @@ export function useUserAgreement() {
       saving.value = false
       return { ok: false }
     }
-    // 成功时保持 saving=true 至 reset，或已 visible=false；同意成功后不必再点
   }
 
-  /**
-   * 不同意：先锁住按钮（saving），再登出。登出成功由 onSignedOut→reset 清状态；
-   * 登出失败则解锁以便重试。
-   */
   async function disagree(signOutFn) {
     if (saving.value) return { ok: false }
     saving.value = true

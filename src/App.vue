@@ -245,6 +245,12 @@ import PaymentReminderModal from './components/PaymentReminderModal.vue'
 import UserAgreementModal from './components/UserAgreementModal.vue'
 import { usePaymentReminder } from './composables/usePaymentReminder'
 import { useUserAgreement } from './composables/useUserAgreement'
+import { getSupabase } from './composables/useSupabase'
+import {
+  clearPaymentMasterCache,
+  getPaymentMasterEnabled,
+  supabaseAppConfigIo
+} from './utils/paymentMaster'
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadTrashedEnvironments, restoreEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
@@ -280,6 +286,59 @@ const handleUserAgreementAgree = async () => {
 
 const handleUserAgreementDisagree = async () => {
   await disagreeUserAgreement(signOut)
+}
+
+function paymentSessionArea() {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+      return chrome.storage.session
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+/** 清缓存后读一次开关，再驱动提醒 / 协议（避免 session 缓存卡住、或仅 OFF 路径被走到）。 */
+const refreshPaymentGates = async (options = {}) => {
+  if (!isAuthed.value || !currentUser.value?.id) {
+    resetPaymentReminder()
+    resetUserAgreement()
+    return
+  }
+  const client = getSupabase()
+  const area = paymentSessionArea()
+  let switchEnabled = false
+  try {
+    await clearPaymentMasterCache(area)
+    if (!client) throw new Error('no_supabase')
+    switchEnabled = await getPaymentMasterEnabled({
+      io: supabaseAppConfigIo(client),
+      sessionArea: area,
+      force: true
+    }) === true
+  } catch (e) {
+    syncLog.warn('payment gates: switch read failed', e?.message || e)
+    // 读失败：两边都不弹（提醒 fail-open；协议避免在提醒阶段误挡）
+    await refreshPaymentReminder({ switchEnabled: true, force: true })
+    await refreshUserAgreement({ switchEnabled: false, force: true })
+    return
+  }
+  syncLog.info('payment gates: switch', { switchEnabled })
+  await refreshPaymentReminder({ switchEnabled, force: true })
+  await refreshUserAgreement({
+    switchEnabled,
+    force: true,
+    blockPending: options.blockPending === true
+  })
+}
+
+const onVisibilityRefreshGates = () => {
+  if (document.visibilityState !== 'visible') return
+  if (!isAuthed.value || _onAuthedRunning) return
+  refreshPaymentGates({ blockPending: false }).catch((e) => {
+    syncLog.warn('payment gates visibility refresh failed', e?.message || e)
+  })
 }
 
 const environments = ref([])
@@ -1099,10 +1158,9 @@ const onAuthed = async () => {
   // 付费模式协议须在 hideBoot 前完成，避免侧栏在协议返回前已可操作
   try {
     await nextTick()
-    await refreshPaymentReminder()
-    await refreshUserAgreement()
+    await refreshPaymentGates({ blockPending: true })
   } catch (e) {
-    syncLog.warn('payment reminder / user agreement refresh failed', e?.message || e)
+    syncLog.warn('payment gates refresh failed', e?.message || e)
   } finally {
     _dataLoadDone = true
     hideBoot()
@@ -1218,10 +1276,14 @@ onMounted(async () => {
     hideBoot()
   }
 
+  // 侧栏再次可见时重读开关（已登录改 DB 开关后不必整页重载也能出协议）
+  document.addEventListener('visibilitychange', onVisibilityRefreshGates)
+
   syncLog.groupEnd()
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityRefreshGates)
   destroyPasskeyBridge()
   if (groupSortable) {
     groupSortable.destroy()

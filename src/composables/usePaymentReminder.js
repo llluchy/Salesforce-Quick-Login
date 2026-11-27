@@ -1,5 +1,5 @@
 // 提醒阶段：登录后若总开关 OFF 且尚未选择，强制一次性弹窗。
-// 读开关复用管理员总开关模块 paymentMaster / usePaymentGate 同款 API。
+// 读开关复用管理员总开关模块 paymentMaster。
 // choice 真相源为 Supabase user_metadata。
 // 提醒阶段读失败 → 不弹窗、不挡功能。不做应用内改选。
 
@@ -15,6 +15,7 @@ import {
   writePaymentChoiceOnce
 } from '../utils/paymentChoice'
 import {
+  clearPaymentMasterCache,
   getPaymentMasterEnabled,
   supabaseAppConfigIo
 } from '../utils/paymentMaster'
@@ -59,11 +60,15 @@ export function usePaymentReminder() {
     return epoch !== _refreshEpoch
   }
 
-  async function refresh() {
+  /**
+   * @param {{ switchEnabled?: boolean, force?: boolean }} [options]
+   */
+  async function refresh(options = {}) {
     if (_refreshing) return
     _refreshing = true
     const epoch = _refreshEpoch
     error.value = null
+    const force = options.force !== false
     try {
       if (!isAuthed.value || !currentUser.value?.id) {
         if (!isStale(epoch)) {
@@ -79,19 +84,25 @@ export function usePaymentReminder() {
         return
       }
 
-      let switchEnabled
-      try {
-        switchEnabled = await getPaymentMasterEnabled({
-          io: supabaseAppConfigIo(client),
-          sessionArea: sessionArea(),
-          force: true
-        })
-      } catch (e) {
-        syncLog.warn('payment reminder: master switch read failed', e?.message || e)
-        if (!isStale(epoch)) hide()
-        return
+      let switchEnabled = options.switchEnabled
+      if (typeof switchEnabled !== 'boolean') {
+        const area = sessionArea()
+        try {
+          if (force) await clearPaymentMasterCache(area)
+          switchEnabled = await getPaymentMasterEnabled({
+            io: supabaseAppConfigIo(client),
+            sessionArea: area,
+            force: true
+          })
+        } catch (e) {
+          syncLog.warn('payment reminder: master switch read failed', e?.message || e)
+          if (!isStale(epoch)) hide()
+          return
+        }
       }
       if (isStale(epoch)) return
+
+      syncLog.info('payment reminder: switch', { switchEnabled })
 
       const io = supabasePaymentChoiceIo(client)
       let choice
