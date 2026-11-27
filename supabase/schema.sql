@@ -264,7 +264,7 @@ END;
 $function$
 
 -- ---------- 函数：touch_updated_at 自动更新 updated_at ----------
--- 说明：environments、groups、user_metadata、saved_soql_queries、app_config 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
+-- 说明：environments、groups、user_metadata、saved_soql_queries、app_config、user_billing 表 BEFORE UPDATE 触发器调用，自动刷新 updated_at
 CREATE OR REPLACE FUNCTION public.touch_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -274,6 +274,111 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+-- ---------- 表：user_billing 账号付费状态 ----------
+-- 说明：一次性付费永久免费。is_paid 等付费标记仅 service_role / Webhook 可写。
+-- 用户仅可 SELECT 自己的行；无用户 INSERT/UPDATE/DELETE（见 RLS；表级 revoke 见 migrations/user_billing.sql）。
+-- 本文件只备份结构，不改线上数据。线上 apply 需产品批准。
+create table public.user_billing (
+  user_id uuid not null,
+  is_paid boolean not null default false,
+  paid_at timestamp with time zone null,
+  stripe_customer_id text null,
+  stripe_checkout_session_id text null,
+  deactivate_purged_at timestamp with time zone null,
+  pay_phase_started_at timestamp with time zone null,
+  unpaid_grace_expires_at timestamp with time zone null,
+  unpaid_purged_at timestamp with time zone null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint user_billing_pkey primary key (user_id),
+  constraint user_billing_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_user_billing_unpaid_grace on public.user_billing using btree (unpaid_grace_expires_at)
+  TABLESPACE pg_default
+  where (is_paid = false and unpaid_purged_at is null);
+
+create trigger trg_user_billing_touch BEFORE
+update on user_billing for EACH row
+execute FUNCTION touch_updated_at ();
+
+-- ---------- 函数：ensure_user_billing_row 新用户建空计费行 ----------
+-- 说明：auth.users 插入后自动建 user_billing；SECURITY DEFINER；幂等
+CREATE OR REPLACE FUNCTION public.ensure_user_billing_row()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  INSERT INTO public.user_billing (user_id)
+  VALUES (NEW.id)
+  ON CONFLICT (user_id) DO NOTHING;
+  RETURN NEW;
+END;
+$function$;
+
+-- 触发器挂在 auth.users（线上 apply 时执行；本备份仅记录）
+-- CREATE TRIGGER on_auth_user_created_billing
+--   AFTER INSERT ON auth.users
+--   FOR EACH ROW EXECUTE FUNCTION public.ensure_user_billing_row();
+
+-- ---------- 函数：claim_payment_from_stripe 幂等标记已付费 ----------
+-- 说明：仅 service_role / Webhook 调用。同一 session 重复投递安全；已付费用户保持 is_paid。
+CREATE OR REPLACE FUNCTION public.claim_payment_from_stripe(
+  p_user_id uuid,
+  p_session_id text,
+  p_customer_id text DEFAULT NULL
+)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row public.user_billing%ROWTYPE;
+BEGIN
+  IF p_user_id IS NULL OR p_session_id IS NULL OR length(trim(p_session_id)) = 0 THEN
+    RETURN false;
+  END IF;
+
+  INSERT INTO public.user_billing (user_id)
+  VALUES (p_user_id)
+  ON CONFLICT (user_id) DO NOTHING;
+
+  SELECT * INTO v_row
+  FROM public.user_billing
+  WHERE user_id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  -- 同一 Checkout Session 重复 Webhook：幂等成功
+  IF v_row.stripe_checkout_session_id IS NOT NULL
+     AND v_row.stripe_checkout_session_id = p_session_id THEN
+    RETURN true;
+  END IF;
+
+  -- 已付费（其它 session）：保持已付费，不覆盖 session（仍返回成功）
+  IF v_row.is_paid IS TRUE THEN
+    RETURN true;
+  END IF;
+
+  UPDATE public.user_billing
+  SET
+    is_paid = true,
+    paid_at = coalesce(paid_at, now()),
+    stripe_checkout_session_id = p_session_id,
+    stripe_customer_id = coalesce(nullif(p_customer_id, ''), stripe_customer_id),
+    unpaid_grace_expires_at = NULL
+  WHERE user_id = p_user_id;
+
+  RETURN true;
+END;
+$function$;
 
 -- ------------------------------------------------------------
 -- RLS 策略（Row Level Security）
@@ -360,4 +465,11 @@ create policy "saved_soql_update" on public.saved_soql_queries
   with check (auth.uid() = user_id);
 create policy "saved_soql_delete" on public.saved_soql_queries
   as PERMISSIVE for DELETE to authenticated
+  using (auth.uid() = user_id);
+
+-- user_billing：用户仅可读自己的付费状态；无 INSERT/UPDATE/DELETE 策略（客户端不可写 is_paid）
+-- 表级 REVOKE / claim 函数 GRANT 见 migrations/user_billing.sql（线上 apply 时执行）
+alter table public.user_billing enable row level security;
+create policy "user_billing_select_own" on public.user_billing
+  as PERMISSIVE for SELECT to authenticated
   using (auth.uid() = user_id);

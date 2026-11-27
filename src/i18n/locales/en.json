@@ -214,6 +214,20 @@
     "reencryptFailed": "Re-encryption failed",
     "signOutFailed": "Sign out failed"
   },
+  "payment": {
+    "sectionTitle": "Payment",
+    "statusPaid": "Paid",
+    "statusUnpaid": "Not paid",
+    "priceOnce": "One-time ¥5",
+    "pay": "Pay",
+    "openingCheckout": "Opening checkout…",
+    "refreshPaid": "I have paid",
+    "contactLabel": "Contact",
+    "errorUnavailable": "Service unavailable",
+    "errorCheckout": "Could not open checkout",
+    "errorRefresh": "Refresh failed",
+    "errorGeneric": "Something went wrong"
+  },
   "share": {
     "title": "Share environments",
     "tabShare": "Share",
