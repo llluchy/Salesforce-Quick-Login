@@ -47,7 +47,7 @@ export function useUserAgreement() {
     error.value = null
   }
 
-  /** 重新展示协议时务必解锁按钮（避免上次 agree 成功留下的 saving=true） */
+  /** 展示协议；不在 saving 中途调用（refresh 会跳过进行中的同意/拒绝）。 */
   function showModal() {
     visible.value = true
     saving.value = false
@@ -71,6 +71,11 @@ export function useUserAgreement() {
    */
   async function refresh(options = {}) {
     if (_refreshing) return
+    // visibilitychange 等触发的 refresh 不得打断进行中的 agree/disagree
+    if (saving.value) {
+      syncLog.info('user agreement: skip refresh while saving')
+      return
+    }
     _refreshing = true
     const epoch = _refreshEpoch
     error.value = null
