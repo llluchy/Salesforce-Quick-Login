@@ -30,10 +30,6 @@
 
           <!-- 菜单模式 -->
           <div class="menu-section" v-if="mode === 'menu'">
-            <div class="billing-block">
-              <div class="billing-block-title">{{ t('payment.sectionTitle') }}</div>
-              <PaymentRequiredView />
-            </div>
             <button class="btn-action btn-danger" @click="handleSignOut" :disabled="loading">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14 7V5a3 3 0 00-3-3H5a3 3 0 00-3 3v10a3 3 0 003 3h6a3 3 0 003-3v-2"/>
@@ -187,8 +183,6 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '../composables/useAuth'
-import { useBilling } from '../composables/useBilling'
-import PaymentRequiredView from './PaymentRequiredView.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false }
@@ -198,7 +192,6 @@ const emit = defineEmits(['close', 'signed-out'])
 
 const { t } = useI18n()
 const { signOut, changePassword, reencryptAll, currentUser } = useAuth()
-const { refreshBilling } = useBilling()
 const email = computed(() => currentUser.value?.email || '')
 
 const mode = ref('menu')
@@ -225,7 +218,6 @@ watch(() => props.visible, (val) => {
     confirmNewPassword.value = ''
     reencryptPassword.value = ''
     signOutConfirmVisible.value = false
-    refreshBilling().catch(() => {})
   } else {
     signOutConfirmVisible.value = false
   }
@@ -478,21 +470,6 @@ const handleReencrypt = async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.billing-block {
-  margin-bottom: 4px;
-  padding: 10px;
-  background: #f5f9ff;
-  border: 1px solid #bbdefb;
-  border-radius: 6px;
-}
-
-.billing-block-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #0d47a1;
-  margin-bottom: 8px;
 }
 
 .menu-tip {

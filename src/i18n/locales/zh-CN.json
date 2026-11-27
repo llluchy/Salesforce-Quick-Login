@@ -218,7 +218,6 @@
     "signOutFailed": "登出失败"
   },
   "payment": {
-    "sectionTitle": "付费状态",
     "statusPaid": "已付费",
     "statusUnpaid": "未付费",
     "priceOnce": "一次性 ¥5，付过永久可用",

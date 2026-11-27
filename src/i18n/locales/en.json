@@ -218,7 +218,6 @@
     "signOutFailed": "Sign out failed"
   },
   "payment": {
-    "sectionTitle": "Payment",
     "statusPaid": "Paid",
     "statusUnpaid": "Not paid",
     "priceOnce": "One-time ¥5 — pay once, use forever",

@@ -218,7 +218,6 @@
     "signOutFailed": "ログアウトに失敗しました"
   },
   "payment": {
-    "sectionTitle": "支払い状況",
     "statusPaid": "支払い済み",
     "statusUnpaid": "未払い",
     "priceOnce": "一度きり ¥5。支払い後は永久利用可",
