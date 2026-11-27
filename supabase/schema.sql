@@ -90,23 +90,82 @@ create table public.user_secrets (
 -- ---------- 表：user_metadata 用户设置 ----------
 -- 说明：账户级偏好。show_tool_float 默认显示 Salesforce 页面浮动栏。
 -- ui_locale 为界面语言：system / zh-CN / en / ja，默认跟随系统。
--- 本文件只备份结构。ui_locale 只加在这里，不改线上数据。
+-- payment_choice：提醒阶段一次性「继续/停用」；null=未选；选定后不可由客户端改回。
+-- payment_choice_at：选定时间。
+-- user_agreement_accepted_at：付费模式开启后一次性用户协议同意时间；null=未同意。
+-- 本文件只备份结构。新列与触发器只加在这里，不改线上数据（见 migrations/payment_choice.sql、user_agreement.sql）。
+-- 冲突说明：管理员总开关 PR 拥有 app_config；本表 payment_choice* / user_agreement* 由「提醒与停用选择」PR 维护。
+-- app_config（总开关）见下方。
 create table public.user_metadata (
   user_id uuid not null,
   show_tool_float boolean not null default true,
   ui_locale text not null default 'system'::text,
+  payment_choice text null,
+  payment_choice_at timestamp with time zone null,
+  user_agreement_accepted_at timestamp with time zone null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint user_metadata_pkey primary key (user_id),
   constraint user_metadata_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE,
   constraint user_metadata_ui_locale_check check (
     ui_locale in ('system', 'zh-CN', 'en', 'ja')
+  ),
+  constraint user_metadata_payment_choice_check check (
+    payment_choice is null
+    or payment_choice = any (array['continue'::text, 'deactivate'::text])
   )
 ) TABLESPACE pg_default;
 
 create trigger trg_user_metadata_touch BEFORE
 update on user_metadata for EACH row
 execute FUNCTION touch_updated_at ();
+
+-- payment_choice 一旦非 null，禁止客户端改成其他值或改回 null。
+-- postgres / supabase_admin / service_role 角色可绕过（邮件改选由管理员在 Dashboard 手工改）。
+-- 不用 auth.role()：schema 须能在无 Supabase auth 扩展的环境中加载（如本地 PGlite 测试）。
+create or replace function public.prevent_payment_choice_change () returns trigger
+language plpgsql
+as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') then
+    return new;
+  end if;
+  if old.payment_choice is not null
+     and (
+       new.payment_choice is distinct from old.payment_choice
+       or new.payment_choice_at is distinct from old.payment_choice_at
+     ) then
+    raise exception 'payment_choice is immutable once set'
+      using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_user_metadata_payment_choice_immutable BEFORE
+update on user_metadata for EACH row
+execute FUNCTION prevent_payment_choice_change ();
+
+-- user_agreement_accepted_at 一旦非 null，禁止客户端改回 null 或改时间戳。
+create or replace function public.prevent_user_agreement_change () returns trigger
+language plpgsql
+as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') then
+    return new;
+  end if;
+  if old.user_agreement_accepted_at is not null
+     and new.user_agreement_accepted_at is distinct from old.user_agreement_accepted_at then
+    raise exception 'user_agreement_accepted_at is immutable once set'
+      using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_user_metadata_user_agreement_immutable BEFORE
+update on user_metadata for EACH row
+execute FUNCTION prevent_user_agreement_change ();
 
 -- ---------- 表：saved_soql_queries 常用查询 ----------
 -- 说明：执行成功后留下的 SOQL。不含名称、Salesforce 主机名、Org 或会话。

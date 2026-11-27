@@ -345,17 +345,16 @@ describe('schema app_config', () => {
 })
 
 describe('scope guards', () => {
-  it('does not wire payment UI or write local/sync from new modules', () => {
+  it('does not write local/sync or stripe from paymentMaster modules', () => {
     const util = readFileSync(resolve(root, 'src/utils/paymentMaster.js'), 'utf8')
     const gate = readFileSync(resolve(root, 'src/composables/usePaymentGate.js'), 'utf8')
-    const app = readFileSync(resolve(root, 'src/App.vue'), 'utf8')
     const panel = readFileSync(resolve(root, 'src/components/PanelTools.vue'), 'utf8')
 
     for (const src of [util, gate]) {
       assert.doesNotMatch(src, /chrome\.storage\.local|chrome\.storage\.sync|storage\.sync/)
       assert.doesNotMatch(src, /stripe|checkout|payment_choice|is_paid|purge/i)
     }
-    assert.doesNotMatch(app, /usePaymentGate|paymentMaster|paymentEnabled/)
+    // App.vue 可读 paymentMaster 驱动提醒/协议；工具入口仍不直接挂收费门
     assert.doesNotMatch(panel, /usePaymentGate|paymentMaster|paymentEnabled/)
   })
 })
