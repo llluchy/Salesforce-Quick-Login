@@ -34,6 +34,8 @@ const fetchFailed = ref(false)
 const loading = ref(false)
 const lastFetchedAt = ref(0)
 let _inflight = null
+/** 递增世代：仅最新一次 refresh 可 applySnapshot，避免 force 与旧请求互相覆盖 */
+let _refreshGeneration = 0
 
 function applySnapshot(snapshot) {
   switchEnabled.value = snapshot.switchEnabled === true
@@ -70,7 +72,10 @@ export function usePaymentGate() {
   )
 
   async function refreshPaymentGate(options = {}) {
+    // 非 force：复用进行中的请求
     if (_inflight && !options.force) return _inflight
+
+    const generation = ++_refreshGeneration
     loading.value = true
     const run = (async () => {
       try {
@@ -96,19 +101,29 @@ export function usePaymentGate() {
           isAuthed: isAuthed.value === true,
           onPurged: async () => {
             // 路径 A 即时 purge：在 applySnapshot 解锁前清本机
+            if (generation !== _refreshGeneration) return
             await clearLocalEnvCacheOnly()
           }
         })
+        // 已被更新的 force 刷新取代：丢弃本轮结果，勿覆盖新 snapshot
+        if (generation !== _refreshGeneration) return snapshot
+
         // 必须在 applySnapshot 之前清本地：否则 showPaymentRequired 变 false
         // 会触发 migrateThenLoad，与仍未清掉的本机缓存竞态回写云端
         if (snapshot.deactivatePurgedAt || snapshot.unpaidPurgedAt) {
           await clearLocalEnvCacheOnly()
         }
+        if (generation !== _refreshGeneration) return snapshot
         applySnapshot(snapshot)
         return snapshot
       } finally {
-        loading.value = false
-        _inflight = null
+        // 仅清自己的槽位；勿把更新的 force 请求的 _inflight 置空
+        if (_inflight === run) {
+          loading.value = false
+          _inflight = null
+        } else if (generation === _refreshGeneration) {
+          loading.value = false
+        }
       }
     })()
     _inflight = run

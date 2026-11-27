@@ -129,22 +129,6 @@
           @restore="handleRestoreEnv"
         />
 
-        <PaymentReminderModal
-          :visible="paymentReminderVisible"
-          :saving="paymentReminderSaving"
-          :error="paymentReminderError"
-          :contact-emails="paymentReminderEmails"
-          @choose="handlePaymentReminderChoose"
-        />
-
-        <UserAgreementModal
-          :visible="userAgreementVisible"
-          :saving="userAgreementSaving"
-          :error="userAgreementError"
-          @agree="handleUserAgreementAgree"
-          @disagree="handleUserAgreementDisagree"
-        />
-
         <!-- Passkey 选择对话框（v4：Side Panel 集中处理） -->
         <div v-if="pkDialog.visible" class="pk-overlay" @click.self="cancelPasskeyDialog">
           <div class="pk-dialog">
@@ -213,6 +197,25 @@
           </div>
         </div>
       </div>
+
+      <!-- 提醒 / 协议：挂在 main-panel 层，付费页与完整 UI 都能挡住（勿只放在 v-else 内） -->
+      <PaymentReminderModal
+        v-if="isAuthed"
+        :visible="paymentReminderVisible"
+        :saving="paymentReminderSaving"
+        :error="paymentReminderError"
+        :contact-emails="paymentReminderEmails"
+        @choose="handlePaymentReminderChoose"
+      />
+
+      <UserAgreementModal
+        v-if="isAuthed"
+        :visible="userAgreementVisible"
+        :saving="userAgreementSaving"
+        :error="userAgreementError"
+        @agree="handleUserAgreementAgree"
+        @disagree="handleUserAgreementDisagree"
+      />
 
       <!-- 启动 / 同步遮罩 -->
       <div v-if="bootOverlay.visible" class="boot-overlay">
@@ -353,18 +356,30 @@ const refreshPaymentGates = async (options = {}) => {
   })
 }
 
-const onVisibilityRefreshGates = () => {
-  if (document.visibilityState !== 'visible') return
-  if (!isAuthed.value || _onAuthedRunning) return
-  refreshPaymentGates({ blockPending: false }).catch((e) => {
-    syncLog.warn('payment gates visibility refresh failed', e?.message || e)
-  })
-}
-
 const {
   showPaymentRequired,
   refreshPaymentGate
 } = usePaymentGate()
+
+const onVisibilityRefreshGates = () => {
+  if (document.visibilityState !== 'visible') return
+  if (!isAuthed.value || _onAuthedRunning) return
+  // 同时刷收费门：侧栏开着时 Dashboard 拨 ON，须切到付费页，不能只刷提醒/协议
+  ;(async () => {
+    try {
+      await refreshPaymentGate({ force: true })
+    } catch (e) {
+      syncLog.warn('payment gate visibility refresh failed', e?.message || e)
+    }
+    try {
+      await refreshPaymentGates({
+        blockPending: showPaymentRequired.value === true
+      })
+    } catch (e) {
+      syncLog.warn('payment gates visibility refresh failed', e?.message || e)
+    }
+  })()
+}
 
 /** 本机业务缓存条数（envs + groups）；任一侧非空都需保护，勿被空云端盖掉 */
 async function readLocalBusinessCacheCount() {
@@ -424,10 +439,24 @@ async function migrateThenLoad() {
   }
 }
 
-// 付费页消失后：先迁移本机→云端，再 loadData（避免空云端盖掉本机）
+// 开关拨 ON → 清内存中的环境列表并刷协议；付费解锁 → 先协议再迁移
 watch(showPaymentRequired, async (needPay, wasNeedPay) => {
-  if (wasNeedPay === true && needPay === false && isAuthed.value) {
+  if (!isAuthed.value) return
+  if (needPay === true && wasNeedPay === false) {
+    environments.value = []
+    groups.value = []
     try {
+      await nextTick()
+      await refreshPaymentGates({ blockPending: true })
+    } catch (e) {
+      syncLog.warn('payment gates refresh failed (switch ON)', e?.message || e)
+    }
+    return
+  }
+  if (wasNeedPay === true && needPay === false) {
+    try {
+      await nextTick()
+      await refreshPaymentGates({ blockPending: true })
       await migrateThenLoad()
     } catch (e) {
       console.error('[App] 付费门解除后加载数据失败', e)
@@ -1232,9 +1261,17 @@ const onAuthed = async () => {
     // 仅清 UI 列表；保留 chrome.storage.local 本机环境，待付费/开关 OFF 后再 migrate
     environments.value = []
     groups.value = []
-    _dataLoadDone = true
-    hideBoot()
-    _onAuthedRunning = false
+    // 付费页也必须跑协议（开关 ON）：勿跳过 refreshPaymentGates
+    try {
+      await nextTick()
+      await refreshPaymentGates({ blockPending: true })
+    } catch (e) {
+      syncLog.warn('payment gates refresh failed (pay wall)', e?.message || e)
+    } finally {
+      _dataLoadDone = true
+      hideBoot()
+      _onAuthedRunning = false
+    }
     return
   }
 
