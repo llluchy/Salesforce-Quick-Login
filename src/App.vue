@@ -19,6 +19,7 @@
           :visible="accountDialogVisible"
           @close="accountDialogVisible = false"
           @signed-out="onSignedOut"
+          @data-imported="handleAccountDataImported"
         />
       </div>
       <div v-else class="app-container">
@@ -107,6 +108,7 @@
           :visible="accountDialogVisible"
           @close="accountDialogVisible = false"
           @signed-out="onSignedOut"
+          @data-imported="handleAccountDataImported"
         />
 
         <ShareDialog
@@ -443,7 +445,6 @@ const environments = ref([])
 const groups = ref([])
 const envSearchQuery = ref('')
 const envListRef = ref(null)
-const toolbarRef = ref(null)
 
 const toastVisible = ref(false)
 const toastMessage = ref('')
@@ -887,99 +888,14 @@ const handleLogin = async (env) => {
   }
 }
 
-// ========== Passkey 备份与恢复 ==========
-
-const handleExportBackup = async () => {
+const handleAccountDataImported = async () => {
   try {
-    const [creds, envs] = await Promise.all([
-      loadPasskeyCredentials(),
-      loadEnvironments()
-    ])
-
-    if (creds.length === 0 && envs.length === 0) {
-      showToast(t('toast.noBackupData'), 'error')
-      return
-    }
-
-    const backup = {
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      credentials: creds,
-      environments: envs
-    }
-
-    const json = JSON.stringify(backup, null, 2)
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const filename = `salesforce-passkey-backup-${dateStr}.json`
-
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    showToast(t('toast.exported', { creds: creds.length, envs: envs.length }), 'success')
-  } catch (error) {
-    console.error('Export backup error:', error)
-    showToast(error.message || t('toast.exportFailed'), 'error')
-  }
-}
-
-const handleImportBackupClick = () => {
-  const input = toolbarRef.value?.fileInputRef
-  if (input) {
-    input.value = ''
-    input.click()
-  }
-}
-
-const handleImportBackup = async (event) => {
-  const file = event.target.files?.[0]
-  if (!file) return
-
-  try {
-    const text = await file.text()
-    const backup = JSON.parse(text)
-
-    if (!backup.credentials || !Array.isArray(backup.credentials)) {
-      showToast(t('toast.invalidBackup'), 'error')
-      return
-    }
-
-    let credCount = 0
-    for (const cred of backup.credentials) {
-      const r = await savePasskeyCredential(cred)
-      if (r?.success) credCount++
-    }
-
-    let envCount = 0
-    if (Array.isArray(backup.environments) && backup.environments.length > 0) {
-      const existing = await loadEnvironments()
-      const merged = [...existing]
-      for (const env of backup.environments) {
-        if (!merged.find(e => e.id === env.id)) {
-          merged.push(env)
-          envCount++
-        }
-      }
-      await saveEnvironments(merged)
-    }
-
     environments.value = await loadEnvironments()
     groups.value = await loadGroups()
-
-    showToast(t('toast.imported', { creds: credCount, envs: envCount }), 'success')
-  } catch (error) {
-    console.error('Import backup error:', error)
-    showToast(error.message || t('toast.importFailed'), 'error')
+  } catch (e) {
+    console.error('[App] reload after account import failed', e)
   }
 }
-
-
 
 const handleShowTotp = async (env) => {
   if (env.totpSecret) {

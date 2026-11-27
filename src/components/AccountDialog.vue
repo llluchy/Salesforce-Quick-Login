@@ -30,6 +30,28 @@
 
           <!-- 菜单模式 -->
           <div class="menu-section" v-if="mode === 'menu'">
+            <button class="btn-action btn-backup" @click="openExport" :disabled="loading">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 3v10"/>
+                <path d="M6 9l4 4 4-4"/>
+                <path d="M4 17h12"/>
+              </svg>
+              <span>{{ t('account.exportData') }}</span>
+            </button>
+            <button class="btn-action btn-backup" @click="openImport" :disabled="loading">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 13V3"/>
+                <path d="M6 7l4-4 4 4"/>
+                <path d="M4 17h12"/>
+              </svg>
+              <span>{{ t('account.importData') }}</span>
+            </button>
+            <button class="btn-action btn-secondary" @click="mode = 'reencrypt'" :disabled="loading">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 10a8 8 0 018-8v8h8a8 8 0 01-8 8v-8H2z"/>
+              </svg>
+              <span>{{ t('account.reencrypt') }}</span>
+            </button>
             <button class="btn-action btn-danger" @click="handleSignOut" :disabled="loading">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14 7V5a3 3 0 00-3-3H5a3 3 0 00-3 3v10a3 3 0 003 3h6a3 3 0 003-3v-2"/>
@@ -38,12 +60,90 @@
               </svg>
               <span>{{ t('account.signOut') }}</span>
             </button>
-            <button class="btn-action btn-secondary" @click="mode = 'reencrypt'" :disabled="loading">
-              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M2 10a8 8 0 018-8v8h8a8 8 0 01-8 8v-8H2z"/>
-              </svg>
-              <span>{{ t('account.reencrypt') }}</span>
-            </button>
+          </div>
+
+          <!-- 导出 -->
+          <div class="password-section" v-if="mode === 'export'">
+            <div class="password-warn">{{ t('account.exportWarn') }}</div>
+            <div class="form-field">
+              <label>{{ t('account.backupPassword') }}</label>
+              <input
+                v-model="backupPassword"
+                type="password"
+                autocomplete="new-password"
+                :placeholder="t('account.backupPasswordPlaceholder')"
+                :disabled="loading"
+                minlength="8"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('account.backupPasswordConfirm') }}</label>
+              <input
+                v-model="backupPasswordConfirm"
+                type="password"
+                autocomplete="new-password"
+                :placeholder="t('account.backupPasswordConfirmPlaceholder')"
+                :disabled="loading"
+                minlength="8"
+              />
+            </div>
+            <div class="auth-error" v-if="errorMessage">
+              <svg viewBox="0 0 20 20" width="12" height="12" fill="currentColor"><path d="M10 1a9 9 0 100 18 9 9 0 000-18zm-1 13a1 1 0 112 0 1 1 0 01-2 0zm1-3a1 1 0 01-1-1V7a1 1 0 112 0v3a1 1 0 01-1 1z"/></svg>
+              <span>{{ errorMessage }}</span>
+            </div>
+            <div class="auth-success" v-if="successMessage">
+              <svg viewBox="0 0 20 20" width="12" height="12" fill="currentColor"><path d="M10 1a9 9 0 100 18 9 9 0 000-18zm-1 13l-4-4 1.5-1.5L9 11l4.5-4.5L15 8l-6 6z"/></svg>
+              <span>{{ successMessage }}</span>
+            </div>
+            <div class="password-actions">
+              <button class="btn btn-outline" @click="cancelBackup" :disabled="loading">{{ t('common.cancel') }}</button>
+              <button class="btn btn-primary" @click="handleExport" :disabled="loading">
+                <span v-if="loading" class="spinner-mini"></span>
+                <span>{{ loading ? t('account.exporting') : t('account.exportData') }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 导入 -->
+          <div class="password-section" v-if="mode === 'import'">
+            <div class="password-warn">{{ t('account.importWarn') }}</div>
+            <div class="form-field">
+              <label>{{ t('account.backupFile') }}</label>
+              <input
+                ref="backupFileInput"
+                type="file"
+                accept="application/json,.json"
+                :disabled="loading"
+                @change="onBackupFileChange"
+              />
+              <div class="file-name" v-if="backupFileName">{{ backupFileName }}</div>
+            </div>
+            <div class="form-field">
+              <label>{{ t('account.backupPassword') }}</label>
+              <input
+                v-model="backupPassword"
+                type="password"
+                autocomplete="current-password"
+                :placeholder="t('account.backupPasswordPlaceholder')"
+                :disabled="loading"
+                minlength="8"
+              />
+            </div>
+            <div class="auth-error" v-if="errorMessage">
+              <svg viewBox="0 0 20 20" width="12" height="12" fill="currentColor"><path d="M10 1a9 9 0 100 18 9 9 0 000-18zm-1 13a1 1 0 112 0 1 1 0 01-2 0zm1-3a1 1 0 01-1-1V7a1 1 0 112 0v3a1 1 0 01-1 1z"/></svg>
+              <span>{{ errorMessage }}</span>
+            </div>
+            <div class="auth-success" v-if="successMessage">
+              <svg viewBox="0 0 20 20" width="12" height="12" fill="currentColor"><path d="M10 1a9 9 0 100 18 9 9 0 000-18zm-1 13l-4-4 1.5-1.5L9 11l4.5-4.5L15 8l-6 6z"/></svg>
+              <span>{{ successMessage }}</span>
+            </div>
+            <div class="password-actions">
+              <button class="btn btn-outline" @click="cancelBackup" :disabled="loading">{{ t('common.cancel') }}</button>
+              <button class="btn btn-primary" @click="handleImport" :disabled="loading">
+                <span v-if="loading" class="spinner-mini"></span>
+                <span>{{ loading ? t('account.importing') : t('account.importData') }}</span>
+              </button>
+            </div>
           </div>
 
           <!-- 修改密码模式 -->
@@ -183,15 +283,17 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '../composables/useAuth'
+import { useAccountBackup } from '../composables/useAccountBackup'
 
 const props = defineProps({
   visible: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['close', 'signed-out'])
+const emit = defineEmits(['close', 'signed-out', 'data-imported'])
 
 const { t } = useI18n()
 const { signOut, changePassword, reencryptAll, currentUser } = useAuth()
+const { exportAccountBackup, importAccountBackup } = useAccountBackup()
 const email = computed(() => currentUser.value?.email || '')
 
 const mode = ref('menu')
@@ -208,6 +310,21 @@ const confirmNewPassword = ref('')
 // 重加密表单
 const reencryptPassword = ref('')
 
+// 导入 / 导出
+const backupPassword = ref('')
+const backupPasswordConfirm = ref('')
+const backupFileText = ref('')
+const backupFileName = ref('')
+const backupFileInput = ref(null)
+
+function resetBackupForm() {
+  backupPassword.value = ''
+  backupPasswordConfirm.value = ''
+  backupFileText.value = ''
+  backupFileName.value = ''
+  if (backupFileInput.value) backupFileInput.value.value = ''
+}
+
 watch(() => props.visible, (val) => {
   if (val) {
     mode.value = 'menu'
@@ -217,6 +334,7 @@ watch(() => props.visible, (val) => {
     newPassword.value = ''
     confirmNewPassword.value = ''
     reencryptPassword.value = ''
+    resetBackupForm()
     signOutConfirmVisible.value = false
   } else {
     signOutConfirmVisible.value = false
@@ -268,6 +386,97 @@ const cancelReencrypt = () => {
   reencryptPassword.value = ''
   errorMessage.value = ''
   successMessage.value = ''
+}
+
+const openExport = () => {
+  errorMessage.value = ''
+  successMessage.value = ''
+  resetBackupForm()
+  mode.value = 'export'
+}
+
+const openImport = () => {
+  errorMessage.value = ''
+  successMessage.value = ''
+  resetBackupForm()
+  mode.value = 'import'
+}
+
+const cancelBackup = () => {
+  mode.value = 'menu'
+  resetBackupForm()
+  errorMessage.value = ''
+  successMessage.value = ''
+}
+
+const onBackupFileChange = async (event) => {
+  const file = event.target.files?.[0]
+  backupFileText.value = ''
+  backupFileName.value = ''
+  if (!file) return
+  backupFileName.value = file.name
+  backupFileText.value = await file.text()
+}
+
+const handleExport = async () => {
+  errorMessage.value = ''
+  successMessage.value = ''
+  if (!backupPassword.value || backupPassword.value.length < 8) {
+    errorMessage.value = t('account.backupPasswordMin')
+    return
+  }
+  if (backupPassword.value !== backupPasswordConfirm.value) {
+    errorMessage.value = t('account.backupPasswordMismatch')
+    return
+  }
+  loading.value = true
+  try {
+    const result = await exportAccountBackup(backupPassword.value)
+    successMessage.value = t('account.exportSuccess', {
+      envs: result.envCount,
+      groups: result.groupCount
+    })
+    resetBackupForm()
+    setTimeout(() => {
+      mode.value = 'menu'
+      successMessage.value = ''
+    }, 2500)
+  } catch (e) {
+    errorMessage.value = e.message || t('account.backupFailed')
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleImport = async () => {
+  errorMessage.value = ''
+  successMessage.value = ''
+  if (!backupFileText.value) {
+    errorMessage.value = t('account.backupFileRequired')
+    return
+  }
+  if (!backupPassword.value || backupPassword.value.length < 8) {
+    errorMessage.value = t('account.backupPasswordMin')
+    return
+  }
+  loading.value = true
+  try {
+    const result = await importAccountBackup(backupFileText.value, backupPassword.value)
+    successMessage.value = t('account.importSuccess', {
+      envs: result.envCount,
+      groups: result.groupCount
+    })
+    emit('data-imported', result)
+    resetBackupForm()
+    setTimeout(() => {
+      mode.value = 'menu'
+      successMessage.value = ''
+    }, 2500)
+  } catch (e) {
+    errorMessage.value = e.message || t('account.backupImportFailed')
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleChangePassword = async () => {
@@ -494,6 +703,24 @@ const handleReencrypt = async () => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
+}
+
+.btn-backup {
+  border-color: #90caf9;
+  color: #1565c0;
+  background: #e3f2fd;
+}
+
+.btn-backup:hover:not(:disabled) {
+  background: #bbdefb;
+  border-color: #1976d2;
+}
+
+.file-name {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #546e7a;
+  word-break: break-all;
 }
 
 .btn-danger {

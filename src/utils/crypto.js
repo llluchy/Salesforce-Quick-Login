@@ -8,7 +8,7 @@
 // 4. 密文格式统一为 JSON: {"iv": "<base64>", "ct": "<base64>"}
 // ============================================
 
-import { PBKDF2_ITERATIONS, SALT_LENGTH, IV_LENGTH } from './supabaseConfig'
+import { PBKDF2_ITERATIONS, SALT_LENGTH, IV_LENGTH } from './supabaseConfig.js'
 
 const subtle = (() => {
   if (typeof crypto !== 'undefined' && crypto.subtle) {
