@@ -16,9 +16,6 @@
       <p class="auth-subtitle">{{ subtitleText }}</p>
     </div>
 
-    <PanelTools v-if="!forceLoginForTools" variant="auth" />
-    <p v-else class="auth-gate-hint" role="status">{{ t('toolsHub.needLogin') }}</p>
-
     <!-- 已登录账户提示（仅在 session 存在但需解锁时显示） -->
     <div class="auth-user-info" v-if="hasSession">
       <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M10 2a4 4 0 100 8 4 4 0 000-8zM3 18a7 7 0 0114 0v-1a1 1 0 00-1-1H4a1 1 0 00-1 1v1z"/></svg>
@@ -198,13 +195,12 @@ import { useI18n } from 'vue-i18n'
 import { useAuth } from '../composables/useAuth'
 import LocaleSwitcher from './LocaleSwitcher.vue'
 import SettingsGear from './SettingsGear.vue'
-import PanelTools from './PanelTools.vue'
 import { usePaymentGate } from '../composables/usePaymentGate.js'
 
 const emit = defineEmits(['authed'])
 
 const { t } = useI18n()
-const { forceLoginForTools, refreshPaymentGate } = usePaymentGate()
+const { refreshPaymentGate } = usePaymentGate()
 const { signIn, signUp, signOut, unlockWithPassword, sendRecoveryEmail, isLoading, currentUser, authError } = useAuth()
 
 // 监听 authError 变化（因为 getSession 是异步的，可能在组件挂载后才设置错误）
@@ -404,19 +400,6 @@ onMounted(() => {
 .auth-header {
   text-align: center;
   margin-bottom: 20px;
-}
-
-.auth-gate-hint {
-  width: 100%;
-  max-width: 360px;
-  margin: 0 0 14px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: #fff3e0;
-  color: #e65100;
-  font-size: 12px;
-  text-align: center;
-  box-sizing: border-box;
 }
 
 .auth-logo {

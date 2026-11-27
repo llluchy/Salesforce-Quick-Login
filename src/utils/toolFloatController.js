@@ -3,7 +3,6 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig.js'
 import {
   clearSessionOverride,
   createUserMetadataRestIo,
-  getLoggedOutVisible,
   readOrInsertShowToolFloat,
   setLoggedOutVisible,
   signOutToolFloat
@@ -70,9 +69,9 @@ export function createToolFloatMessageHandler(options = {}) {
 
   async function getVisible() {
     const auth = await resolveAuth()
+    // 未登录（或 session 无效）：不注入页面浮动工具入口
     if (!auth) {
-      const visible = await getLoggedOutVisible(storage.session)
-      return { success: true, visible, source: 'session' }
+      return { success: true, visible: false, source: 'session', loginRequired: true }
     }
     try {
       const visible = await readOrInsertShowToolFloat(ioForSession(auth), auth.user.id)
@@ -80,8 +79,7 @@ export function createToolFloatMessageHandler(options = {}) {
       return { success: true, visible, source: 'cloud' }
     } catch (error) {
       if (isUnauthorized(error)) {
-        const visible = await getLoggedOutVisible(storage.session)
-        return { success: true, visible, source: 'session' }
+        return { success: true, visible: false, source: 'session', loginRequired: true }
       }
       return { success: false, error: error?.message || String(error), source: 'cloud' }
     }
@@ -90,8 +88,9 @@ export function createToolFloatMessageHandler(options = {}) {
   async function setSession(visible) {
     const auth = await resolveAuth()
     if (auth) return getVisible()
-    const shown = await setLoggedOutVisible(storage.session, visible === true)
-    return { success: true, visible: shown, source: 'session' }
+    // 未登录可改 session 偏好，但对外可见性始终 false
+    await setLoggedOutVisible(storage.session, visible === true)
+    return { success: true, visible: false, source: 'session', loginRequired: true }
   }
 
   async function applyCloud(visible) {
@@ -100,8 +99,9 @@ export function createToolFloatMessageHandler(options = {}) {
   }
 
   async function signedOut() {
-    const result = await signOutToolFloat(storage.session)
-    return { success: true, visible: result.visible, source: 'session' }
+    await signOutToolFloat(storage.session)
+    // 登出后强制隐藏浮动栏并广播
+    return { success: true, visible: false, source: 'session', loginRequired: true }
   }
 
   function handleToolFloatMessage(request, _sender, sendResponse) {

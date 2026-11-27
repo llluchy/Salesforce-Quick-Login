@@ -216,15 +216,21 @@ function handlerFor(guard, store, broadcast = () => {}) {
 }
 
 describe('logged-out session', () => {
-  it('defaults to visible, stays hidden for this browser session, and returns after restart', async () => {
+  it('never shows the page float rail until logged in', async () => {
     const guard = createGuardedStorage()
     const store = createMetadataStore()
     const handle = handlerFor(guard, store)
     const before = snapshotStorage(guard)
 
     const opened = await handle.getVisible()
-    assert.equal(opened.visible, true)
+    assert.equal(opened.visible, false)
+    assert.equal(opened.loginRequired, true)
     assert.equal(opened.source, 'session')
+
+    // 未登录改 session 偏好也不对外显示
+    const shownPref = await handle.setSession(true)
+    assert.equal(shownPref.visible, false)
+    assert.equal(shownPref.loginRequired, true)
 
     const hidden = await handle.setSession(false)
     assert.equal(hidden.visible, false)
@@ -324,8 +330,10 @@ describe('logged-in cloud value', () => {
     const response = await new Promise((resolve) => {
       handle({ action: 'toolFloatSignedOut' }, {}, resolve)
     })
-    assert.equal(response.visible, true)
-    assert.deepEqual(broadcasts, [true])
+    // 登出后页面浮动栏必须隐藏
+    assert.equal(response.visible, false)
+    assert.equal(response.loginRequired, true)
+    assert.deepEqual(broadcasts, [false])
     assert.equal(await getLoggedOutVisible(guard.session), true)
     assert.equal(store.rows.get(USER_A).show_tool_float, false)
     assert.equal(guard.session.data[TOOL_FLOAT_SESSION_KEY], undefined)

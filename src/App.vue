@@ -33,8 +33,6 @@
           @account="accountDialogVisible = true"
         />
 
-        <PanelTools variant="app" />
-
         <div class="env-search">
           <label class="env-search-field">
             <svg class="env-search-icon" viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -252,7 +250,6 @@ import AuthScreen from './components/AuthScreen.vue'
 import AccountDialog from './components/AccountDialog.vue'
 import ShareDialog from './components/ShareDialog.vue'
 import TrashDialog from './components/TrashDialog.vue'
-import PanelTools from './components/PanelTools.vue'
 import PaymentReminderModal from './components/PaymentReminderModal.vue'
 import PaymentRequiredView from './components/PaymentRequiredView.vue'
 import { usePaymentReminder } from './composables/usePaymentReminder'
@@ -1354,7 +1351,7 @@ onMounted(async () => {
   //   4. 否则 → AuthScreen 显示要求输入密码
   try {
     await getSession()
-    // 未登录也要读总开关（anon），以便 Auth 上挡 PanelTools
+    // 未登录也要读总开关（anon），以便 Auth / 浮动栏按收费门行为
     try {
       await refreshPaymentGate({ force: true })
     } catch (e) {
