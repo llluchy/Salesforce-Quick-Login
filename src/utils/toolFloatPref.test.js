@@ -500,9 +500,13 @@ describe('i18n and wiring', () => {
     assert.match(content, /action: 'getToolFloatVisible'/)
     assert.match(content, /syncRailFromBackground\(\)/)
     assert.match(content, /action !== 'toolFloatVisibility'/)
+    assert.match(content, /railVisible = false/)
+    assert.match(content, /res\.visible === true/)
 
     const pref = readFileSync(resolve(root, 'src/utils/toolFloatPref.js'), 'utf8')
     const controller = readFileSync(resolve(root, 'src/utils/toolFloatController.js'), 'utf8')
+    assert.match(controller, /SESSION_KEY_LOGGED_IN/)
+    assert.match(controller, /loginRequired/)
     const composable = readFileSync(resolve(root, 'src/composables/useToolFloat.js'), 'utf8')
     for (const src of [pref, controller, composable]) {
       assert.doesNotMatch(src, /chrome\.storage\.local\.set|chrome\.storage\.sync|storage\.sync/)
