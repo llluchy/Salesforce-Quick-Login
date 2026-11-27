@@ -179,9 +179,11 @@ begin
   values (p_user_id)
   on conflict (user_id) do nothing;
 
+  -- FOR UPDATE：与 claim_payment_from_stripe 串行，避免已付费仍被 purge
   select is_paid, deactivate_purged_at into v_paid, v_purged
   from public.user_billing
-  where user_id = p_user_id;
+  where user_id = p_user_id
+  for update;
 
   -- 与路径 B 一致：已付费永不清业务数据（停用后付款须保留）
   if v_paid then
@@ -201,7 +203,13 @@ begin
     unpaid_grace_expires_at = null,
     pay_phase_started_at = null,
     updated_at = now()
-  where user_id = p_user_id;
+  where user_id = p_user_id
+    and is_paid = false;
+
+  if not found then
+    -- 锁持有期间被 claim 付费：业务行可能已删；不再盖 purge 戳
+    return false;
+  end if;
 
   return true;
 end;
@@ -306,7 +314,11 @@ begin
     return false;
   end if;
 
-  select * into v_row from public.user_billing where user_id = p_user_id;
+  -- FOR UPDATE：与 claim_payment_from_stripe 串行，避免宽限批与付款 webhook 竞态
+  select * into v_row
+  from public.user_billing
+  where user_id = p_user_id
+  for update;
   if not found then
     return false;
   end if;
@@ -333,7 +345,12 @@ begin
 
   update public.user_billing
   set unpaid_purged_at = now(), updated_at = now()
-  where user_id = p_user_id;
+  where user_id = p_user_id
+    and is_paid = false;
+
+  if not found then
+    return false;
+  end if;
 
   return true;
 end;

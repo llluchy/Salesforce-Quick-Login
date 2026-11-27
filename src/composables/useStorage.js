@@ -29,14 +29,45 @@ import { loadPaymentGateSnapshot } from '../utils/paymentGateApi.js'
 
 async function assertStoragePaymentAllowed() {
   try {
-    const snapshot = await loadPaymentGateSnapshot({ skipSideEffects: true })
+    // 必须 force：提醒阶段 session 缓存（switch OFF → allow）最长 120s；
+    // 开关拨 ON 后若复用旧快照，RLS 会返回 []，后续 cacheSet([]) 会清掉本机密钥。
+    const snapshot = await loadPaymentGateSnapshot({
+      force: true,
+      skipSideEffects: true
+    })
     if (snapshot?.access?.allow === false) {
-      return { ok: false, error: t('toolsHub.needPayment') }
+      return { ok: false, error: t('toolsHub.needPayment'), snapshot }
     }
+    return { ok: true, snapshot }
   } catch {
     /* 提醒阶段读失败不挡；收费阶段靠 RLS */
   }
-  return { ok: true }
+  return { ok: true, snapshot: null }
+}
+
+/**
+ * 空远端写回本机前的二次闸：非空本地缓存不可被「可能被 RLS 藏住」的空结果盖掉。
+ * 仅在开关 OFF，或开关 ON 且已付费（真·空账户 / purge 后）时允许 cacheSet([])。
+ */
+async function cacheReplaceIfSafe(key, remoteList, gateSnapshot) {
+  const remote = Array.isArray(remoteList) ? remoteList : []
+  if (remote.length === 0) {
+    const cached = await cacheGet(key)
+    if (Array.isArray(cached) && cached.length > 0) {
+      let snap = gateSnapshot
+      if (!snap || snap.fromCache === true) {
+        snap = await loadPaymentGateSnapshot({ force: true, skipSideEffects: true })
+      }
+      const switchOn = snap?.switchEnabled === true
+      const paid = snap?.isPaid === true
+      const blocked = snap?.access?.allow === false
+      if (blocked || (switchOn && !paid)) {
+        return { wrote: false, kept: cached }
+      }
+    }
+  }
+  await cacheSet(key, remote)
+  return { wrote: true, kept: remote }
 }
 
 const isChromeExt = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
@@ -215,8 +246,12 @@ export function useStorage() {
         return wrap(result, result.length ? 'cache' : 'empty', 'decrypt failed')
       }
 
-      // 真·空云端（付费门已放行）才写 []；含 Path B purge 后的合法空账户
-      await cacheSet(STORAGE_KEY, envs)
+      // 真·空云端才写 []；收费 ON 未付费时的 RLS 空结果不得清本机密钥
+      const replaced = await cacheReplaceIfSafe(STORAGE_KEY, envs, pay.snapshot)
+      if (!replaced.wrote) {
+        await syncEnvsToSession(replaced.kept)
+        return wrap(replaced.kept, 'cache', t('toolsHub.needPayment'))
+      }
       await syncEnvsToSession(envs)
       return wrap(envs, 'remote')
     } catch (e) {
@@ -445,8 +480,10 @@ export function useStorage() {
         return wrap(result, result.length ? 'cache' : 'empty', 'decrypt failed')
       }
 
-      // 付费门已放行后的真·空远端才写 []
-      await cacheSet(STORAGE_KEY_GROUPS, groups)
+      const replaced = await cacheReplaceIfSafe(STORAGE_KEY_GROUPS, groups, pay.snapshot)
+      if (!replaced.wrote) {
+        return wrap(replaced.kept, 'cache', t('toolsHub.needPayment'))
+      }
       return wrap(groups, 'remote')
     } catch (e) {
       logError('从 Supabase 读取分组失败，fallback 到本地缓存', e)
