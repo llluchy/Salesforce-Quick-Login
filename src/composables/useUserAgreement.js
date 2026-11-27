@@ -47,6 +47,12 @@ export function useUserAgreement() {
     error.value = null
   }
 
+  /** 重新展示协议时务必解锁按钮（避免上次 agree 成功留下的 saving=true） */
+  function showModal() {
+    visible.value = true
+    saving.value = false
+  }
+
   function reset() {
     _refreshEpoch += 1
     _refreshing = false
@@ -80,7 +86,7 @@ export function useUserAgreement() {
 
       const client = getSupabase()
       if (!client) {
-        if (!isStale(epoch)) visible.value = true
+        if (!isStale(epoch)) showModal()
         return
       }
 
@@ -112,7 +118,7 @@ export function useUserAgreement() {
 
       // 登录路径：先挡住，再确认是否已同意
       if (options.blockPending === true && !isStale(epoch)) {
-        visible.value = true
+        showModal()
       }
 
       let at = null
@@ -125,7 +131,7 @@ export function useUserAgreement() {
         syncLog.warn('user agreement: read failed', e?.message || e)
         if (!isStale(epoch)) {
           acceptedAt.value = null
-          visible.value = true
+          showModal()
         }
         return
       }
@@ -137,7 +143,8 @@ export function useUserAgreement() {
         switchEnabled: true,
         acceptedAt: at
       })
-      visible.value = show
+      if (show) showModal()
+      else hide()
       syncLog.info('user agreement: refresh', { acceptedAt: at, show })
     } finally {
       if (!isStale(epoch)) _refreshing = false
@@ -165,8 +172,9 @@ export function useUserAgreement() {
     } catch (e) {
       error.value = e?.message || 'save_failed'
       syncLog.warn('user agreement: save failed', e?.message || e)
-      saving.value = false
       return { ok: false }
+    } finally {
+      saving.value = false
     }
   }
 
