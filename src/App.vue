@@ -198,23 +198,14 @@
         </div>
       </div>
 
-      <!-- 提醒 / 协议：挂在 main-panel 层，付费页与完整 UI 都能挡住（勿只放在 v-else 内） -->
+      <!-- 提醒窗：仅提醒阶段且未选择时可见；收费阶段不展示。协议改到注册页勾选。 -->
       <PaymentReminderModal
         v-if="isAuthed"
-        :visible="paymentReminderVisible"
+        :visible="paymentReminderVisible && paymentSwitchEnabled !== true"
         :saving="paymentReminderSaving"
         :error="paymentReminderError"
         :contact-emails="paymentReminderEmails"
         @choose="handlePaymentReminderChoose"
-      />
-
-      <UserAgreementModal
-        v-if="isAuthed"
-        :visible="userAgreementVisible"
-        :saving="userAgreementSaving"
-        :error="userAgreementError"
-        @agree="handleUserAgreementAgree"
-        @disagree="handleUserAgreementDisagree"
       />
 
       <!-- 启动 / 同步遮罩 -->
@@ -263,10 +254,8 @@ import ShareDialog from './components/ShareDialog.vue'
 import TrashDialog from './components/TrashDialog.vue'
 import PanelTools from './components/PanelTools.vue'
 import PaymentReminderModal from './components/PaymentReminderModal.vue'
-import UserAgreementModal from './components/UserAgreementModal.vue'
 import PaymentRequiredView from './components/PaymentRequiredView.vue'
 import { usePaymentReminder } from './composables/usePaymentReminder'
-import { useUserAgreement } from './composables/useUserAgreement'
 import { usePaymentGate } from './composables/usePaymentGate.js'
 import { getSupabase } from './composables/useSupabase'
 import {
@@ -277,7 +266,7 @@ import {
 
 const { t } = useI18n()
 const { loadEnvironments, saveEnvironments, deleteEnvironment, loadTrashedEnvironments, restoreEnvironment, loadGroups, saveGroups, deleteGroup } = useStorage()
-const { isAuthed, getCryptoKeyRaw, currentUser, getSession, getUnlockStatus, signOut } = useAuth()
+const { isAuthed, getCryptoKeyRaw, currentUser, getSession, getUnlockStatus } = useAuth()
 const { login, fillTotpCode } = useLogin()
 const { generateCode, scanQR } = useTotp()
 const {
@@ -289,26 +278,9 @@ const {
   choose: choosePaymentReminder,
   reset: resetPaymentReminder
 } = usePaymentReminder()
-const {
-  visible: userAgreementVisible,
-  saving: userAgreementSaving,
-  error: userAgreementError,
-  refresh: refreshUserAgreement,
-  agree: agreeUserAgreement,
-  disagree: disagreeUserAgreement,
-  reset: resetUserAgreement
-} = useUserAgreement()
 
 const handlePaymentReminderChoose = async (choice) => {
   await choosePaymentReminder(choice)
-}
-
-const handleUserAgreementAgree = async () => {
-  await agreeUserAgreement()
-}
-
-const handleUserAgreementDisagree = async () => {
-  await disagreeUserAgreement(signOut)
 }
 
 function paymentSessionArea() {
@@ -322,11 +294,13 @@ function paymentSessionArea() {
   return null
 }
 
-/** 清缓存后读一次开关，再驱动提醒 / 协议（避免 session 缓存卡住、或仅 OFF 路径被走到）。 */
-const refreshPaymentGates = async (options = {}) => {
+/**
+ * 清缓存后读一次开关，再驱动提醒窗。
+ * 协议已改到注册页勾选，打开插件不再检查/弹用户协议，只查付费门 + 提醒阶段选择。
+ */
+const refreshPaymentGates = async (_options = {}) => {
   if (!isAuthed.value || !currentUser.value?.id) {
     resetPaymentReminder()
-    resetUserAgreement()
     return
   }
   const client = getSupabase()
@@ -342,21 +316,21 @@ const refreshPaymentGates = async (options = {}) => {
     }) === true
   } catch (e) {
     syncLog.warn('payment gates: switch read failed', e?.message || e)
-    // 读失败：两边都不弹（提醒 fail-open；协议避免在提醒阶段误挡）
-    await refreshPaymentReminder({ switchEnabled: true, force: true })
-    await refreshUserAgreement({ switchEnabled: false, force: true })
+    // 读失败：不弹提醒（fail-open）
+    resetPaymentReminder()
     return
   }
   syncLog.info('payment gates: switch', { switchEnabled })
-  await refreshPaymentReminder({ switchEnabled, force: true })
-  await refreshUserAgreement({
-    switchEnabled,
-    force: true,
-    blockPending: options.blockPending === true
-  })
+  // 收费阶段：绝不弹提醒窗
+  if (switchEnabled) {
+    resetPaymentReminder()
+    return
+  }
+  await refreshPaymentReminder({ switchEnabled: false, force: true })
 }
 
 const {
+  switchEnabled: paymentSwitchEnabled,
   showPaymentRequired,
   refreshPaymentGate
 } = usePaymentGate()
@@ -364,7 +338,7 @@ const {
 const onVisibilityRefreshGates = () => {
   if (document.visibilityState !== 'visible') return
   if (!isAuthed.value || _onAuthedRunning) return
-  // 同时刷收费门：侧栏开着时 Dashboard 拨 ON，须切到付费页，不能只刷提醒/协议
+  // 同时刷收费门：侧栏开着时 Dashboard 拨 ON，须切到付费页，不能只刷提醒
   ;(async () => {
     try {
       await refreshPaymentGate({ force: true })
@@ -372,9 +346,7 @@ const onVisibilityRefreshGates = () => {
       syncLog.warn('payment gate visibility refresh failed', e?.message || e)
     }
     try {
-      await refreshPaymentGates({
-        blockPending: showPaymentRequired.value === true
-      })
+      await refreshPaymentGates()
     } catch (e) {
       syncLog.warn('payment gates visibility refresh failed', e?.message || e)
     }
@@ -439,15 +411,17 @@ async function migrateThenLoad() {
   }
 }
 
-// 开关拨 ON → 清内存中的环境列表并刷协议；付费解锁 → 先协议再迁移
+// 开关拨 ON → 清内存中的环境列表；付费解锁 → 再迁移
 watch(showPaymentRequired, async (needPay, wasNeedPay) => {
   if (!isAuthed.value) return
   if (needPay === true && wasNeedPay === false) {
+    // 进入收费门：提醒窗无意义，先收起
+    resetPaymentReminder()
     environments.value = []
     groups.value = []
     try {
       await nextTick()
-      await refreshPaymentGates({ blockPending: true })
+      await refreshPaymentGates()
     } catch (e) {
       syncLog.warn('payment gates refresh failed (switch ON)', e?.message || e)
     }
@@ -456,7 +430,7 @@ watch(showPaymentRequired, async (needPay, wasNeedPay) => {
   if (wasNeedPay === true && needPay === false) {
     try {
       await nextTick()
-      await refreshPaymentGates({ blockPending: true })
+      await refreshPaymentGates()
       await migrateThenLoad()
     } catch (e) {
       console.error('[App] 付费门解除后加载数据失败', e)
@@ -1258,13 +1232,14 @@ const onAuthed = async () => {
     syncLog.error('刷新收费门失败', e)
   }
   if (showPaymentRequired.value) {
+    // 收费阶段不弹提醒窗；协议已在注册时完成
+    resetPaymentReminder()
     // 仅清 UI 列表；保留 chrome.storage.local 本机环境，待付费/开关 OFF 后再 migrate
     environments.value = []
     groups.value = []
-    // 付费页也必须跑协议（开关 ON）：勿跳过 refreshPaymentGates
     try {
       await nextTick()
-      await refreshPaymentGates({ blockPending: true })
+      await refreshPaymentGates()
     } catch (e) {
       syncLog.warn('payment gates refresh failed (pay wall)', e?.message || e)
     } finally {
@@ -1282,10 +1257,10 @@ const onAuthed = async () => {
     console.error('[App] onAuthed loadData 异常', e)
   }
 
-  // 付费模式协议须在 hideBoot 前完成，避免侧栏在协议返回前已可操作
+  // 提醒阶段选择：在 hideBoot 前判定完，避免闪一下再弹
   try {
     await nextTick()
-    await refreshPaymentGates({ blockPending: true })
+    await refreshPaymentGates()
   } catch (e) {
     syncLog.warn('payment gates refresh failed', e?.message || e)
   } finally {
@@ -1309,7 +1284,6 @@ const onSignedOut = () => {
   environments.value = []
   groups.value = []
   resetPaymentReminder()
-  resetUserAgreement()
   _dataLoadDone = false
   hideBoot()
   if (groupSortable) {
@@ -1409,7 +1383,7 @@ onMounted(async () => {
     hideBoot()
   }
 
-  // 侧栏再次可见时重读开关（已登录改 DB 开关后不必整页重载也能出协议）
+  // 侧栏再次可见时重读开关（已登录改 DB 开关后不必整页重载也能切付费门）
   document.addEventListener('visibilitychange', onVisibilityRefreshGates)
 
   syncLog.groupEnd()

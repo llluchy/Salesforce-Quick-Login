@@ -26,7 +26,7 @@ const saving = ref(false)
 const error = ref(null)
 const paymentChoice = ref(null)
 
-let _refreshing = false
+/** 每次 refresh/reset 递增；旧请求收尾时若世代落后则丢弃，避免 OFF 结果盖过 ON */
 let _refreshEpoch = 0
 
 function sessionArea() {
@@ -51,7 +51,6 @@ export function usePaymentReminder() {
 
   function reset() {
     _refreshEpoch += 1
-    _refreshing = false
     hide()
     paymentChoice.value = null
   }
@@ -62,13 +61,25 @@ export function usePaymentReminder() {
 
   /**
    * @param {{ switchEnabled?: boolean, force?: boolean }} [options]
+   * 收费阶段（switchEnabled===true）绝不弹提醒窗：立刻 hide 并返回。
    */
   async function refresh(options = {}) {
-    if (_refreshing) return
-    _refreshing = true
-    const epoch = _refreshEpoch
+    // 写入选择过程中不打断；其余并发用世代号，后到的 ON 可盖掉进行中的 OFF
+    if (saving.value) {
+      syncLog.info('payment reminder: skip refresh while saving')
+      return
+    }
+    const epoch = ++_refreshEpoch
     error.value = null
     const force = options.force !== false
+
+    // 已知收费阶段：立刻收起，勿再读 choice（也避免与协议窗叠闪）
+    if (options.switchEnabled === true) {
+      if (!isStale(epoch)) hide()
+      syncLog.info('payment reminder: skip in pay phase')
+      return
+    }
+
     try {
       if (!isAuthed.value || !currentUser.value?.id) {
         if (!isStale(epoch)) {
@@ -104,6 +115,12 @@ export function usePaymentReminder() {
 
       syncLog.info('payment reminder: switch', { switchEnabled })
 
+      // 读开关后若已是收费阶段：收起并返回
+      if (switchEnabled === true) {
+        if (!isStale(epoch)) hide()
+        return
+      }
+
       const io = supabasePaymentChoiceIo(client)
       let choice
       try {
@@ -127,8 +144,9 @@ export function usePaymentReminder() {
         paymentChoice: choice,
         show
       })
-    } finally {
-      if (!isStale(epoch)) _refreshing = false
+    } catch (e) {
+      syncLog.warn('payment reminder: refresh failed', e?.message || e)
+      if (!isStale(epoch)) hide()
     }
   }
 

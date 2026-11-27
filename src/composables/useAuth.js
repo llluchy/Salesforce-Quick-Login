@@ -18,6 +18,11 @@ import { refreshLocale, resetLocaleAfterLogout } from './useLocale.js'
 import { WELCOME_PAGE_URL, RECOVERY_PAGE_URL } from '../utils/supabaseConfig'
 import { t } from '../i18n'
 import { carryTrashFlags } from '../utils/envTrash'
+import {
+  ensureUserAgreementFromAuthMeta,
+  supabaseUserAgreementIo,
+  writeUserAgreementOnce
+} from '../utils/userAgreement'
 
 const CRYPTO_KEY_KEY = CRYPTO_KEY_STORAGE_KEY
 const LAST_LOGIN_DATE_KEY = '__sf_last_login_date'
@@ -536,12 +541,20 @@ function ensureListener() {
  * 4. INSERT user_secrets（salt + 公钥 + 加密密码）
  * 5. 邮件确认后跳转 welcome.html 显示恢复密钥；即时登录则用 chrome.tabs.create 打开
  */
-async function signUp({ email, password }) {
+async function signUp({ email, password, agreementAcceptedAt }) {
   authError.value = null
   isLoading.value = true
   try {
     const supabase = getSupabase()
     if (!supabase) throw new Error(t('auth.supabaseNotInit'))
+
+    const agreementAt =
+      typeof agreementAcceptedAt === 'string' && agreementAcceptedAt.trim()
+        ? agreementAcceptedAt.trim()
+        : null
+    if (!agreementAt) {
+      throw new Error(t('auth.agreementRequired'))
+    }
 
     // 先生成 EC 密钥对 + salt + 加密密码
     const {
@@ -572,7 +585,11 @@ async function signUp({ email, password }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: welcomeUrl }
+      options: {
+        emailRedirectTo: welcomeUrl,
+        // 邮件确认路径：先写入 auth.user_metadata，欢迎页 / 首次登录再落到 user_metadata
+        data: { user_agreement_accepted_at: agreementAt }
+      }
     })
 
     if (error) throw error
@@ -595,6 +612,17 @@ async function signUp({ email, password }) {
       const deviceCode = await getDeviceCode()
       await updateDeviceCode(data.user.id, deviceCode)
 
+      try {
+        await writeUserAgreementOnce(
+          supabaseUserAgreementIo(supabase),
+          data.user.id,
+          agreementAt
+        )
+      } catch (e) {
+        logError('注册写用户协议失败', e)
+        throw e
+      }
+
       // 打开 welcome.html 显示恢复密钥
       if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
         chrome.tabs.create({ url: welcomeUrl })
@@ -614,6 +642,18 @@ async function signUp({ email, password }) {
     throw e
   } finally {
     isLoading.value = false
+  }
+}
+
+/** 把注册时写入 auth 的协议同意落到 public.user_metadata（幂等）。 */
+async function syncUserAgreementFromAuthUser(user) {
+  if (!user?.id) return
+  const supabase = getSupabase()
+  if (!supabase) return
+  try {
+    await ensureUserAgreementFromAuthMeta(supabaseUserAgreementIo(supabase), user)
+  } catch (e) {
+    logError('同步用户协议失败', e)
   }
 }
 
@@ -664,6 +704,9 @@ async function signIn({ email, password }) {
 
     // 旧用户迁移：若无 recovery 密钥则自动生成
     await migrateRecoveryKeyIfNeeded(data.user.id, password)
+
+    // 邮件确认注册：把 auth.user_metadata 里的协议同意落到业务表
+    await syncUserAgreementFromAuthUser(data.user)
 
     try { await refreshLocale() } catch { /* 语言失败不挡住登录 */ }
     log('登录成功', { userId: data.user.id, email: data.user.email })

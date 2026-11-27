@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  agreementAtFromAuthUser,
+  ensureUserAgreementFromAuthMeta,
   normalizeAgreementAcceptedAt,
   readUserAgreementAcceptedAt,
   shouldShowUserAgreement,
@@ -8,20 +10,10 @@ import {
 } from './userAgreement.js'
 
 describe('shouldShowUserAgreement', () => {
-  it('only when authed + switch ON + not accepted', () => {
+  it('never shows at plugin open (agreement accepted at register)', () => {
     assert.equal(shouldShowUserAgreement({
       isAuthed: true,
       switchEnabled: true,
-      acceptedAt: null
-    }), true)
-    assert.equal(shouldShowUserAgreement({
-      isAuthed: false,
-      switchEnabled: true,
-      acceptedAt: null
-    }), false)
-    assert.equal(shouldShowUserAgreement({
-      isAuthed: true,
-      switchEnabled: false,
       acceptedAt: null
     }), false)
     assert.equal(shouldShowUserAgreement({
@@ -29,6 +21,45 @@ describe('shouldShowUserAgreement', () => {
       switchEnabled: true,
       acceptedAt: '2026-11-26T00:00:00.000Z'
     }), false)
+  })
+})
+
+describe('agreementAtFromAuthUser / ensureUserAgreementFromAuthMeta', () => {
+  it('reads register-time acceptance from auth user_metadata', () => {
+    assert.equal(agreementAtFromAuthUser(null), null)
+    assert.equal(agreementAtFromAuthUser({ user_metadata: {} }), null)
+    assert.equal(
+      agreementAtFromAuthUser({
+        id: 'u1',
+        user_metadata: { user_agreement_accepted_at: '2026-11-27T00:00:00.000Z' }
+      }),
+      '2026-11-27T00:00:00.000Z'
+    )
+  })
+
+  it('writes once from auth meta when billing row missing acceptance', async () => {
+    const store = { row: null }
+    const io = {
+      async selectOwn() {
+        return { data: store.row, error: null }
+      },
+      async insertOwn(_userId, at) {
+        store.row = { user_agreement_accepted_at: at }
+        return { data: store.row, error: null }
+      },
+      async updateOwnIfNull() {
+        throw new Error('should not update')
+      }
+    }
+    const saved = await ensureUserAgreementFromAuthMeta(io, {
+      id: 'u1',
+      user_metadata: { user_agreement_accepted_at: 't-reg' }
+    })
+    assert.equal(saved, 't-reg')
+    assert.equal(await ensureUserAgreementFromAuthMeta(io, {
+      id: 'u1',
+      user_metadata: { user_agreement_accepted_at: 't-other' }
+    }), 't-reg')
   })
 })
 

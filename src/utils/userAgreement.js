@@ -15,12 +15,18 @@ export function normalizeAgreementAcceptedAt(value) {
 }
 
 /**
- * 开关 ON 且尚未同意 → 强制弹协议。
+ * 启动时是否再弹协议窗。
+ * 2026-11-27 起：协议在注册页勾选完成，打开插件不再弹协议，只查付费状态。
+ * 保留函数供旧调用方；恒为 false。
  */
-export function shouldShowUserAgreement({ isAuthed, switchEnabled, acceptedAt }) {
-  if (!isAuthed) return false
-  if (switchEnabled !== true) return false
-  return normalizeAgreementAcceptedAt(acceptedAt) == null
+export function shouldShowUserAgreement(_args) {
+  return false
+}
+
+/** 从 auth.user_metadata 取出注册时写入的同意时间 */
+export function agreementAtFromAuthUser(user) {
+  const raw = user?.user_metadata?.user_agreement_accepted_at
+  return normalizeAgreementAcceptedAt(raw)
 }
 
 export function supabaseUserAgreementIo(client) {
@@ -63,6 +69,17 @@ export async function readUserAgreementAcceptedAt(io, userId) {
   if (selected.error) throw toError(selected.error)
   if (!selected.data) return null
   return normalizeAgreementAcceptedAt(selected.data.user_agreement_accepted_at)
+}
+
+/**
+ * 注册/登录后：若 auth 元数据带有同意时间且业务表尚未写入，则幂等写入。
+ * @returns {Promise<string|null>} 写入或已有的时间；无需写入时 null
+ */
+export async function ensureUserAgreementFromAuthMeta(io, user) {
+  const userId = user?.id
+  const fromMeta = agreementAtFromAuthUser(user)
+  if (!userId || !fromMeta) return null
+  return writeUserAgreementOnce(io, userId, fromMeta)
 }
 
 /** 一次性写入同意时间。已有值则原样返回。 */

@@ -92,7 +92,7 @@ create table public.user_secrets (
 -- ui_locale 为界面语言：system / zh-CN / en / ja，默认跟随系统。
 -- payment_choice：提醒阶段一次性「继续/停用」；null=未选；选定后不可由客户端改回。
 -- payment_choice_at：选定时间。
--- user_agreement_accepted_at：付费模式开启后一次性用户协议同意时间；null=未同意。
+-- user_agreement_accepted_at：注册时勾选用户协议的同意时间；null=未同意（打开插件不再弹协议窗）。
 -- 本文件只备份结构。新列与触发器只加在这里，不改线上数据（见 migrations/payment_choice.sql、user_agreement.sql）。
 -- 冲突说明：管理员总开关 PR 拥有 app_config；本表 payment_choice* / user_agreement* 由「提醒与停用选择」PR 维护。
 -- app_config（总开关）见下方。

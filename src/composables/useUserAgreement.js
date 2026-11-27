@@ -1,6 +1,6 @@
-// 付费模式（开关 ON）：登录后强制一次性用户协议。
-// 同意写入 user_metadata.user_agreement_accepted_at；不同意由调用方登出。
-// 开关 ON 且协议读失败 → 视为未同意（fail-closed，挡住使用）。
+// 兼容保留：协议已改到注册页勾选；打开插件不再弹本窗。
+// 同意仍写入 user_metadata.user_agreement_accepted_at。
+// refresh 恒 hide（shouldShowUserAgreement 恒 false）。
 
 import { ref, readonly } from 'vue'
 import { getSupabase } from './useSupabase'

@@ -360,6 +360,30 @@
                       recovery_key_shown: true
                     }, { onConflict: 'user_id' })
                 }
+
+                // 注册时勾选的用户协议：从 auth.user_metadata 落到业务表
+                try {
+                  const acceptedAt = user.user_metadata && user.user_metadata.user_agreement_accepted_at
+                  if (acceptedAt) {
+                    const { data: metaRow } = await supabaseClient
+                      .from('user_metadata')
+                      .select('user_agreement_accepted_at')
+                      .eq('user_id', user.id)
+                      .maybeSingle()
+                    if (!metaRow) {
+                      await supabaseClient.from('user_metadata').insert({
+                        user_id: user.id,
+                        user_agreement_accepted_at: acceptedAt
+                      })
+                    } else if (!metaRow.user_agreement_accepted_at) {
+                      await supabaseClient
+                        .from('user_metadata')
+                        .update({ user_agreement_accepted_at: acceptedAt })
+                        .eq('user_id', user.id)
+                        .is('user_agreement_accepted_at', null)
+                    }
+                  }
+                } catch (_) { /* 协议落库失败不挡欢迎页 */ }
               }
             }
           }

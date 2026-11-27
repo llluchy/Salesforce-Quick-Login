@@ -82,6 +82,27 @@
           required />
       </div>
 
+      <!-- 注册：勾选用户协议（打开插件不再弹协议窗） -->
+      <div class="auth-agreement" v-if="!isLoginMode && !hasSession">
+        <label class="auth-agreement-label">
+          <input
+            v-model="agreementChecked"
+            type="checkbox"
+            :disabled="isLoading"
+            tabindex="4"
+          />
+          <span>
+            {{ t('auth.agreementPrefix') }}
+            <button
+              type="button"
+              class="auth-agreement-link"
+              :disabled="isLoading"
+              @click="showAgreementDialog = true"
+            >{{ t('userAgreement.title') }}</button>
+          </span>
+        </label>
+      </div>
+
       <!-- 错误提示 -->
       <div class="auth-error" v-if="errorMessage">
         <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M10 1a9 9 0 100 18 9 9 0 000-18zm-1 13a1 1 0 112 0 1 1 0 01-2 0zm1-3a1 1 0 01-1-1V7a1 1 0 112 0v3a1 1 0 01-1 1z"/></svg>
@@ -146,6 +167,28 @@
         </div>
       </div>
     </Transition>
+
+    <!-- 注册页查看用户协议全文 -->
+    <Transition name="modal">
+      <div
+        class="recovery-overlay"
+        v-if="showAgreementDialog"
+        @click.self="showAgreementDialog = false"
+      >
+        <div class="recovery-modal" role="dialog" aria-modal="true" :aria-labelledby="agreementTitleId">
+          <div class="recovery-header">
+            <h3 :id="agreementTitleId">{{ t('userAgreement.title') }}</h3>
+            <button type="button" class="recovery-close" @click="showAgreementDialog = false">×</button>
+          </div>
+          <div class="recovery-body">
+            <p class="agreement-body">{{ t('userAgreement.body') }}</p>
+            <button type="button" class="btn-submit" @click="acceptAgreementFromDialog">
+              {{ t('auth.agreementConfirm') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -194,6 +237,7 @@ const submitButtonText = computed(() => {
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const agreementChecked = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 
@@ -202,11 +246,22 @@ const showRecoveryDialog = ref(false)
 const recoveryEmail = ref('')
 const recoverySending = ref(false)
 
+// 注册页协议全文
+const showAgreementDialog = ref(false)
+const agreementTitleId = 'sfql-auth-agreement-title'
+
 const switchMode = (m) => {
   mode.value = m
   errorMessage.value = ''
   successMessage.value = ''
   confirmPassword.value = ''
+  agreementChecked.value = false
+  showAgreementDialog.value = false
+}
+
+const acceptAgreementFromDialog = () => {
+  agreementChecked.value = true
+  showAgreementDialog.value = false
 }
 
 const validate = () => {
@@ -224,6 +279,10 @@ const validate = () => {
   }
   if (!isLoginMode.value && !hasSession.value && password.value !== confirmPassword.value) {
     errorMessage.value = t('auth.passwordMismatch')
+    return false
+  }
+  if (!isLoginMode.value && !hasSession.value && !agreementChecked.value) {
+    errorMessage.value = t('auth.agreementRequired')
     return false
   }
   return true
@@ -244,7 +303,11 @@ const handleSubmit = async () => {
       await signIn({ email: email.value, password: password.value })
       emit('authed')
     } else {
-      const result = await signUp({ email: email.value, password: password.value })
+      const result = await signUp({
+        email: email.value,
+        password: password.value,
+        agreementAcceptedAt: new Date().toISOString()
+      })
       if (result.needsEmailConfirm) {
         successMessage.value = t('auth.emailConfirmSent', { email: email.value })
       } else {
@@ -561,6 +624,48 @@ onMounted(() => {
 
 .auth-footer a:hover {
   text-decoration: underline;
+}
+
+.auth-agreement {
+  margin: 0 0 14px;
+}
+
+.auth-agreement-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #334155;
+  cursor: pointer;
+}
+
+.auth-agreement-label input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.auth-agreement-link {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #1976d2;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth-agreement-link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.agreement-body {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #334155;
 }
 
 .auth-notice {
