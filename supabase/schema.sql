@@ -289,6 +289,7 @@ create table public.user_billing (
   pay_phase_started_at timestamp with time zone null,
   unpaid_grace_expires_at timestamp with time zone null,
   unpaid_purged_at timestamp with time zone null,
+  refunded_at timestamp with time zone null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint user_billing_pkey primary key (user_id),
@@ -373,7 +374,62 @@ BEGIN
     paid_at = coalesce(paid_at, now()),
     stripe_checkout_session_id = p_session_id,
     stripe_customer_id = coalesce(nullif(p_customer_id, ''), stripe_customer_id),
-    unpaid_grace_expires_at = NULL
+    unpaid_grace_expires_at = NULL,
+    refunded_at = NULL
+  WHERE user_id = p_user_id;
+
+  RETURN true;
+END;
+$function$;
+
+-- ---------- 函数：revoke_payment_from_stripe 幂等取消付费授权 ----------
+-- 说明：仅 service_role / Webhook 调用。Stripe 退款后将 is_paid=false、写 refunded_at、清 session。
+-- 授权见 migrations/revoke_payment_from_stripe.sql（REVOKE authenticated；GRANT service_role）。
+CREATE OR REPLACE FUNCTION public.revoke_payment_from_stripe(
+  p_user_id uuid,
+  p_refund_id text DEFAULT NULL
+)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row public.user_billing%ROWTYPE;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  INSERT INTO public.user_billing (user_id)
+  VALUES (p_user_id)
+  ON CONFLICT (user_id) DO NOTHING;
+
+  SELECT * INTO v_row
+  FROM public.user_billing
+  WHERE user_id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  IF v_row.is_paid IS NOT TRUE THEN
+    IF v_row.refunded_at IS NULL THEN
+      UPDATE public.user_billing
+      SET
+        refunded_at = now(),
+        stripe_checkout_session_id = NULL
+      WHERE user_id = p_user_id;
+    END IF;
+    RETURN true;
+  END IF;
+
+  UPDATE public.user_billing
+  SET
+    is_paid = false,
+    refunded_at = coalesce(refunded_at, now()),
+    stripe_checkout_session_id = NULL
   WHERE user_id = p_user_id;
 
   RETURN true;

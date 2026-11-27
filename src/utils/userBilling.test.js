@@ -127,11 +127,13 @@ describe('i18n payment keys', () => {
 })
 
 describe('schema user_billing', () => {
-  it('declares user_billing, claim RPC, and read-only RLS for clients', async () => {
+  it('declares user_billing, claim/revoke RPC, and read-only RLS for clients', async () => {
     const sql = readFileSync(resolve(root, 'supabase/schema.sql'), 'utf8')
     assert.match(sql, /create table public\.user_billing/)
     assert.match(sql, /is_paid boolean not null default false/)
+    assert.match(sql, /refunded_at timestamp with time zone null/)
     assert.match(sql, /claim_payment_from_stripe/)
+    assert.match(sql, /revoke_payment_from_stripe/)
     assert.match(sql, /user_billing_select_own/)
     assert.doesNotMatch(
       sql.slice(sql.indexOf('-- ---------- 表：saved_soql_queries'), sql.indexOf('-- ---------- 函数：accept_share_lookup')),
@@ -143,6 +145,15 @@ describe('schema user_billing', () => {
     assert.match(migration, /on_auth_user_created_billing/)
     assert.match(migration, /REVOKE INSERT, UPDATE, DELETE ON public\.user_billing/i)
     assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.claim_payment_from_stripe/i)
+
+    const revokeMigration = readFileSync(
+      resolve(root, 'supabase/migrations/revoke_payment_from_stripe.sql'),
+      'utf8'
+    )
+    assert.match(revokeMigration, /add column if not exists refunded_at/)
+    assert.match(revokeMigration, /revoke_payment_from_stripe/)
+    assert.match(revokeMigration, /GRANT EXECUTE ON FUNCTION public\.revoke_payment_from_stripe/i)
+    assert.match(revokeMigration, /REVOKE ALL ON FUNCTION public\.revoke_payment_from_stripe/i)
 
     const { PGlite } = await import('@electric-sql/pglite')
     const db = new PGlite()
@@ -189,6 +200,10 @@ describe('schema user_billing', () => {
     await db.exec(`
       GRANT SELECT ON public.user_billing TO authenticated;
       REVOKE INSERT, UPDATE, DELETE ON public.user_billing FROM PUBLIC, authenticated;
+      REVOKE ALL ON FUNCTION public.claim_payment_from_stripe(uuid, text, text) FROM PUBLIC, authenticated;
+      REVOKE ALL ON FUNCTION public.revoke_payment_from_stripe(uuid, text) FROM PUBLIC, authenticated;
+      GRANT EXECUTE ON FUNCTION public.claim_payment_from_stripe(uuid, text, text) TO service_role;
+      GRANT EXECUTE ON FUNCTION public.revoke_payment_from_stripe(uuid, text) TO service_role;
       ALTER TABLE public.user_billing FORCE ROW LEVEL SECURITY;
       INSERT INTO auth.users (id) VALUES ('${USER_A}'), ('${USER_B}');
     `)
@@ -254,6 +269,44 @@ describe('schema user_billing', () => {
       [USER_A]
     )
     assert.equal(still.rows[0].stripe_checkout_session_id, 'cs_test_abc')
+
+    await assert.rejects(() => asUser(USER_A, () => db.query(
+      `SELECT public.revoke_payment_from_stripe($1::uuid, $2::text)`,
+      [USER_A, 're_test']
+    )))
+
+    await db.exec('RESET ROLE')
+    const revoked = await db.query(
+      `SELECT public.revoke_payment_from_stripe($1::uuid, $2::text) AS ok`,
+      [USER_A, 're_test_1']
+    )
+    assert.equal(revoked.rows[0].ok, true)
+    const afterRevoke = await db.query(
+      `SELECT is_paid, refunded_at, stripe_checkout_session_id FROM public.user_billing WHERE user_id = $1`,
+      [USER_A]
+    )
+    assert.equal(afterRevoke.rows[0].is_paid, false)
+    assert.ok(afterRevoke.rows[0].refunded_at)
+    assert.equal(afterRevoke.rows[0].stripe_checkout_session_id, null)
+
+    const revokeAgain = await db.query(
+      `SELECT public.revoke_payment_from_stripe($1::uuid, $2::text) AS ok`,
+      [USER_A, 're_test_2']
+    )
+    assert.equal(revokeAgain.rows[0].ok, true)
+
+    const reclaim = await db.query(
+      `SELECT public.claim_payment_from_stripe($1::uuid, $2::text, $3::text) AS ok`,
+      [USER_A, 'cs_test_after_refund', 'cus_2']
+    )
+    assert.equal(reclaim.rows[0].ok, true)
+    const afterReclaim = await db.query(
+      `SELECT is_paid, refunded_at, stripe_checkout_session_id FROM public.user_billing WHERE user_id = $1`,
+      [USER_A]
+    )
+    assert.equal(afterReclaim.rows[0].is_paid, true)
+    assert.equal(afterReclaim.rows[0].refunded_at, null)
+    assert.equal(afterReclaim.rows[0].stripe_checkout_session_id, 'cs_test_after_refund')
   })
 })
 
@@ -268,6 +321,10 @@ describe('edge functions present', () => {
     assert.match(checkout, /is_paid/)
     assert.match(webhook, /checkout\.session\.completed/)
     assert.match(webhook, /claim_payment_from_stripe/)
+    assert.match(webhook, /charge\.refunded/)
+    assert.match(webhook, /refund\.created/)
+    assert.match(webhook, /charge\.refund\.updated/)
+    assert.match(webhook, /revoke_payment_from_stripe/)
     assert.match(webhook, /STRIPE_WEBHOOK_SECRET/)
     assert.match(webhook, /constructEventAsync/)
     assert.doesNotMatch(webhook, /constructEvent\(/)
@@ -276,6 +333,8 @@ describe('edge functions present', () => {
     const setup = readFileSync(resolve(root, 'docs/stripe-setup.md'), 'utf8')
     assert.match(setup, /STRIPE_SECRET_KEY/)
     assert.match(setup, /verify_jwt\s*=\s*false/)
+    assert.match(setup, /charge\.refunded/)
+    assert.match(setup, /revoke_payment_from_stripe/)
     assert.match(setup, /llluchy@outlook\.com/)
     assert.match(setup, /llluchy@qq\.com/)
   })
