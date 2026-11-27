@@ -16,8 +16,8 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | 仅 `stripe-webhook` 调 `claim_payment_from_stripe` | **禁止**（扩展只用 anon） |
 | `SUPABASE_URL` | 项目 URL（函数运行时常已注入） | 扩展已有公开 URL |
 | `SUPABASE_ANON_KEY` | `create-checkout` 校验用户 JWT（常已注入） | 扩展已有 anon |
-| `CHECKOUT_SUCCESS_URL` | Stripe 成功回跳（**非必须体验**；有无皆可，扩展靠查 `is_paid`） | 可选 |
-| `CHECKOUT_CANCEL_URL` | 取消回跳，任意无害页 | 可选 |
+| `CHECKOUT_SUCCESS_URL` | Stripe 成功回跳（**非必须体验**；有无皆可，扩展靠查 `is_paid`）。未设时代码默认：`https://llluchy.github.io/Salesforce-Quick-Login/welcome` | 可选 |
+| `CHECKOUT_CANCEL_URL` | 取消回跳；未设时与成功回跳相同（同上欢迎页） | 可选 |
 
 扩展包内**只**使用已有的 `SUPABASE_URL` + anon key；**不得**放入 secret / webhook secret / service_role / Price 密钥。
 
