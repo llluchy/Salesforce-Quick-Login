@@ -22,7 +22,9 @@ Deno.serve(async (req) => {
     const priceId = Deno.env.get('STRIPE_PRICE_ID')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseAnon = Deno.env.get('SUPABASE_ANON_KEY')
-    const successUrl = Deno.env.get('CHECKOUT_SUCCESS_URL') || 'https://llluchy.github.io/salesforce-login-extension-vue/'
+    const successUrl =
+      Deno.env.get('CHECKOUT_SUCCESS_URL') ||
+      'https://llluchy.github.io/Salesforce-Quick-Login/welcome'
     const cancelUrl = Deno.env.get('CHECKOUT_CANCEL_URL') || successUrl
 
     if (!stripeSecret || !priceId || !supabaseUrl || !supabaseAnon) {
